@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-ivory text-navy font-body antialiased;
+  }
+  h1, h2, h3, h4 {
+    @apply font-display text-navy;
+  }
+  :focus-visible {
+    outline: 2px solid #B8863B;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 bg-navy text-ivory font-body font-medium px-5 py-2.5 rounded-sm hover:bg-navy-light transition-colors duration-150;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 border border-navy text-navy font-body font-medium px-5 py-2.5 rounded-sm hover:bg-navy hover:text-ivory transition-colors duration-150;
+  }
+  .btn-gold {
+    @apply inline-flex items-center justify-center gap-2 bg-brass text-ivory font-body font-medium px-5 py-2.5 rounded-sm hover:bg-brass-dark transition-colors duration-150;
+  }
+  .input-field {
+    @apply w-full border border-navy/15 bg-white rounded-sm px-3.5 py-2.5 text-slate-ink font-body placeholder:text-slate-muted focus:border-brass focus:ring-1 focus:ring-brass outline-none transition-colors;
+  }
+  .label-field {
+    @apply block text-xs font-semibold uppercase tracking-wider text-slate-muted mb-1.5;
+  }
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.18em] text-brass;
+  }
+  .status-badge {
+    @apply text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-sm;
+  }
+}
+
+/* Deed-stamp style corner ribbon used on property cards - the page's signature element */
+.ribbon {
+  position: absolute;
+  top: 14px;
+  left: -6px;
+  padding: 4px 14px 4px 16px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #F7F4EE;
+  clip-path: polygon(0 0, 100% 0, 92% 50%, 100% 100%, 0 100%);
+}
+
+/* Soft shadow to keep hero text crisp regardless of what's behind it in the
+   photo background - guards legibility even over busier/brighter areas. */
+.hero-text-shadow {
+  text-shadow: 0 2px 16px rgba(8, 23, 34, 0.55), 0 1px 2px rgba(8, 23, 34, 0.4);
+}
