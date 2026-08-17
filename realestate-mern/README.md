@@ -58,7 +58,7 @@ cd backend
 npm install
 cp .env.example .env      # then edit .env with your MongoDB URI and a strong JWT_SECRET
 npm run seed               # creates admin + sample verified user, starter categories, and 10 sample listings
-npm run dev                 # starts the API on http://localhost:5000
+npm run dev                 # starts the API on https://real-estate-project-p237.onrender.com
 ```
 
 Seeded accounts (change the passwords after first login):
@@ -75,7 +75,7 @@ npm install
 npm run dev                 # starts the client on http://localhost:5173
 ```
 
-The Vite dev server proxies `/api` and `/uploads` requests to `http://localhost:5000`, so no extra
+The Vite dev server proxies `/api` and `/uploads` requests to `https://real-estate-project-p237.onrender.com`, so no extra
 configuration is needed in development. For production, update the proxy target or serve both behind
 the same domain / reverse proxy.
 
