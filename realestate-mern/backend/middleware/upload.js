@@ -1,34 +1,30 @@
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cloudinary = require('cloudinary').v2;
 
-const uploadDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+// Configure Cloudinary using your .env / Render environment variables
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
+// Property photos storage (cover image + gallery)
+const propertyStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'shram-sewa/properties', // folder name inside your Cloudinary account
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
   },
 });
 
 // Property photos (cover image + gallery). Images only - video for a
 // listing is handled as a separate URL field (e.g. a YouTube link), never
 // as an uploaded file, so there is no legitimate reason to accept a video
-// file here. Both extension AND mimetype are checked so a renamed file
-// (e.g. clip.mp4 renamed to clip.jpg) is still caught.
+// file here.
 const propertyImageFileFilter = (req, file, cb) => {
-  const allowedExt = /jpeg|jpg|png|webp|gif/;
-  const isImageExt = allowedExt.test(path.extname(file.originalname).toLowerCase());
   const isImageMime = file.mimetype.startsWith('image/');
-
-  if (isImageExt && isImageMime) {
+  if (isImageMime) {
     cb(null, true);
   } else {
     const err = new Error('Only photo files (JPG, PNG, WEBP, GIF) are allowed - videos are not supported here');
@@ -38,17 +34,24 @@ const propertyImageFileFilter = (req, file, cb) => {
 };
 
 const upload = multer({
-  storage,
+  storage: propertyStorage,
   fileFilter: propertyImageFileFilter,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file - property photos
 });
 
-// Identity documents (selfie + citizenship front/back) are capped much
-// smaller and restricted to images only - there's no legitimate reason for
-// an ID photo to be a 10MB file, and it keeps the uploads folder in check.
+// Identity documents storage (selfie + citizenship front/back)
+const verificationStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'shram-sewa/verification',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+  },
+});
+
+// Identity documents are capped much smaller and restricted to images only -
+// there's no legitimate reason for an ID photo to be a 10MB file.
 const verificationFileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|webp/;
-  const isImage = allowedTypes.test(path.extname(file.originalname).toLowerCase()) && file.mimetype.startsWith('image/');
+  const isImage = file.mimetype.startsWith('image/');
   if (isImage) {
     cb(null, true);
   } else {
@@ -59,7 +62,7 @@ const verificationFileFilter = (req, file, cb) => {
 };
 
 const uploadVerification = multer({
-  storage,
+  storage: verificationStorage,
   fileFilter: verificationFileFilter,
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB per file
 });
