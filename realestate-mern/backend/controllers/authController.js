@@ -61,7 +61,13 @@ const register = asyncHandler(async (req, res) => {
     isEmailVerified: false,
   });
 
-  await sendVerificationEmail(user);
+  // Don't make the user wait for the email to send - respond immediately
+  // once the account exists, and let the email go out in the background.
+  // If it fails, we log it instead of blocking/failing the registration
+  // response (the user can always hit "resend code" from the frontend).
+  sendVerificationEmail(user).catch((err) => {
+    console.error('Failed to send verification email:', err.message);
+  });
 
   // Deliberately no token/user returned here - the account can't be used to
   // sign in until the emailed code is confirmed via /auth/verify-email.
@@ -126,7 +132,11 @@ const resendVerification = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'This email is already verified. Please sign in.' });
   }
 
-  await sendVerificationEmail(user);
+  // Same as registration - respond immediately, send the email in the background.
+  sendVerificationEmail(user).catch((err) => {
+    console.error('Failed to resend verification email:', err.message);
+  });
+
   res.json({ success: true, message: 'A new verification code has been sent to your email' });
 });
 
@@ -182,11 +192,14 @@ const forgotPassword = asyncHandler(async (req, res) => {
   user.passwordResetExpires = new Date(Date.now() + CODE_TTL_MS);
   await user.save();
 
-  await sendEmail({
+  // Respond immediately - don't make the user wait for the email itself to send.
+  sendEmail({
     to: user.email,
     subject: 'Reset your Ashland Estates password',
     text: `Your password reset code is ${code}. It expires in 15 minutes. If you didn't request this, you can ignore this email.`,
     html: `<p>Hi ${user.name},</p><p>Your password reset code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px;">${code}</p><p>This code expires in 15 minutes. If you didn't request this, you can safely ignore this email.</p>`,
+  }).catch((err) => {
+    console.error('Failed to send password reset email:', err.message);
   });
 
   res.json(genericResponse);
@@ -244,9 +257,9 @@ const updateProfile = asyncHandler(async (req, res) => {
   if (avatar !== undefined) user.avatar = avatar;
 
   const files = req.files || {};
-  if (files.selfiePhoto) user.selfiePhoto = `/uploads/${files.selfiePhoto[0].path}`;
-  if (files.citizenshipPhotoFront) user.citizenshipPhotoFront = `/uploads/${files.citizenshipPhotoFront[0].path}`;
-  if (files.citizenshipPhotoBack) user.citizenshipPhotoBack = `/uploads/${files.citizenshipPhotoBack[0].path}`;
+  if (files.selfiePhoto) user.selfiePhoto = files.selfiePhoto[0].path;
+  if (files.citizenshipPhotoFront) user.citizenshipPhotoFront = files.citizenshipPhotoFront[0].path;
+  if (files.citizenshipPhotoBack) user.citizenshipPhotoBack = files.citizenshipPhotoBack[0].path;
   if (files.selfiePhoto || files.citizenshipPhotoFront || files.citizenshipPhotoBack) {
     user.verificationStatus = 'pending';
   }
