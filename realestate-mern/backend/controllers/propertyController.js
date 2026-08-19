@@ -159,8 +159,10 @@ const createProperty = asyncHandler(async (req, res) => {
   body.currency = 'NPR';
 
   const files = req.files || {};
-  const images = files.images ? files.images.map((f) => `/uploads/${f.filename}`) : [];
-  const coverImage = files.coverImage ? `/uploads/${files.coverImage[0].filename}` : (images[0] || '');
+  // Cloudinary storage puts the real, permanent image URL on `.path` -
+  // `.filename` is just an internal Cloudinary id, not a usable link.
+  const images = files.images ? files.images.map((f) => f.path) : [];
+  const coverImage = files.coverImage ? files.coverImage[0].path : (images[0] || '');
 
   // The Land vs House/Apartment/etc. posting forms ask for different
   // required fields - look up which one this listing's type maps to so
@@ -231,10 +233,12 @@ const updateProperty = asyncHandler(async (req, res) => {
     }
   }
 
-  const newImages = files.images ? files.images.map((f) => `/uploads/${f.filename}`) : [];
+  // Cloudinary storage puts the real, permanent image URL on `.path` -
+  // `.filename` is just an internal Cloudinary id, not a usable link.
+  const newImages = files.images ? files.images.map((f) => f.path) : [];
   const finalImages = [...keptExisting, ...newImages];
 
-  const newCoverImage = files.coverImage ? `/uploads/${files.coverImage[0].filename}` : currentMedia.coverImage;
+  const newCoverImage = files.coverImage ? files.coverImage[0].path : currentMedia.coverImage;
 
   body.media = {
     coverImage: newCoverImage || finalImages[0] || '',
