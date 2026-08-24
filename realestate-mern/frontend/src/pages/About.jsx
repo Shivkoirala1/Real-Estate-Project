@@ -59,10 +59,12 @@ const About = () => {
             },
             {
               image: '/images/team/fullstack-developer.jpg',
-              role: 'Systems Developer',
-              org: 'PRASAD INFOTECH',
-              bio: 'A true allrounder across the MERN stack - equally at home in the frontend interface, backend services, or infrastructure, stepping in wherever the project needed it most.',
+              role: 'Developer, Investor & Strategic Supporter',
+              org: 'Youth Real Estate Pvt.Ltd',
+              bio: 'Chudaraj Basnet is associated with Youth Real Estate as a Developer, Investor, and Strategic Supporter. He contributes to the growth and development of the company by supporting its projects, business opportunities, and long-term vision. His involvement represents a shared commitment to building sustainable opportunities and contributing to the growth of Youth Real Estate. Together, the leadership aims to combine entrepreneurship, investment, development, and innovation to create a stronger and more customer-focused real estate ecosystem.',
             },
+            
+
           ].map((member) => (
             <div key={member.role} className="border border-navy/10 rounded-sm overflow-hidden bg-white">
               <img src={member.image} alt={member.role} className="w-full h-56 object-cover object-top" />
