@@ -40,7 +40,7 @@ const Navbar = () => {
     <header className="bg-navy sticky top-0 z-40 shadow-lifted">
       <div className="max-w-7xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between">
         <Link to="/" className="font-display text-xl text-ivory tracking-tight">
-          Ashland <span className="text-brass">Estates</span>
+          Youth Real <span className="text-brass">Estate Pvt.Ltd</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-8">
