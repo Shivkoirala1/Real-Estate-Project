@@ -6,7 +6,7 @@ const Footer = () => {
     <footer className="bg-navy-dark text-ivory/80 mt-24">
       <div className="max-w-7xl mx-auto px-5 md:px-8 py-14 grid grid-cols-1 md:grid-cols-4 gap-10">
         <div>
-          <p className="font-display text-lg text-ivory mb-3">Ashland <span className="text-brass">Estates</span></p>
+          <p className="font-display text-lg text-ivory mb-3">Youth Real <span className="text-brass">Estates Pvt.Ltd</span></p>
           <p className="text-sm leading-relaxed text-ivory/60">
             A dedicated platform for browsing quality property listings and connecting buyers with trusted agents.
           </p>
