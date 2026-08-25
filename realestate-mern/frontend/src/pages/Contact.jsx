@@ -59,7 +59,7 @@ const Contact = () => {
     <div className="max-w-6xl mx-auto px-5 md:px-8 py-16 grid grid-cols-1 md:grid-cols-2 gap-14">
       <div>
         <p className="eyebrow mb-2">Get in touch</p>
-        <h1 className="text-3xl mb-6">Contact Ashland Estates</h1>
+        <h1 className="text-3xl mb-6">Contact Youth Real Estate Pvt.Ltd</h1>
         <p className="text-slate-muted leading-relaxed mb-8">
           Have a question about a listing, or want to sell your property with us? Send a message and our team will respond shortly.
         </p>
