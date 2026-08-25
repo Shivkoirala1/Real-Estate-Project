@@ -58,7 +58,7 @@ const Home = () => {
         <div className="absolute inset-0 bg-navy-dark/20" />
 
         <div className="max-w-7xl mx-auto px-5 md:px-8 pt-20 pb-32 relative">
-          <p className="eyebrow mb-4 hero-text-shadow">Ashland Estates — Nepal's Trusted Ghar-Jagga Marketplace</p>
+          <p className="eyebrow mb-4 hero-text-shadow">Youth Real Estate Pvt.Ltd — Nepal's Trusted Ghar-Jagga Marketplace</p>
           <h1 className="text-4xl md:text-6xl text-white leading-[1.05] max-w-3xl mb-6 hero-text-shadow">
             Find your dream <span className="italic text-brass-light">ghar</span> in the heart of Nepal.
           </h1>
