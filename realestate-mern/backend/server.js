@@ -17,11 +17,11 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const inquiryRoutes = require('./routes/inquiryRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const blogRoutes = require('./routes/blogRoutes');
 
 connectDB();
 
 const app = express();
-
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -44,7 +44,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/inquiries', inquiryRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/notifications', notificationRoutes);
-
+app.use('/api/blogs', blogRoutes);
 app.use(notFound);
 app.use(errorHandler);
 

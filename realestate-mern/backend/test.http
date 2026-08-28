@@ -1,0 +1,263 @@
+@baseUrl = http://localhost:5000/api/blogs
+@token = YOUR_JWT_TOKEN_HERE
+
+### =========================================================
+### 1. CREATE BLOG - Draft
+### =========================================================
+
+POST {{baseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "How to Choose the Right Car Parts",
+  "body": "A complete guide to choosing the right replacement parts for your vehicle.",
+  "tags": [
+    "buying guide",
+    "car parts",
+    "maintenance"
+  ],
+  "status": "draft",
+  "coverImage": "/uploads/blogs/car-parts-guide.jpg"
+}
+
+
+### =========================================================
+### 2. CREATE BLOG - Published
+### =========================================================
+
+POST {{baseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "Understanding Vehicle Maintenance",
+  "body": "Regular vehicle maintenance helps keep your vehicle running properly.",
+  "tags": [
+    "maintenance",
+    "vehicle",
+    "guide"
+  ],
+  "status": "published",
+  "coverImage": "/uploads/blogs/maintenance.jpg"
+}
+
+
+### =========================================================
+### 3. CREATE BLOG - Minimal
+### =========================================================
+
+POST {{baseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "New Vehicle Parts Guide",
+  "body": "This is a simple blog post."
+}
+
+
+### =========================================================
+### 4. CREATE BLOG - Validation Test
+### Missing title
+### Expected: 400
+### =========================================================
+
+POST {{baseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "body": "This blog has no title."
+}
+
+
+### =========================================================
+### 5. CREATE BLOG - Duplicate Title
+### Run request #1 first, then this request
+### Expected: 409
+### =========================================================
+
+POST {{baseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "How to Choose the Right Car Parts",
+  "body": "Trying to create the same blog again.",
+  "status": "draft"
+}
+
+
+### =========================================================
+### 6. GET ALL BLOGS
+### Default pagination
+### page = 1
+### limit = 10
+### =========================================================
+
+GET {{baseUrl}}
+
+
+### =========================================================
+### 7. GET ALL BLOGS
+### Custom pagination
+### =========================================================
+
+GET {{baseUrl}}?page=1&limit=2
+
+
+### =========================================================
+### 8. GET ALL BLOGS
+### Second page
+### =========================================================
+
+GET {{baseUrl}}?page=2&limit=2
+
+
+### =========================================================
+### 9. GET ALL PUBLISHED BLOGS
+### =========================================================
+
+GET {{baseUrl}}/published
+
+
+### =========================================================
+### 10. GET PUBLISHED BLOGS
+### Custom pagination
+### =========================================================
+
+GET {{baseUrl}}/published?page=1&limit=2
+
+
+### =========================================================
+### 11. GET PUBLISHED BLOGS
+### Second page
+### =========================================================
+
+GET {{baseUrl}}/published?page=2&limit=2
+
+
+### =========================================================
+### 12. GET BLOG BY ID
+### Replace with an actual MongoDB _id
+### =========================================================
+
+@blogId = YOUR_BLOG_ID
+
+GET {{baseUrl}}/{{blogId}}
+
+
+### =========================================================
+### 13. GET BLOG BY SLUG
+### =========================================================
+
+GET {{baseUrl}}/slug/how-to-choose-the-right-car-parts
+
+
+### =========================================================
+### 14. GET NON-EXISTENT BLOG BY ID
+### Expected: 404
+### =========================================================
+
+GET {{baseUrl}}/000000000000000000000000
+
+
+### =========================================================
+### 15. GET NON-EXISTENT BLOG BY SLUG
+### Expected: 404
+### =========================================================
+
+GET {{baseUrl}}/slug/this-blog-does-not-exist
+
+
+### =========================================================
+### 16. UPDATE BLOG TITLE
+### This should also regenerate the slug
+### =========================================================
+
+PUT {{baseUrl}}/{{blogId}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "Complete Guide to Choosing Vehicle Parts"
+}
+
+
+### =========================================================
+### 17. UPDATE BLOG BODY
+### =========================================================
+
+PUT {{baseUrl}}/{{blogId}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "body": "Updated blog content with more information about vehicle parts."
+}
+
+
+### =========================================================
+### 18. PUBLISH A DRAFT
+### This should set publishedAt
+### =========================================================
+
+PUT {{baseUrl}}/{{blogId}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "status": "published"
+}
+
+
+### =========================================================
+### 19. CHANGE PUBLISHED BLOG BACK TO DRAFT
+### This should set publishedAt to null
+### =========================================================
+
+PUT {{baseUrl}}/{{blogId}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "status": "draft"
+}
+
+
+### =========================================================
+### 20. UPDATE MULTIPLE FIELDS
+### =========================================================
+
+PUT {{baseUrl}}/{{blogId}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "Vehicle Parts Buying Guide 2026",
+  "body": "Updated complete guide for purchasing vehicle parts.",
+  "tags": [
+    "buying guide",
+    "vehicle parts",
+    "2026"
+  ],
+  "status": "published"
+}
+
+
+### =========================================================
+### 21. DELETE BLOG
+### =========================================================
+
+DELETE {{baseUrl}}/{{blogId}}
+Authorization: Bearer {{token}}
+
+
+### =========================================================
+### 22. DELETE ALREADY DELETED BLOG
+### Expected: 404
+### =========================================================
+
+DELETE {{baseUrl}}/{{blogId}}
+Authorization: Bearer {{token}}
