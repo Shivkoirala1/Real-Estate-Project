@@ -1,5 +1,5 @@
 const BlogPost = require("../models/BlogPost");
-const slugify = require("slugify");
+const createSlug = require("../utils/slugify");
 const verifyToken = require('../utils/generateToken').verifyToken;
 
 
@@ -22,12 +22,6 @@ const createBlog = async (req, res) => {
         message: "Title and body are required",
       });
     }
-
-    const slug = slugify(title, {
-      lower: true,
-      strict: true,
-      trim: true,
-    });
 
     const existingBlog = await BlogPost.findOne({ slug });
 
@@ -209,8 +203,11 @@ const getBlogById = async (req, res) => {
 // Get a single blog by slug
 const getBlogBySlug = async (req, res) => {
   try {
-    let validToken = verifyToken(req.headers.authorization?.split(" ")[1]);
-    let userRole = validToken.role;
+    let userRole = "user";
+    if (req.headers.authorization) {
+      let validToken = verifyToken(req.headers.authorization?.split(" ")[1]);
+      userRole = validToken.role; 
+    }
     const blog = await BlogPost.findOne({
       slug: req.params.slug,
       status: userRole === "admin" ? { $in: ["published", "draft"] } : "published",
@@ -221,7 +218,6 @@ const getBlogBySlug = async (req, res) => {
         message: "Blog not found",
       });
     }
-
     res.status(200).json(blog);
   } catch (error) {
     res.status(500).json({
@@ -246,12 +242,7 @@ const updateBlog = async (req, res) => {
 
     if (title) {
       blog.title = title;
-
-      blog.slug = slugify(title, {
-        lower: true,
-        strict: true,
-        trim: true,
-      });
+      blog.slug = createSlug(title);
     }
 
     if (body !== undefined) {

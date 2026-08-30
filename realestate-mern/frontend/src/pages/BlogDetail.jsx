@@ -80,7 +80,7 @@ const BlogDetail = () => {
       </p>
 
       {blog.coverImage && (
-        <div className="rounded-sm overflow-hidden mb-10 bg-navy/5">
+        <div className="rounded-sm max-h-[1000px] overflow-hidden mb-10 bg-navy/5">
           <img
             src={blog.coverImage}
             alt={blog.title}
@@ -91,27 +91,7 @@ const BlogDetail = () => {
 
       {/* body is stored as HTML from the editor — render it directly */}
     <div
-  className="
-    prose
-    prose-navy
-    max-w-none
-    text-navy
-
-    prose-h2:text-3xl
-    prose-h2:font-medium
-    prose-h2:text-navy
-
-    prose-h3:text-xl
-    prose-h3:font-medium
-    prose-h3:text-navy
-
-    prose-p:text-slate-muted
-    prose-p:leading-7
-
-    prose-ol:list-decimal
-    prose-ul:list-disc
-    prose-li:text-slate-muted
-  "
+    className="quill-content"
   dangerouslySetInnerHTML={{ __html: blog.body }}
 />
 
