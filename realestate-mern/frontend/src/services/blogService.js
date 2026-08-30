@@ -1,22 +1,22 @@
 import api from "../api/axios";
 
 // GET /api/blogs?page=&limit=&status=&search=  (admin — all blogs, any status)
-export const getAllBlogs = async ({ page = 1, limit = 10, status, search } = {}) => {
+export const getAllBlogs = async ({ page = 1, limit = 10, status, search, orderBy } = {}) => {
   const { data } = await api.get("/blogs", {
-    params: { page, limit, status, search },
+    params: { page, limit, status, search, orderBy },
   });
   return data; // { blogs, pagination }
 };
 
 // GET /api/blogs/published?page=&limit=  (public — published only)
-export const getPublishedBlogs = async ({ page = 1, limit = 9 } = {}) => {
+export const getPublishedBlogs = async ({ page = 1, search, limit = 9 } = {}) => {
   const { data } = await api.get("/blogs/published", {
-    params: { page, limit },
+    params: { search, page, limit },
   });
   return data; // { blogs, pagination }
 };
 
-// GET /api/blogs/slug/:slug  (adjust path to match your route)
+// GET /api/blogs/slug/:slug  
 export const getBlogBySlug = async (slug) => {
   const { data } = await api.get(`/blogs/slug/${slug}`);
   return data; // blog

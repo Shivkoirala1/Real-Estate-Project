@@ -58,7 +58,7 @@ const BlogDetail = () => {
         <p className="text-slate-muted mb-8">
           This article may have been unpublished or moved.
         </p>
-        <Link to="/blog" className="btn-gold text-sm py-2.5 px-4">
+        <Link to="/blogs" className="btn-gold text-sm py-2.5 px-4">
           Back to Articles
         </Link>
       </div>
@@ -67,7 +67,7 @@ const BlogDetail = () => {
 
   return (
     <article className="max-w-3xl mx-auto px-6 py-16">
-      <Link to="/blog" className="text-sm text-brass hover:underline">
+      <Link to="/blogs" className="text-sm text-brass hover:underline">
         ← Back to Articles
       </Link>
 
@@ -90,10 +90,30 @@ const BlogDetail = () => {
       )}
 
       {/* body is stored as HTML from the editor — render it directly */}
-      <div
-        className="prose prose-navy max-w-none text-navy"
-        dangerouslySetInnerHTML={{ __html: blog.body }}
-      />
+    <div
+  className="
+    prose
+    prose-navy
+    max-w-none
+    text-navy
+
+    prose-h2:text-3xl
+    prose-h2:font-medium
+    prose-h2:text-navy
+
+    prose-h3:text-xl
+    prose-h3:font-medium
+    prose-h3:text-navy
+
+    prose-p:text-slate-muted
+    prose-p:leading-7
+
+    prose-ol:list-decimal
+    prose-ul:list-disc
+    prose-li:text-slate-muted
+  "
+  dangerouslySetInnerHTML={{ __html: blog.body }}
+/>
 
       {Array.isArray(blog.tags) && blog.tags.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-10 pt-8 border-t border-navy/10">

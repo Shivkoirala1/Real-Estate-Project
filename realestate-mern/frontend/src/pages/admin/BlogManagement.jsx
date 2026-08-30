@@ -32,6 +32,7 @@ const BlogManagement = () => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const [orderBy, setOrderBy] = useState(1); // 1 = date descending, 2 = date ascending
 
   const fetchBlogs = useCallback(async () => {
     setLoading(true);
@@ -41,6 +42,7 @@ const BlogManagement = () => {
         limit: PAGE_SIZE,
         search: search || undefined,
         status: statusFilter !== "all" ? statusFilter : undefined,
+        orderBy: orderBy || undefined,
       });
       setBlogs(data.blogs ?? []);
       setPagination(data.pagination ?? { page: 1, totalPages: 1, total: 0 });
@@ -50,7 +52,7 @@ const BlogManagement = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter]);
+  }, [page, orderBy, search, statusFilter]);
 
   useEffect(() => {
     fetchBlogs();
@@ -115,6 +117,28 @@ const BlogManagement = () => {
             </button>
           ))}
         </div>
+        <div className="ml-auto flex gap-2">
+          <button
+            onClick={() => setOrderBy(1)}
+            className={`text-sm px-3 py-1.5 rounded-sm border transition-colors ${
+              orderBy === 1
+                ? "border-brass text-brass bg-brass/5"
+                : "border-navy/10 text-slate-muted hover:border-navy/20"
+            }`}
+          >
+            Newest
+          </button>
+          <button
+            onClick={() => setOrderBy(2)}
+            className={`text-sm px-3 py-1.5 rounded-sm border transition-colors ${
+              orderBy === 2
+                ? "border-brass text-brass bg-brass/5"
+                : "border-navy/10 text-slate-muted hover:border-navy/20"
+            }`}
+          >
+            Oldest
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -148,14 +172,20 @@ const BlogManagement = () => {
                     <td className="px-5 py-3">
                       <div className="flex gap-3">
                         <Link
+                          to={`/blogs/${b.slug}`}
+                          className="text-white hover:underline bg-green-600 px-3 py-1.5 rounded-sm text-sm"
+                        >
+                          View
+                        </Link>
+                        <Link
                           to={`/dashboard/admin/blogs/${b._id}/edit`}
-                          className="text-brass hover:underline"
+                          className="text-white hover:underline bg-blue-600 px-3 py-1.5 rounded-sm text-sm"
                         >
                           Edit
                         </Link>
                         <button
                           onClick={() => handleDelete(b._id, b.title)}
-                          className="text-brick hover:underline"
+                          className="text-white hover:underline bg-red-600 px-3 py-1.5 rounded-sm text-sm"
                         >
                           Delete
                         </button>

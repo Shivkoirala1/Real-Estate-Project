@@ -1,5 +1,7 @@
 const BlogPost = require("../models/BlogPost");
 const slugify = require("slugify");
+const verifyToken = require('../utils/generateToken').verifyToken;
+
 
 // Create Blog
 const createBlog = async (req, res) => {
@@ -74,7 +76,7 @@ const createBlog = async (req, res) => {
 };
 
 // Get all blogs with pagination + optional status/search filters
-// GET /api/blogs?page=1&limit=10&status=published&search=ev
+// GET /api/blogs?page=1&limit=10&status=published&search=ev&sort=createdAt
 const getBlogs = async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
@@ -85,7 +87,12 @@ const getBlogs = async (req, res) => {
 
     const skip = (page - 1) * limit;
 
-    const { status, search } = req.query;
+    const { status, search, orderBy } = req.query;
+ 
+  const sort = {
+  createdAt: orderBy === "2" ? 1 : -1,
+  _id: -1, // secondary sort by _id to ensure consistent ordering
+};
 
     const filter = {};
 
@@ -100,7 +107,7 @@ const getBlogs = async (req, res) => {
     const [blogs, total] = await Promise.all([
       BlogPost.find(filter)
         .populate("author", "name email")
-        .sort({ createdAt: -1 })
+        .sort(sort)
         .skip(skip)
         .limit(limit),
 
@@ -136,12 +143,17 @@ const getPublishedBlogs = async (req, res) => {
       Math.max(parseInt(req.query.limit) || 9, 1),
       50
     );
+    const search = req.query.search || "";
 
     const skip = (page - 1) * limit;
 
     const filter = {
       status: "published",
     };
+
+    if (search) {
+      filter.title = { $regex: search, $options: "i" };
+    }
 
     const [blogs, total] = await Promise.all([
       BlogPost.find(filter)
@@ -197,9 +209,11 @@ const getBlogById = async (req, res) => {
 // Get a single blog by slug
 const getBlogBySlug = async (req, res) => {
   try {
+    let validToken = verifyToken(req.headers.authorization?.split(" ")[1]);
+    let userRole = validToken.role;
     const blog = await BlogPost.findOne({
       slug: req.params.slug,
-      status: "published",
+      status: userRole === "admin" ? { $in: ["published", "draft"] } : "published",
     }).populate("author", "name");
 
     if (!blog) {
@@ -245,8 +259,14 @@ const updateBlog = async (req, res) => {
     }
 
     if (tags !== undefined) {
-      blog.tags = tags;
-    }
+  try {
+    blog.tags = JSON.parse(tags);
+  } catch (error) {
+    return res.status(400).json({
+      message: "Invalid tags format",
+    });
+  }
+}
 
     if (status !== undefined) {
       blog.status = status;

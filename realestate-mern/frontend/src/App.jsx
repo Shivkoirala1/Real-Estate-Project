@@ -47,7 +47,7 @@ function App() {
           <Route path="/properties" element={<PropertyListing />} />
           <Route path="/properties/:id" element={<PropertyDetail />} />
           <Route path="/blogs" element={<BlogList />} />
-          <Route path="/blog/:slug" element={<BlogDetail />} />
+          <Route path="/blogs/:slug" element={<BlogDetail />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/land-converter" element={<LandConverter />} />
