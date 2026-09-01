@@ -25,6 +25,7 @@ import LandConverter from "./pages/LandConverter";
 import BlogList from "./pages/BlogList";
 import BlogDetail from "./pages/BlogDetail";
 import NotFound from "./pages/NotFound";
+import MyVisits from "./pages/MyVisits";
 
 import AdminDashboard from "./pages/dashboard/AdminDashboard";
 import VerifyUsers from "./pages/dashboard/VerifyUsers";
@@ -34,7 +35,9 @@ import BlogForm from "./pages/admin/BlogForm";
 import ManageUsers from "./pages/dashboard/ManageUsers";
 import ManageCategories from "./pages/dashboard/ManageCategories";
 import BlogManagement from "./pages/admin/BlogManagement";
-import Inquiries from "./pages/dashboard/Inquiries";
+// import Inquiries from "./pages/dashboard/Inquiries";
+import Inquiries from "./pages/admin/Inquires";  // updated lead integrated inqueiris
+import Visits from "./pages/admin/Visits";
 
 function App() {
   return (
@@ -79,6 +82,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <Notifications />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="my-visits"
+            element={
+              <ProtectedRoute>
+                <MyVisits />
               </ProtectedRoute>
             }
           />
@@ -236,6 +248,16 @@ function App() {
               <ProtectedRoute roles={["admin"]}>
                 <DashboardLayout>
                   <BlogForm />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+           <Route
+            path="/dashboard/admin/visits"
+            element={
+              <ProtectedRoute roles={["admin", "agent"]}>
+                <DashboardLayout>
+                  <Visits />
                 </DashboardLayout>
               </ProtectedRoute>
             }

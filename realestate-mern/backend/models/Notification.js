@@ -12,6 +12,10 @@ const notificationSchema = new mongoose.Schema(
         'inquiry_responded',  // the person you inquired to replied to your inquiry
         'inquiry_followup',   // a new message was added to an existing inquiry thread
         'property_sold',      // a property's status was changed to sold - admin alert
+        'visit_requested',    // a user has requested a visit
+        'visit_confirmed',    // a visit has been confirmed
+        'visit_rejected',     // a visit has been rejected
+        'lead_assigned',      // a lead has been assigned to an agent
         'system',             // generic/system notification, reserved for future use
       ],
       required: true,

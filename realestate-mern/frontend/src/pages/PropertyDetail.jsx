@@ -12,6 +12,7 @@ import { useConfirm } from '../context/ConfirmContext';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\d{10}$/;
 
+// Returns an array of [label, value] pairs for the property specifications table
 const specRows = (property) => {
   const d = property.details || {};
   return [
@@ -32,6 +33,15 @@ const specRows = (property) => {
   ];
 };
 
+// Returns the minimum value usable in a datetime-local input (now, rounded to the minute)
+const minDateTimeLocal = () => {
+  const now = new Date();
+  now.setSeconds(0, 0);
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 16);
+};
+
+// Main component for displaying property details
 const PropertyDetail = () => {
   const { id } = useParams();
   const { user } = useAuth();
@@ -46,6 +56,14 @@ const PropertyDetail = () => {
   const [errors, setErrors] = useState({});
   const [sending, setSending] = useState(false);
 
+  // Toggle between the inquiry form and the schedule-a-visit form
+  const [contactMode, setContactMode] = useState('inquiry'); // 'inquiry' | 'visit'
+  const [visitForm, setVisitForm] = useState({ requestedSlot: '', buyerNotes: '' });
+  const [visitErrors, setVisitErrors] = useState({});
+  const [schedulingVisit, setSchedulingVisit] = useState(false);
+  const [visitRequested, setVisitRequested] = useState(false);
+
+  // Pre-fill form fields with user info if available
   useEffect(() => {
     if (user) {
       setForm((f) => ({
@@ -57,6 +75,7 @@ const PropertyDetail = () => {
     }
   }, [user]);
 
+  // Load property details and similar properties when the component mounts or the ID changes
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -84,6 +103,7 @@ const PropertyDetail = () => {
     window.scrollTo(0, 0);
   }, [id]);
 
+  // Handle saving the property to favorites
   const handleFavorite = async () => {
     if (!user) return showToast('Please sign in to save properties', 'error');
     try {
@@ -94,6 +114,7 @@ const PropertyDetail = () => {
     }
   };
 
+  // Validate the inquiry form fields before submission
   const validateInquiry = () => {
     const next = {};
     if (!form.name.trim()) next.name = 'Please enter your name';
@@ -106,15 +127,18 @@ const PropertyDetail = () => {
     return Object.keys(next).length === 0;
   };
 
+  // Handle changes to form fields and clear any existing errors for that field
   const handleFormChange = (field, value) => {
     setForm({ ...form, [field]: value });
     if (errors[field]) setErrors({ ...errors, [field]: undefined });
   };
 
+  // Handle the submission of the inquiry form
   const handleInquiry = async (e) => {
     e.preventDefault();
     if (!validateInquiry()) return;
 
+    // Confirm with the user before sending the inquiry
     const confirmed = await confirm({
       title: 'Send this inquiry?',
       message: `Do you want to send this message to the agent about "${property.title}"?`,
@@ -125,7 +149,7 @@ const PropertyDetail = () => {
 
     setSending(true);
     try {
-      await api.post('/inquiries', {
+      const { data } = await api.post('/inquiries', {
         ...form,
         subject: `Inquiry about ${property.title}`,
         property: property._id,
@@ -133,6 +157,10 @@ const PropertyDetail = () => {
       showToast('Your inquiry has been sent to the agent');
       setForm({ name: '', email: '', phone: '', message: '' });
       setErrors({});
+      // Keep the created inquiry's id around so a follow-up visit request gets linked to it
+      if (data?.inquiry?._id) {
+        setVisitForm((v) => ({ ...v, inquiryId: data.inquiry._id }));
+      }
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to send inquiry', 'error');
     } finally {
@@ -140,6 +168,62 @@ const PropertyDetail = () => {
     }
   };
 
+  // Validate the schedule-a-visit form fields before submission
+  const validateVisit = () => {
+    const next = {};
+    if (!visitForm.requestedSlot) {
+      next.requestedSlot = 'Please choose a date and time';
+    } else {
+      const slotDate = new Date(visitForm.requestedSlot);
+      if (isNaN(slotDate.getTime()) || slotDate < new Date()) {
+        next.requestedSlot = 'Please choose a future date and time';
+      }
+    }
+    setVisitErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
+  // Handle changes to visit form fields and clear any existing errors for that field
+  const handleVisitFormChange = (field, value) => {
+    setVisitForm({ ...visitForm, [field]: value });
+    if (visitErrors[field]) setVisitErrors({ ...visitErrors, [field]: undefined });
+  };
+
+  // Handle the submission of the schedule-a-visit form
+  const handleScheduleVisit = async (e) => {
+    e.preventDefault();
+    if (!user) return showToast('Please sign in to schedule a visit', 'error');
+    if (!validateVisit()) return;
+
+    const confirmed = await confirm({
+      title: 'Schedule this visit?',
+      message: `Request a site visit for "${property.title}" on ${new Date(visitForm.requestedSlot).toLocaleString()}?`,
+      confirmLabel: 'Yes, request it',
+      cancelLabel: 'No, go back',
+    });
+    if (!confirmed) return;
+
+    setSchedulingVisit(true);
+    try {
+      await api.post('/visits', {
+        property: property._id,
+        visitType: 'property',
+        requestedSlot: visitForm.requestedSlot,
+        buyerNotes: visitForm.buyerNotes,
+        inquiryId: visitForm.inquiryId,
+      });
+      showToast('Your visit request has been sent to the agent');
+      setVisitForm({ requestedSlot: '', buyerNotes: '' });
+      setVisitErrors({});
+      setVisitRequested(true);
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to schedule visit', 'error');
+    } finally {
+      setSchedulingVisit(false);
+    }
+  };
+
+  // Handle sharing the property link by copying it to the clipboard
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);
     showToast('Link copied to clipboard');
@@ -168,6 +252,7 @@ const PropertyDetail = () => {
   const status = statusStyles[property.status] || statusStyles.available;
   const lat = property.location?.mapLocation?.lat;
   const lng = property.location?.mapLocation?.lng;
+  const isOwnListing = user && property.listedBy?._id === user._id;
 
   return (
     <div className="max-w-7xl mx-auto px-5 md:px-8 py-10">
@@ -294,59 +379,121 @@ const PropertyDetail = () => {
               )}
             </div>
 
-            <p className="font-semibold text-navy mb-3">Send an inquiry</p>
-            {user && property.listedBy?._id === user._id ? (
+            {isOwnListing ? (
               <div className="bg-parchment/60 border border-dashed border-navy/20 rounded-sm px-4 py-4 text-sm text-slate-muted">
                 This is your own listing, so there's nothing to inquire about here. Manage it from{' '}
                 <Link to="/my-properties" className="text-brass hover:underline font-medium">My Properties</Link>.
               </div>
             ) : (
-              <form onSubmit={handleInquiry} noValidate className="space-y-3">
-                <div>
-                  <input
-                    placeholder="Your name"
-                    className={`input-field ${errors.name ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
-                    value={form.name}
-                    onChange={(e) => handleFormChange('name', e.target.value)}
-                  />
-                  {errors.name && <p className="text-xs text-brick mt-1">{errors.name}</p>}
+              <>
+                {/* Toggle between sending an inquiry and scheduling a visit */}
+                <div className="grid grid-cols-2 gap-1 bg-parchment rounded-sm p-1 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setContactMode('inquiry')}
+                    className={`text-sm font-medium py-2 rounded-sm transition-colors ${
+                      contactMode === 'inquiry' ? 'bg-white text-navy shadow-sm' : 'text-slate-muted hover:text-navy'
+                    }`}
+                  >
+                    Send an Inquiry
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setContactMode('visit')}
+                    className={`text-sm font-medium py-2 rounded-sm transition-colors ${
+                      contactMode === 'visit' ? 'bg-white text-navy shadow-sm' : 'text-slate-muted hover:text-navy'
+                    }`}
+                  >
+                    Schedule a Visit
+                  </button>
                 </div>
-                <div>
-                  <input
-                    type="email"
-                    placeholder="Email address"
-                    className={`input-field ${errors.email ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
-                    value={form.email}
-                    onChange={(e) => handleFormChange('email', e.target.value)}
-                  />
-                  {errors.email && <p className="text-xs text-brick mt-1">{errors.email}</p>}
-                </div>
-                <div>
-                  <input
-                    type="tel"
-                    inputMode="numeric"
-                    maxLength={10}
-                    placeholder="Phone number (98XXXXXXXX)"
-                    className={`input-field ${errors.phone ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
-                    value={form.phone}
-                    onChange={(e) => handleFormChange('phone', e.target.value.replace(/\D/g, ''))}
-                  />
-                  {errors.phone && <p className="text-xs text-brick mt-1">{errors.phone}</p>}
-                </div>
-                <div>
-                  <textarea
-                    rows={4}
-                    placeholder="I'm interested in this property..."
-                    className={`input-field ${errors.message ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
-                    value={form.message}
-                    onChange={(e) => handleFormChange('message', e.target.value)}
-                  />
-                  {errors.message && <p className="text-xs text-brick mt-1">{errors.message}</p>}
-                </div>
-                <button disabled={sending} type="submit" className="btn-primary w-full">
-                  {sending ? 'Sending...' : 'Send Inquiry'}
-                </button>
-              </form>
+
+                {contactMode === 'inquiry' ? (
+                  <form onSubmit={handleInquiry} noValidate className="space-y-3">
+                    <div>
+                      <input
+                        placeholder="Your name"
+                        className={`input-field ${errors.name ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
+                        value={form.name}
+                        onChange={(e) => handleFormChange('name', e.target.value)}
+                      />
+                      {errors.name && <p className="text-xs text-brick mt-1">{errors.name}</p>}
+                    </div>
+                    <div>
+                      <input
+                        type="email"
+                        placeholder="Email address"
+                        className={`input-field ${errors.email ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
+                        value={form.email}
+                        onChange={(e) => handleFormChange('email', e.target.value)}
+                      />
+                      {errors.email && <p className="text-xs text-brick mt-1">{errors.email}</p>}
+                    </div>
+                    <div>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        maxLength={10}
+                        placeholder="Phone number (98XXXXXXXX)"
+                        className={`input-field ${errors.phone ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
+                        value={form.phone}
+                        onChange={(e) => handleFormChange('phone', e.target.value.replace(/\D/g, ''))}
+                      />
+                      {errors.phone && <p className="text-xs text-brick mt-1">{errors.phone}</p>}
+                    </div>
+                    <div>
+                      <textarea
+                        rows={4}
+                        placeholder="I'm interested in this property..."
+                        className={`input-field ${errors.message ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
+                        value={form.message}
+                        onChange={(e) => handleFormChange('message', e.target.value)}
+                      />
+                      {errors.message && <p className="text-xs text-brick mt-1">{errors.message}</p>}
+                    </div>
+                    <button disabled={sending} type="submit" className="btn-primary w-full">
+                      {sending ? 'Sending...' : 'Send Inquiry'}
+                    </button>
+                  </form>
+                ) : !user ? (
+                  <div className="bg-parchment/60 border border-dashed border-navy/20 rounded-sm px-4 py-4 text-sm text-slate-muted">
+                    Please <Link to="/login" className="text-brass hover:underline font-medium">sign in</Link> to schedule a visit.
+                  </div>
+                ) : visitRequested ? (
+                  <div className="bg-sage/10 border border-sage/30 rounded-sm px-4 py-4 text-sm text-navy">
+                    Your visit request has been sent. The agent will confirm the slot shortly. You can track it from{' '}
+                    <Link to="/dashboard/my-visits" className="text-brass hover:underline font-medium">My Visits</Link>.
+                  </div>
+                ) : (
+                  <form onSubmit={handleScheduleVisit} noValidate className="space-y-3">
+                    <div>
+                      <label className="text-xs uppercase tracking-wide text-slate-muted mb-1 block">
+                        Preferred date &amp; time
+                      </label>
+                      <input
+                        type="datetime-local"
+                        min={minDateTimeLocal()}
+                        className={`input-field ${visitErrors.requestedSlot ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
+                        value={visitForm.requestedSlot}
+                        onChange={(e) => handleVisitFormChange('requestedSlot', e.target.value)}
+                      />
+                      {visitErrors.requestedSlot && <p className="text-xs text-brick mt-1">{visitErrors.requestedSlot}</p>}
+                    </div>
+                    <div>
+                      <textarea
+                        rows={3}
+                        placeholder="Anything the agent should know before the visit? (optional)"
+                        className="input-field"
+                        value={visitForm.buyerNotes}
+                        onChange={(e) => handleVisitFormChange('buyerNotes', e.target.value)}
+                      />
+                    </div>
+                    <button disabled={schedulingVisit} type="submit" className="btn-primary w-full">
+                      {schedulingVisit ? 'Requesting...' : 'Request Visit'}
+                    </button>
+                  </form>
+                )}
+              </>
             )}
           </div>
         </div>

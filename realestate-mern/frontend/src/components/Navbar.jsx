@@ -97,6 +97,11 @@ const Navbar = () => {
                         My Properties
                       </Link>
                     )}
+                    {!isAdmin && (
+                      <Link to="/my-visits" onClick={() => setMenuOpen(false)} className="block px-4 py-2 text-sm hover:bg-parchment">
+                        My Visits
+                      </Link>
+                    )}
                     <Link to="/profile" onClick={() => setMenuOpen(false)} className="block px-4 py-2 text-sm hover:bg-parchment">
                       My Profile
                     </Link>

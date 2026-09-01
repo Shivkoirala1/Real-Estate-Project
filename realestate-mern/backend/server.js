@@ -18,6 +18,7 @@ const inquiryRoutes = require('./routes/inquiryRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const blogRoutes = require('./routes/blogRoutes');
+const visitRoutes = require('./routes/visitRoutes');
 
 connectDB();
 
@@ -44,6 +45,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/inquiries', inquiryRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/visits', visitRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use(notFound);
 app.use(errorHandler);
