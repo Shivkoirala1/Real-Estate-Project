@@ -3,8 +3,9 @@ import { useState, useEffect, useCallback } from "react";
 import {
   getVisits,
   updateVisit,
-  getAgents,
 } from "../../services/visitService";
+
+import {getUsers} from "../../services/userService";
 
 const PAGE_SIZE = 10;
 
@@ -38,12 +39,8 @@ const formatDate = (dateStr) => {
 
 const Visits = () => {
   const [visits, setVisits] = useState([]);
-  // placeholder for agents list to populate the "Assign Agent" dropdown
-  const mockAgent = {
-  _id:  "507f1f77bcf86cd799439011",
-  name: "John Agent",
-};
-  const [agents, setAgents] = useState([mockAgent]);
+ 
+  const [agents, setAgents] = useState([]);
 
   const [pagination, setPagination] = useState({
     page: 1,
@@ -95,8 +92,8 @@ const Visits = () => {
 
   const fetchAgents = useCallback(async () => {
     try {
-      const data = await getAgents();
-      setAgents(data.agents ?? data ?? []);
+      const data = await getUsers({ role: "agent" });
+      setAgents(data.users ??[]);
     } catch (err) {
       console.error("Failed to load agents:", err);
     }
@@ -106,10 +103,9 @@ const Visits = () => {
     fetchVisits();
   }, [fetchVisits]);
 
-  // fetchAgents is currently not used because the agents list is hardcoded for now
-//   useEffect(() => {
-//     fetchAgents();
-//   }, [fetchAgents]);
+  useEffect(() => {
+    fetchAgents();
+  }, [fetchAgents]);
 
   useEffect(() => {
     setPage(1);

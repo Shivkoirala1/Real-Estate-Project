@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import api from '../api/axios';
+import { getPropertyTypes, getDistricts, getCities } from '../services/categoryService';
 
 const SALE_TYPE_OPTIONS = [
   { value: '', label: 'All Listings' },
@@ -38,17 +38,13 @@ const SearchFilterBar = ({ compact = false }) => {
   }, [searchParams.toString()]);
 
   useEffect(() => {
-    api.get('/categories/property-types').then((res) => setPropertyTypes(res.data.propertyTypes));
-    api.get('/categories/districts').then((res) => setDistricts(res.data.districts));
+    getPropertyTypes().then((data) => setPropertyTypes(data.propertyTypes));
+    getDistricts().then((data) => setDistricts(data.districts));
   }, []);
 
   // Cities depend on the selected district
   useEffect(() => {
-    if (form.district) {
-      api.get(`/categories/cities?district=${form.district}`).then((res) => setCities(res.data.cities));
-    } else {
-      api.get('/categories/cities').then((res) => setCities(res.data.cities));
-    }
+    getCities(form.district || undefined).then((data) => setCities(data.cities));
   }, [form.district]);
 
   const handleChange = (e) => {

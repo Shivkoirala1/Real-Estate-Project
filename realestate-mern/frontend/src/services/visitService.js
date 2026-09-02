@@ -1,7 +1,4 @@
-
-// services/visitService.js
-
-import api from "../api/axios";
+import api from "../utils/axios";
 
 /**
  * Get admin/staff visit queue

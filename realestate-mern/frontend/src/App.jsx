@@ -1,42 +1,49 @@
 import React from "react";
 import { Routes, Route } from "react-router-dom";
 
-import Navbar from "./components/Navbar";
-import Footer from "./components/Footer";
+// Components
+import Navbar from "./components/layout/Navbar";
+import Footer from "./components/layout/Footer";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PostGate from "./components/PostGate";
-import DashboardLayout from "./components/dashboard/DashboardLayout";
+import DashboardLayout from "./components/layout/DashboardLayout";
 import MyPropertiesLayout from "./components/MyPropertiesLayout";
 
-import Home from "./pages/Home";
-import PropertyListing from "./pages/PropertyListing";
-import PropertyDetail from "./pages/PropertyDetail";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import VerifyEmail from "./pages/VerifyEmail";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import Profile from "./pages/Profile";
-import Favorites from "./pages/Favorites";
-import Notifications from "./pages/Notifications";
-import Contact from "./pages/Contact";
-import About from "./pages/About";
-import LandConverter from "./pages/LandConverter";
-import BlogList from "./pages/BlogList";
-import BlogDetail from "./pages/BlogDetail";
-import NotFound from "./pages/NotFound";
-import MyVisits from "./pages/MyVisits";
+// Public pages
+import Home from "./pages/public/Home";
+import PropertyListing from "./pages/public/PropertyListing";
+import PropertyDetail from "./pages/public/PropertyDetail";
+import Login from "./pages/public/Login";
+import Register from "./pages/public/Register";
+import VerifyEmail from "./pages/public/VerifyEmail";
+import ForgotPassword from "./pages/public/ForgotPassword";
+import ResetPassword from "./pages/public/ResetPassword";
+import Contact from "./pages/public/Contact";
+import About from "./pages/public/About";
+import LandConverter from "./pages/public/LandConverter";
+import BlogList from "./pages/public/BlogList";
+import BlogDetail from "./pages/public/BlogDetail";
+import NotFound from "./pages/public/NotFound";
 
-import AdminDashboard from "./pages/dashboard/AdminDashboard";
-import VerifyUsers from "./pages/dashboard/VerifyUsers";
-import ManageProperties from "./pages/dashboard/ManageProperties";
-import AddEditProperty from "./pages/dashboard/AddEditProperty";
+// User pages
+import Profile from "./pages/user/Profile";
+import Favorites from "./pages/user/Favorites";
+import Notifications from "./pages/user/Notifications";
+import MyVisits from "./pages/user/MyVisits";
+
+// Agent and Admin dashboards
+import AgentDashboard from "./pages/agent/AgentDashboard";
+
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import VerifyUsers from "./pages/admin/VerifyUsers";
+import ManageProperties from "./pages/admin/ManageProperties";
+import AddEditProperty from "./pages/admin/AddEditProperty";
 import BlogForm from "./pages/admin/BlogForm";
-import ManageUsers from "./pages/dashboard/ManageUsers";
-import ManageCategories from "./pages/dashboard/ManageCategories";
-import BlogManagement from "./pages/admin/BlogManagement";
+import ManageUsers from "./pages/admin/ManageUsers";
+import ManageCategories from "./pages/admin/ManageCategories";
+import BlogManagement from "./pages/admin/ManageBlogs";
 // import Inquiries from "./pages/dashboard/Inquiries";
-import Inquiries from "./pages/admin/Inquires";  // updated lead integrated inqueiris
+import Inquiries from "./pages/admin/RevampedInquiries";  // updated lead integrated inqueiris
 import Visits from "./pages/admin/Visits";
 
 function App() {
@@ -137,6 +144,19 @@ function App() {
                 <MyPropertiesLayout>
                   <Inquiries />
                 </MyPropertiesLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Agent dashboard */}
+
+          <Route
+            path="/dashboard/agent"
+            element={
+              <ProtectedRoute roles={["agent"]}> 
+                <DashboardLayout>
+                  <AgentDashboard />
+                </DashboardLayout>
               </ProtectedRoute>
             }
           />
