@@ -157,12 +157,7 @@ const updateInquiryStatus = asyncHandler(async (req, res) => {
 
   inquiry.status = status;
   if (assignedAgent) {
-    // no agent endpoints yet
-    // const agent = await User.findById(assignedAgent);
-     const agent = {
-  _id:  "507f1f77bcf86cd799439011",
-  name: "John Agent",
-} // placeholder
+    const agent = await User.findById(assignedAgent);
     if (!agent) {
       return res.status(404).json({ success: false, message: 'Agent not found' });
     }

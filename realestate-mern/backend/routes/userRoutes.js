@@ -18,6 +18,7 @@ router.get('/', getUsers);
 router.get('/verifications/pending', getPendingVerifications);
 router.get('/:id', getUser);
 router.put('/:id', updateUser);
+router.patch('/:id', updateUser);
 router.patch('/:id/status', toggleUserStatus);
 router.patch('/:id/verify', verifyUser);
 router.post('/:id/reset-password', resetPassword);

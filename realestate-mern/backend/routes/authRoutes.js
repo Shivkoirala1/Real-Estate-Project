@@ -5,10 +5,10 @@ const {
   verifyEmail,
   resendVerification,
   login,
+  updateProfile,
   forgotPassword,
   resetPassword,
   getMe,
-  updateProfile,
   changePassword,
   logout,
 } = require('../controllers/authController');
@@ -25,11 +25,11 @@ router.post('/register', verificationUpload, register);
 router.post('/verify-email', verifyEmail);
 router.post('/resend-verification', resendVerification);
 router.post('/login', login);
+router.put('/profile', protect, verificationUpload, updateProfile);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
 router.post('/logout', protect, logout);
 router.get('/me', protect, getMe);
-router.put('/profile', protect, verificationUpload, updateProfile);
 router.put('/change-password', protect, changePassword);
 
 module.exports = router;

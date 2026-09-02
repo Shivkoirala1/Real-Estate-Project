@@ -172,6 +172,30 @@ const login = asyncHandler(async (req, res) => {
   res.json({ success: true, token, user: user.toSafeObject() });
 });
 
+
+// @desc    Update own profile (name, phone, avatar, verification documents)
+// @route   PUT /api/auth/profile
+// @access  Private
+const updateProfile = asyncHandler(async (req, res) => {
+  const { name, phone, avatar } = req.body;
+  const user = await User.findById(req.user._id);
+
+  if (name) user.name = name;
+  if (phone !== undefined) user.phone = phone;
+  if (avatar !== undefined) user.avatar = avatar;
+
+  const files = req.files || {};
+  if (files.selfiePhoto) user.selfiePhoto = files.selfiePhoto[0].path;
+  if (files.citizenshipPhotoFront) user.citizenshipPhotoFront = files.citizenshipPhotoFront[0].path;
+  if (files.citizenshipPhotoBack) user.citizenshipPhotoBack = files.citizenshipPhotoBack[0].path;
+  if (files.selfiePhoto || files.citizenshipPhotoFront || files.citizenshipPhotoBack) {
+    user.verificationStatus = 'pending';
+  }
+
+  await user.save();
+  res.json({ success: true, user: user.toSafeObject() });
+});
+
 // @desc    Request a password reset code by email
 // @route   POST /api/auth/forgot-password
 // @access  Public
@@ -245,28 +269,6 @@ const getMe = asyncHandler(async (req, res) => {
   res.json({ success: true, user: user ? user.toSafeObject() : null });
 });
 
-// @desc    Update own profile (name, phone, avatar, verification documents)
-// @route   PUT /api/auth/profile
-// @access  Private
-const updateProfile = asyncHandler(async (req, res) => {
-  const { name, phone, avatar } = req.body;
-  const user = await User.findById(req.user._id);
-
-  if (name) user.name = name;
-  if (phone !== undefined) user.phone = phone;
-  if (avatar !== undefined) user.avatar = avatar;
-
-  const files = req.files || {};
-  if (files.selfiePhoto) user.selfiePhoto = files.selfiePhoto[0].path;
-  if (files.citizenshipPhotoFront) user.citizenshipPhotoFront = files.citizenshipPhotoFront[0].path;
-  if (files.citizenshipPhotoBack) user.citizenshipPhotoBack = files.citizenshipPhotoBack[0].path;
-  if (files.selfiePhoto || files.citizenshipPhotoFront || files.citizenshipPhotoBack) {
-    user.verificationStatus = 'pending';
-  }
-
-  await user.save();
-  res.json({ success: true, user: user.toSafeObject() });
-});
 
 // @desc    Change own password - requires the current password to match,
 //          and the new password to be confirmed, before it is applied
@@ -315,6 +317,7 @@ const logout = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  updateProfile,
   register,
   verifyEmail,
   resendVerification,
@@ -322,7 +325,6 @@ module.exports = {
   forgotPassword,
   resetPassword,
   getMe,
-  updateProfile,
   changePassword,
   logout,
 };

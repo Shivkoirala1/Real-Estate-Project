@@ -28,7 +28,7 @@ const getUser = asyncHandler(async (req, res) => {
   res.json({ success: true, user });
 });
 
-// @desc    Promote a user to admin (or demote back to user)
+// @desc    Promote a user to agent, admin (or demote back to user)
 // @route   PUT /api/users/:id
 // @access  Private (admin)
 const updateUser = asyncHandler(async (req, res) => {
@@ -38,7 +38,7 @@ const updateUser = asyncHandler(async (req, res) => {
 
   if (name) user.name = name;
   if (phone !== undefined) user.phone = phone;
-  if (role && ['user', 'admin'].includes(role)) user.role = role;
+  if (role && ['user', 'admin', 'agent'].includes(role)) user.role = role;
 
   await user.save();
   res.json({ success: true, user: user.toSafeObject() });
