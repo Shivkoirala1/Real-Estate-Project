@@ -15,6 +15,7 @@ const Sidebar = () => {
         <NavLink to="/dashboard/admin/verifications" className={linkClass}>Verify Registrations</NavLink>
         <NavLink to="/dashboard/admin/properties" end className={linkClass}>All Properties</NavLink>
         <NavLink to="/dashboard/admin/properties/new" className={linkClass}>Add Property</NavLink>
+        <NavLink to="/dashboard/admin/blogs" end className={linkClass}>Manage Blogs</NavLink>
         <NavLink to="/dashboard/admin/users" className={linkClass}>Manage Users</NavLink>
         <NavLink to="/dashboard/admin/categories" className={linkClass}>Categories</NavLink>
         <NavLink to="/dashboard/admin/inquiries" className={linkClass}>Inquiries</NavLink>

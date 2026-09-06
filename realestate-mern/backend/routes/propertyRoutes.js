@@ -23,7 +23,7 @@ const propertyUpload = upload.fields([
 router.get('/', getProperties);
 
 // Logged-in scoped routes (must be defined before the /:id catch-all)
-router.get('/my/listings', protect, getMyProperties);
+router.get('/my/listings', protect,  getMyProperties);
 router.get('/my/favorites', protect, getFavorites);
 
 router.get('/:id', getProperty);

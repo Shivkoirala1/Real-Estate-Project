@@ -47,6 +47,7 @@ const Navbar = () => {
           <NavLink to="/" end className={navLinkClass}>Home</NavLink>
           <NavLink to="/properties" className={navLinkClass}>Properties</NavLink>
           <NavLink to="/land-converter" className={navLinkClass}>Land Converter</NavLink>
+          <NavLink to="/blogs" className={navLinkClass}>Blog</NavLink>
           <NavLink to="/about" className={navLinkClass}>About</NavLink>
           <NavLink to="/contact" className={navLinkClass}>Contact</NavLink>
         </nav>
