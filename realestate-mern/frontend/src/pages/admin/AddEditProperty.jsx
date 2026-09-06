@@ -61,6 +61,9 @@ const initialState = {
   price: '',
   currency: 'NPR',
   negotiable: false,
+  // Optional per-listing commission override (0-100). Empty string means
+  // "inherit" — the property type's default commission applies.
+  commissionPercentage: '',
   location: {
     province: '',
     district: '',
@@ -120,6 +123,10 @@ const AddEditProperty = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
+  // Status of the loaded property when editing - used for the read-only
+  // reserved/sold banner at the top of the page (sale verification owns
+  // these statuses, so the banner explains why they can't be edited here).
+  const [loadedStatus, setLoadedStatus] = useState('');
   const [showConverter, setShowConverter] = useState(false);
   const [addingCity, setAddingCity] = useState(false);
   const [newCityName, setNewCityName] = useState('');
@@ -151,6 +158,8 @@ const AddEditProperty = () => {
           price: p.price,
           currency: 'NPR',
           negotiable: p.negotiable,
+          // null/undefined means the listing inherits the type default
+          commissionPercentage: p.commissionPercentage ?? '',
           location: {
             province: p.location?.province || '',
             district: p.location?.district?._id || p.location?.district || '',
@@ -171,6 +180,7 @@ const AddEditProperty = () => {
         });
         setExistingImages(p.media?.images || []);
         setCurrentCoverImage(p.media?.coverImage || '');
+        setLoadedStatus(p.status || '');
         if (p.propertyType?.category) setCategory(p.propertyType.category);
       });
     }
@@ -313,6 +323,13 @@ const AddEditProperty = () => {
 
     if (!form.propertyType) next.propertyType = 'Select a property type';
 
+    if (form.commissionPercentage !== '' && form.commissionPercentage !== null) {
+      const pct = Number(form.commissionPercentage);
+      if (Number.isNaN(pct) || pct < 0 || pct > 100) {
+        next.commissionPercentage = 'Enter a commission between 0 and 100, or leave blank to inherit the default';
+      }
+    }
+
     if (form.price === '' || form.price === null) {
       next.price = 'Price is required';
     } else if (Number(form.price) <= 0) {
@@ -420,6 +437,9 @@ const AddEditProperty = () => {
       fd.append('price', form.price);
       fd.append('currency', 'NPR');
       fd.append('negotiable', form.negotiable);
+      // 'null' (the literal string) tells the backend to clear any override
+      // and inherit the property type's default commission.
+      fd.append('commissionPercentage', form.commissionPercentage === '' ? 'null' : form.commissionPercentage);
       fd.append('video', form.video);
 
       // Omit district/city entirely when unselected (an empty string would
@@ -453,12 +473,30 @@ const AddEditProperty = () => {
 
   const visiblePropertyTypes = propertyTypes.filter((t) => (t.category || 'building') === category);
 
+  // The selected type's default commission powers the override field's
+  // placeholder and helper text so admins always see what they inherit.
+  const selectedPropertyType = propertyTypes.find((t) => t._id === form.propertyType);
+  const inheritedCommission = selectedPropertyType?.defaultCommissionPercentage ?? 0;
+
   return (
     <div>
       <p className="eyebrow mb-2">{isEdit ? 'Edit Listing' : 'New Listing'}</p>
       <h1 className="text-3xl mb-8">{isEdit ? 'Edit Property' : 'Add New Property'}</h1>
 
       {error && <div className="bg-brick-light text-brick text-sm px-4 py-3 rounded-sm mb-6">{error}</div>}
+
+      {/* Read-only status banner: reserved/sold are owned by the sale
+          verification flow, so this form can't (and shouldn't) change them. */}
+      {isEdit && loadedStatus === 'reserved' && (
+        <div className="bg-brass-light text-brass-dark text-sm px-4 py-3 rounded-sm mb-6">
+          Reserved — sale pending verification (status is managed by the sale verification flow)
+        </div>
+      )}
+      {isEdit && loadedStatus === 'sold' && (
+        <div className="bg-brick-light text-brick text-sm px-4 py-3 rounded-sm mb-6">
+          Sold
+        </div>
+      )}
 
       {/* Which posting form: Land is a genuinely different listing from a
           House/Apartment/etc., so this decides which fields appear below. */}
@@ -558,6 +596,30 @@ const AddEditProperty = () => {
             <div className="flex items-center gap-2 mt-2">
               <input type="checkbox" id="negotiable" checked={form.negotiable} onChange={(e) => updateField('negotiable', e.target.checked)} />
               <label htmlFor="negotiable" className="text-sm text-slate-ink">Price is negotiable</label>
+            </div>
+            <div>
+              <label className="label-field">Commission Override %</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                className={`input-field ${errorInputClass(fieldErrors.commissionPercentage)}`}
+                placeholder={form.propertyType ? String(inheritedCommission) : 'e.g. 2.5'}
+                value={form.commissionPercentage}
+                onChange={(e) => { updateField('commissionPercentage', e.target.value); clearFieldError('commissionPercentage'); }}
+              />
+              {fieldErrors.commissionPercentage ? (
+                <p className="text-xs text-brick mt-1">{fieldErrors.commissionPercentage}</p>
+              ) : form.propertyType ? (
+                <p className="text-xs text-slate-muted mt-1">
+                  Leave blank to use the default for {selectedPropertyType?.name} ({inheritedCommission}%)
+                </p>
+              ) : (
+                <p className="text-xs text-slate-muted mt-1">
+                  Leave blank to use the default for the selected property type
+                </p>
+              )}
             </div>
           </div>
         </section>

@@ -11,7 +11,7 @@ const {
   toggleFavorite,
   getFavorites,
 } = require('../controllers/propertyController');
-const { protect, requireVerified } = require('../middleware/auth');
+const { protect, optionalAuth, requireVerified } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
 const propertyUpload = upload.fields([
@@ -19,14 +19,16 @@ const propertyUpload = upload.fields([
   { name: 'images', maxCount: 15 },
 ]);
 
-// Public routes - anyone (including guests) can browse the feed
-router.get('/', getProperties);
+// Public routes - anyone (including guests) can browse the feed.
+// optionalAuth attaches the viewer (if logged in) so commission visibility
+// can be applied per-role without requiring authentication to browse.
+router.get('/', optionalAuth, getProperties);
 
 // Logged-in scoped routes (must be defined before the /:id catch-all)
 router.get('/my/listings', protect,  getMyProperties);
 router.get('/my/favorites', protect, getFavorites);
 
-router.get('/:id', getProperty);
+router.get('/:id', optionalAuth, getProperty);
 
 // Posting a property requires a verified identity (or admin)
 router.post('/', protect, requireVerified, propertyUpload, createProperty);

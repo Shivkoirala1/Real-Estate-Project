@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   getUsers,
-  updateUser,
   toggleUserStatus,
   resetUserPassword,
   deleteUser,
@@ -22,8 +21,8 @@ const ManageUsers = () => {
 
   const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState('newest');
   const [loading, setLoading] = useState(true);
-  const [updatingRole, setUpdatingRole] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -31,6 +30,7 @@ const ManageUsers = () => {
     try {
       const data = await getUsers({
         search: search || undefined,
+        sort,
       });
 
       setUsers(data.users);
@@ -43,41 +43,7 @@ const ManageUsers = () => {
 
   useEffect(() => {
     load();
-  }, [search]);
-
-  const handleRoleChange = async (user, newRole) => {
-    if (newRole === user.role) return;
-
-    const confirmed = await confirm({
-      title: 'Change user role?',
-      message: `Change ${user.name}'s role from ${user.role} to ${newRole}?`,
-      confirmLabel: 'Yes, change role',
-      cancelLabel: 'No, cancel',
-      tone: newRole === 'admin' ? 'danger' : 'default',
-    });
-
-    if (!confirmed) return;
-
-    setUpdatingRole(user._id);
-
-    try {
-      const data = await updateUser(user._id, {
-        role: newRole,
-      });
-
-      setUsers((currentUsers) =>
-        currentUsers.map((u) =>
-          u._id === user._id ? data.user : u
-        )
-      );
-
-      showToast(`User role changed to ${newRole}`);
-    } catch (err) {
-      showToast('Failed to update user role', 'error');
-    } finally {
-      setUpdatingRole(null);
-    }
-  };
+  }, [search, sort]);
 
   const handleToggleStatus = async (id, isActive) => {
     const confirmed = await confirm({
@@ -152,6 +118,13 @@ const ManageUsers = () => {
         <div>
           <p className="eyebrow mb-2">Admin</p>
           <h1 className="text-3xl">Manage Users</h1>
+          <p className="text-sm text-slate-muted mt-1">
+            Buyer accounts. Agent accounts are managed under{' '}
+            <Link to="/dashboard/admin/agents" className="text-brass hover:underline">
+              Manage Agents
+            </Link>
+            .
+          </p>
         </div>
 
         <Link
@@ -162,12 +135,24 @@ const ManageUsers = () => {
         </Link>
       </div>
 
-      <input
-        placeholder="Search by name or email..."
-        className="input-field max-w-sm mb-6"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+        <input
+          placeholder="Search by name or email..."
+          className="input-field max-w-sm"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          className="input-field sm:max-w-[10rem]"
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+          aria-label="Sort users"
+        >
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+          <option value="name_asc">Name A–Z</option>
+        </select>
+      </div>
 
       {loading ? (
         <p className="text-slate-muted">Loading...</p>
@@ -200,18 +185,7 @@ const ManageUsers = () => {
                   </td>
 
                   <td className="px-5 py-3">
-                    <select
-                      value={u.role}
-                      disabled={updatingRole === u._id}
-                      onChange={(e) =>
-                        handleRoleChange(u, e.target.value)
-                      }
-                      className="border border-navy/10 rounded-sm px-2.5 py-1.5 bg-white capitalize focus:outline-none focus:ring-1 focus:ring-brass"
-                    >
-                      <option value="user">User</option>
-                      <option value="agent">Agent</option>
-                      <option value="admin">Admin</option>
-                    </select>
+                    <span className="status-badge bg-navy/10 text-navy capitalize">{u.role}</span>
                   </td>
 
                   <td className="px-5 py-3">

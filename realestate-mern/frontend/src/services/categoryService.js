@@ -39,6 +39,17 @@ export const createPropertyType = async (name) => {
 };
 
 /**
+ * Update a property type (admin)
+ * PUT /api/categories/property-types/:id
+ *
+ * payload: e.g. { defaultCommissionPercentage } — 0-100 number
+ */
+export const updatePropertyType = async (id, payload) => {
+  const { data } = await api.put(`/categories/property-types/${id}`, payload);
+  return data; // { propertyType }
+};
+
+/**
  * Create a district
  * POST /api/categories/districts
  */

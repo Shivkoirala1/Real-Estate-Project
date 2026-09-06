@@ -1,11 +1,14 @@
 
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import {
   getVisits,
   updateVisit,
 } from "../../services/visitService";
 
 import {getUsers} from "../../services/userService";
+import { useAuth } from "../../context/AuthContext";
+import ConvertToLeadModal from "./LeadManagement/ConvertToLeadModal";
 
 const PAGE_SIZE = 10;
 
@@ -41,6 +44,9 @@ const Visits = () => {
   const [visits, setVisits] = useState([]);
  
   const [agents, setAgents] = useState([]);
+
+  const { user } = useAuth();
+  const [convertTarget, setConvertTarget] = useState(null);
 
   const [pagination, setPagination] = useState({
     page: 1,
@@ -200,7 +206,8 @@ const Visits = () => {
           </h1>
 
           <p className="text-sm text-slate-muted mt-1">
-            Review, assign and coordinate buyer visits.
+            Review, assign and coordinate buyer visits. Every request is
+            automatically tracked as a pipeline lead with a conversation thread.
           </p>
         </div>
 
@@ -397,6 +404,15 @@ const Visits = () => {
                         {statusLabel[visit.status] ??
                           visit.status}
                       </span>
+
+                      {visit.convertedLead && (
+                        <span
+                          className="status-badge bg-sage-light text-sage mt-1"
+                          title={`Lead: ${visit.convertedLead.name || "linked"}`}
+                        >
+                          Lead · {(visit.convertedLead.stage || "new").replace(/_/g, " ")}
+                        </span>
+                      )}
                     </td>
 
                     {/* Actions */}
@@ -457,6 +473,28 @@ const Visits = () => {
                         >
                           Notes
                         </button>
+
+                        {user?.role === "admin" && (
+                          visit.convertedLead ? (
+                            <Link
+                              to={`/dashboard/lead-management/leads/${
+                                visit.convertedLead._id || visit.convertedLead
+                              }`}
+                              className="text-sage border border-sage/40 hover:bg-sage hover:text-white px-3 py-1.5 rounded-sm text-xs transition-colors"
+                              title="Open the pipeline lead for this visit"
+                            >
+                              View Lead →
+                            </Link>
+                          ) : (
+                            <button
+                              onClick={() => setConvertTarget(visit)}
+                              className="text-ivory bg-navy hover:bg-navy-light px-3 py-1.5 rounded-sm text-xs transition-colors"
+                              title="Create a pipeline lead from this visit"
+                            >
+                              Convert to Lead
+                            </button>
+                          )
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -539,6 +577,16 @@ const Visits = () => {
           visit={activeVisit}
           onClose={closeModal}
           onSave={handleNotes}
+        />
+      )}
+
+      {/* Convert to Lead Modal (admin) */}
+      {convertTarget && (
+        <ConvertToLeadModal
+          sourceType="visit"
+          source={convertTarget}
+          onClose={() => setConvertTarget(null)}
+          onConverted={() => fetchVisits()}
         />
       )}
     </div>

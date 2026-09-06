@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { getAllBlogs, deleteBlog } from "../../services/blogService";
-
+import { imageUrl } from "../../utils/format";
 
 const statusBadge = {
   published: "bg-sage-light text-sage",
@@ -153,46 +153,66 @@ const BlogManagement = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-muted border-b border-navy/10">
-                  <th className="px-5 py-3">Title</th>
+                  <th className="px-5 py-3">Blog</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3">Published</th>
                   <th className="px-5 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {blogs.map((b) => (
-                  <tr key={b._id} className="border-b border-navy/5 last:border-0">
-                    <td className="px-5 py-3 font-medium text-navy">{b.title}</td>
-                    <td className="px-5 py-3">
-                      <span className={`status-badge ${statusBadge[b.status] ?? statusBadge.draft}`}>
-                        {b.status}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-slate-muted">{formatDate(b.publishedAt)}</td>
-                    <td className="px-5 py-3">
-                      <div className="flex gap-3">
-                        <Link
-                          to={`/blogs/${b.slug}`}
-                          className="text-white hover:underline bg-green-600 px-3 py-1.5 rounded-sm text-sm"
-                        >
-                          View
-                        </Link>
-                        <Link
-                          to={`/dashboard/admin/blogs/${b._id}/edit`}
-                          className="text-white hover:underline bg-blue-600 px-3 py-1.5 rounded-sm text-sm"
-                        >
-                          Edit
-                        </Link>
-                        <button
-                          onClick={() => handleDelete(b._id, b.title)}
-                          className="text-white hover:underline bg-red-600 px-3 py-1.5 rounded-sm text-sm"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {blogs.map((b) => {
+                  const blogImage = b.coverImage || b.image || b.media?.coverImage;
+                  return (
+                    <tr key={b._id} className="border-b border-navy/5 last:border-0">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          {blogImage ? (
+                            <img
+                              src={imageUrl(blogImage)}
+                              className="w-12 h-12 rounded-sm object-cover border border-navy/10 flex-shrink-0"
+                              alt={b.title}
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-sm bg-navy/5 border border-navy/10 flex items-center justify-center text-slate-muted flex-shrink-0">
+                              <svg className="w-5 h-5 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                            </div>
+                          )}
+                          <span className="font-medium text-navy">{b.title}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className={`status-badge ${statusBadge[b.status] ?? statusBadge.draft}`}>
+                          {b.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-slate-muted">{formatDate(b.publishedAt)}</td>
+                      <td className="px-5 py-3">
+                        <div className="flex gap-3">
+                          <Link
+                            to={`/blogs/${b.slug}`}
+                            className="text-white hover:underline bg-green-600 px-3 py-1.5 rounded-sm text-sm"
+                          >
+                            View
+                          </Link>
+                          <Link
+                            to={`/dashboard/admin/blogs/${b._id}/edit`}
+                            className="text-white hover:underline bg-blue-600 px-3 py-1.5 rounded-sm text-sm"
+                          >
+                            Edit
+                          </Link>
+                          <button
+                            onClick={() => handleDelete(b._id, b.title)}
+                            className="text-white hover:underline bg-red-600 px-3 py-1.5 rounded-sm text-sm"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

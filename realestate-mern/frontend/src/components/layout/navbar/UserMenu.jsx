@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 
 import { useAuth } from '../../../context/AuthContext';
 import { useConfirm } from '../../../context/ConfirmContext';
+import { useConversations } from '../../../context/ConversationContext';
 
 import {
   isAdmin,
@@ -16,6 +17,7 @@ const menuLinkClass =
 const UserMenu = ({ unreadCount = 0 }) => {
   const { user, logout } = useAuth();
   const confirm = useConfirm();
+  const { unreadCount: conversationUnreadCount } = useConversations();
 
   const [open, setOpen] = useState(false);
 
@@ -218,6 +220,23 @@ const UserMenu = ({ unreadCount = 0 }) => {
             role="menuitem"
           >
             My Profile
+          </Link>
+
+          <Link
+            to="/my-conversations"
+            onClick={closeMenu}
+            className="flex items-center justify-between px-4 py-2 text-sm transition-colors hover:bg-parchment"
+            role="menuitem"
+          >
+            <span>My Conversations</span>
+
+            {conversationUnreadCount > 0 && (
+              <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brass px-1 text-[10px] font-bold leading-none text-navy">
+                {conversationUnreadCount > 99
+                  ? '99+'
+                  : conversationUnreadCount}
+              </span>
+            )}
           </Link>
 
           <Link

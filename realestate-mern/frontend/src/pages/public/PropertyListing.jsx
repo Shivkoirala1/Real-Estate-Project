@@ -4,6 +4,22 @@ import { getProperties } from '../../services/propertyService';
 import SearchFilterBar from '../../components/SearchFilterBar';
 import PropertyCard from '../../components/PropertyCard';
 
+// The listing page owns which filters it wants the bar to expose. Any other
+// page (e.g. a homepage hero or a "properties in this district" landing
+// page) can reuse SearchFilterBar with a different subset without touching
+// the bar itself.
+const LISTING_FILTERS = [
+  'saleType',
+  'propertyType',
+  'city',
+  'district',
+  'minPrice',
+  'maxPrice',
+  'bedrooms',
+  'bathrooms',
+  'status',
+];
+
 const PropertyListing = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [properties, setProperties] = useState([]);
@@ -50,7 +66,7 @@ const PropertyListing = () => {
       <p className="eyebrow mb-2">Listings</p>
       <h1 className="text-3xl mb-8">All Properties</h1>
 
-      <SearchFilterBar compact />
+      <SearchFilterBar mode="route" compact filters={LISTING_FILTERS} />
 
       <div className="flex items-center justify-between mt-8 mb-6">
         <p className="text-sm text-slate-muted">{meta.total} propert{meta.total === 1 ? 'y' : 'ies'} found</p>

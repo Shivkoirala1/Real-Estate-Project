@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { createInquiry } from '../../services/inquiryService';
+import { createContactForm } from '../../services/contactFormService';
 import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmContext';
 
@@ -44,8 +44,10 @@ const Contact = () => {
 
     setSending(true);
     try {
-      await createInquiry(form);
-      showToast('Message sent. We will get back to you soon.');
+      const result = await createContactForm(form);
+      showToast(
+        result?.message || 'Message sent. Our team has been notified and will get back to you soon.'
+      );
       setForm({ name: '', email: '', phone: '', subject: 'General Inquiry', message: '' });
       setErrors({});
     } catch (err) {

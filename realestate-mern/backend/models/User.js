@@ -32,6 +32,13 @@ const userSchema = new mongoose.Schema(
       enum: ['user', 'admin', 'agent'],
       default: 'user',
     },
+    // Spec v2 (Phase 4): small profile for role='agent'. No commission-rate
+    // field here on purpose - commission lives on Property/PropertyType.
+    agentProfile: {
+      licenseNumber: { type: String, default: '', trim: true }, // e.g. real-estate broker license
+      employeeId: { type: String, default: '', trim: true }, // internal staff/employee ID
+      joinedAt: { type: Date, default: null }, // date the agent joined the agency
+    },
     avatar: {
       type: String,
       default: '',

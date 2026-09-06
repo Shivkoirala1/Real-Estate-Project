@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getPropertyById, toggleFavorite } from '../../services/propertyService';
-import { createInquiry } from '../../services/inquiryService';
+import { createContactForm } from '../../services/contactFormService';
 import { createVisit } from '../../services/visitService';
 import ImageGallery from '../../components/ImageGallery';
 import MapView from '../../components/MapView';
 import PropertyCard from '../../components/PropertyCard';
-import { formatPrice, statusStyles } from '../../utils/format';
+import StatusBadge from '../../components/StatusBadge';
+import { formatPrice } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmContext';
@@ -151,7 +152,7 @@ const PropertyDetail = () => {
 
     setSending(true);
     try {
-      const data = await createInquiry({
+      const data = await createContactForm({
         ...form,
         subject: `Inquiry about ${property.title}`,
         property: property._id,
@@ -251,10 +252,10 @@ const PropertyDetail = () => {
 
   if (!property) return null;
 
-  const status = statusStyles[property.status] || statusStyles.available;
   const lat = property.location?.mapLocation?.lat;
   const lng = property.location?.mapLocation?.lng;
   const isOwnListing = user && property.listedBy?._id === user._id;
+  const isSold = property.status === 'sold';
 
   return (
     <div className="max-w-7xl mx-auto px-5 md:px-8 py-10">
@@ -264,13 +265,28 @@ const PropertyDetail = () => {
         <span className="text-navy">{property.title}</span>
       </div>
 
+      {/* Read-only status banners — only rendered once the property is loaded */}
+      {property.status === 'reserved' && (
+        <div className="bg-brass/10 border border-brass/30 text-brass-dark px-5 py-3 rounded-sm mb-6 text-sm font-medium">
+          Reserved — a sale for this property has been submitted and is awaiting verification.
+        </div>
+      )}
+      {property.status === 'sold' && (
+        <div className="bg-brick-light border border-brick/30 text-brick px-5 py-3 rounded-sm mb-6 text-sm font-medium">
+          Sold — this property is no longer available.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
         <div className="lg:col-span-2">
           <ImageGallery coverImage={property.media?.coverImage} images={property.media?.images} />
 
           <div className="flex items-start justify-between mt-8 mb-2">
             <div>
-              <span className="status-badge text-white" style={{ backgroundColor: status.bg }}>{status.label}</span>
+              <div className="flex items-center gap-2">
+                <StatusBadge type="status" value={property.status} />
+                <StatusBadge type="saleType" value={property.saleType} />
+              </div>
               <h1 className="text-3xl mt-3">{property.title}</h1>
               <p className="text-slate-muted mt-1">
                 {property.location?.streetAddress ? `${property.location.streetAddress}, ` : ''}
@@ -288,6 +304,12 @@ const PropertyDetail = () => {
             {formatPrice(property.price, property.currency)}
             {property.negotiable && <span className="text-sm text-slate-muted font-body ml-2">(Negotiable)</span>}
           </p>
+
+          {property.estimatedCommissionAmount != null && (
+            <div className="inline-block bg-brass/10 text-brass-dark text-sm font-medium px-3 py-1.5 rounded-sm -mt-6 mb-8">
+              Agent view — est. commission: NPR {property.estimatedCommissionAmount.toLocaleString()} ({property.effectiveCommissionPercentage}%)
+            </div>
+          )}
 
           <h2 className="text-xl mb-3">Description</h2>
           <p className="text-slate-ink leading-relaxed mb-10 whitespace-pre-line">{property.description}</p>
@@ -386,6 +408,10 @@ const PropertyDetail = () => {
                 This is your own listing, so there's nothing to inquire about here. Manage it from{' '}
                 <Link to="/my-properties" className="text-brass hover:underline font-medium">My Properties</Link>.
               </div>
+            ) : isSold ? (
+              <div className="bg-brick-light/40 border border-dashed border-brick/30 rounded-sm px-4 py-4 text-sm text-slate-ink">
+                This property has been sold and is no longer accepting inquiries or visit requests.
+              </div>
             ) : (
               <>
                 {/* Toggle between sending an inquiry and scheduling a visit */}
@@ -464,7 +490,7 @@ const PropertyDetail = () => {
                 ) : visitRequested ? (
                   <div className="bg-sage/10 border border-sage/30 rounded-sm px-4 py-4 text-sm text-navy">
                     Your visit request has been sent. The agent will confirm the slot shortly. You can track it from{' '}
-                    <Link to="/dashboard/my-visits" className="text-brass hover:underline font-medium">My Visits</Link>.
+                    <Link to="/my-visits" className="text-brass hover:underline font-medium">My Visits</Link>.
                   </div>
                 ) : (
                   <form onSubmit={handleScheduleVisit} noValidate className="space-y-3">

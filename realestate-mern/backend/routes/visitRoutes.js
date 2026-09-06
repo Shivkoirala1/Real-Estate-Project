@@ -8,6 +8,7 @@ const {
   getVisitById,
   updateVisit,
   cancelMyVisit,
+  convertVisitToLead,
 } = require('../controllers/visitController');
 
 const { protect, authorize } = require('../middleware/auth.js');
@@ -17,6 +18,9 @@ router.use(protect);
 
 // Buyer: Fetch personal visits | Admin: Fetch central moderation queue
 router.get('/my-visits', getMyVisits);
+
+// Admin: turn a visit request into a pipeline lead
+router.post('/:id/convert-to-lead', authorize('admin'), convertVisitToLead);
 
 // Base route: Create request or view overall queue
 router

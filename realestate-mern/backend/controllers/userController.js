@@ -1,13 +1,26 @@
 const User = require('../models/User');
+const AuditLog = require('../models/AuditLog');
 const asyncHandler = require('../utils/asyncHandler');
 const crypto = require('crypto');
+
+// Best-effort audit write - a failed audit log must never break the actual
+// admin operation, so failures are swallowed after logging.
+const recordAudit = async (entry) => {
+  try {
+    await AuditLog.create(entry);
+  } catch (err) {
+    console.error('Audit log write failed:', err.message);
+  }
+};
 
 // @desc    Get all users (with optional role filter)
 // @route   GET /api/users
 // @access  Private (admin)
 const getUsers = asyncHandler(async (req, res) => {
-  const { role, search } = req.query;
-  const query = {};
+  const { role, search, sort } = req.query;
+  // Scope defaults to buyer accounts only - agents are managed via
+  // /api/agents and admins are provisioned outside the app (plan §8.3).
+  const query = { role: role || 'user' };
   if (role) query.role = role;
   if (search) {
     query.$or = [
@@ -15,7 +28,12 @@ const getUsers = asyncHandler(async (req, res) => {
       { email: { $regex: search, $options: 'i' } },
     ];
   }
-  const users = await User.find(query).sort({ createdAt: -1 });
+  const sortMap = {
+    name_asc: { name: 1 },
+    newest: { createdAt: -1 },
+    oldest: { createdAt: 1 },
+  };
+  const users = await User.find(query).sort(sortMap[sort] || sortMap.newest);
   res.json({ success: true, count: users.length, users });
 });
 
@@ -28,7 +46,11 @@ const getUser = asyncHandler(async (req, res) => {
   res.json({ success: true, user });
 });
 
-// @desc    Promote a user to agent, admin (or demote back to user)
+// @desc    Update a user's editable profile fields (name, phone). Role is
+//          fixed once assigned and cannot be changed through this endpoint
+//          at all - agent accounts are created directly via POST /api/agents,
+//          and admin access is granted only outside the application
+//          (DB/seed level).
 // @route   PUT /api/users/:id
 // @access  Private (admin)
 const updateUser = asyncHandler(async (req, res) => {
@@ -36,11 +58,38 @@ const updateUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
+  // Roles are fixed once assigned - reject any attempt to change them with an
+  // explicit 400 instead of silently ignoring the field, so anyone probing the
+  // API directly learns this is not a supported operation.
+  if (role !== undefined && role !== user.role) {
+    await recordAudit({
+      actor: req.user._id,
+      targetUser: user._id,
+      action: 'role_change_attempt',
+      field: 'role',
+      previousValue: user.role,
+      newValue: role,
+    });
+    return res.status(400).json({
+      success: false,
+      message: "Role changes are not supported — a user's role is fixed once assigned.",
+    });
+  }
+
   if (name) user.name = name;
   if (phone !== undefined) user.phone = phone;
-  if (role && ['user', 'admin', 'agent'].includes(role)) user.role = role;
 
   await user.save();
+
+  await recordAudit({
+    actor: req.user._id,
+    targetUser: user._id,
+    action: 'update',
+    field: name && phone !== undefined ? 'name,phone' : name ? 'name' : 'phone',
+    previousValue: null,
+    newValue: null,
+  });
+
   res.json({ success: true, user: user.toSafeObject() });
 });
 
@@ -51,8 +100,17 @@ const toggleUserStatus = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
+  const previousValue = user.isActive;
   user.isActive = !user.isActive;
   await user.save();
+  await recordAudit({
+    actor: req.user._id,
+    targetUser: user._id,
+    action: 'status_toggle',
+    field: 'isActive',
+    previousValue,
+    newValue: user.isActive,
+  });
   res.json({ success: true, user: user.toSafeObject() });
 });
 
@@ -67,6 +125,15 @@ const resetPassword = asyncHandler(async (req, res) => {
   user.password = tempPassword;
   await user.save();
 
+  await recordAudit({
+    actor: req.user._id,
+    targetUser: user._id,
+    action: 'reset_password',
+    field: 'password',
+    previousValue: null,
+    newValue: '[redacted]',
+  });
+
   // In production this would be emailed to the user instead of returned in the response
   res.json({ success: true, message: 'Password reset successfully', tempPassword });
 });
@@ -77,6 +144,15 @@ const resetPassword = asyncHandler(async (req, res) => {
 const deleteUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+  await recordAudit({
+    actor: req.user._id,
+    targetUser: user._id,
+    action: 'delete',
+    field: 'account',
+    previousValue: { name: user.name, email: user.email, role: user.role },
+    newValue: null,
+  });
 
   await user.deleteOne();
   res.json({ success: true, message: 'User removed successfully' });

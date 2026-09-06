@@ -3,6 +3,7 @@ import { Link, NavLink } from 'react-router-dom';
 
 import { useAuth } from '../../../context/AuthContext';
 import { useConfirm } from '../../../context/ConfirmContext';
+import { useConversations } from '../../../context/ConversationContext';
 
 import {
   isAdmin,
@@ -30,6 +31,7 @@ const MobileMenu = ({
 }) => {
   const { logout } = useAuth();
   const confirm = useConfirm();
+  const { unreadCount: conversationUnreadCount } = useConversations();
 
   const admin = isAdmin(user);
   const agent = isAgent(user);
@@ -155,6 +157,22 @@ const MobileMenu = ({
               </Link>
             </>
           )}
+
+          {/* Messaging - every signed-in role can be a conversation participant */}
+          <Link
+            to="/my-conversations"
+            className={mobileActionClass}
+            onClick={onClose}
+          >
+            <span className="flex items-center gap-2">
+              My Conversations
+              {conversationUnreadCount > 0 && (
+                <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brass px-1 text-[10px] font-bold leading-none text-navy">
+                  {conversationUnreadCount > 99 ? '99+' : conversationUnreadCount}
+                </span>
+              )}
+            </span>
+          </Link>
 
           {/* Common links */}
           <Link

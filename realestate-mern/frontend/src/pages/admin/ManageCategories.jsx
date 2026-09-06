@@ -4,6 +4,7 @@ import {
   getDistricts,
   getCities,
   createPropertyType,
+  updatePropertyType,
   createDistrict,
   createCity,
   deleteCategory,
@@ -21,6 +22,10 @@ const ManageCategories = () => {
   const [newType, setNewType] = useState('');
   const [newDistrict, setNewDistrict] = useState('');
   const [newCity, setNewCity] = useState({ name: '', district: '' });
+  // Per-type commission drafts for the inline editor in the Property Types
+  // tab, keyed by type _id (untyped entries fall back to the loaded value).
+  const [commissionDrafts, setCommissionDrafts] = useState({});
+  const [savingCommissionId, setSavingCommissionId] = useState(null);
 
   const loadAll = async () => {
     const [t, d, c] = await Promise.all([
@@ -74,6 +79,28 @@ const ManageCategories = () => {
     }
   };
 
+  const saveCommission = async (t) => {
+    const raw = commissionDrafts[t._id];
+    const value = raw === undefined || raw === '' ? 0 : Number(raw);
+    if (Number.isNaN(value) || value < 0 || value > 100) {
+      showToast('Commission must be between 0 and 100', 'error');
+      return;
+    }
+    setSavingCommissionId(t._id);
+    try {
+      await updatePropertyType(t._id, { defaultCommissionPercentage: value });
+      showToast('Commission updated');
+      // Update the loaded list in place so the row reflects the saved value.
+      setPropertyTypes((prev) =>
+        prev.map((pt) => (pt._id === t._id ? { ...pt, defaultCommissionPercentage: value } : pt))
+      );
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update commission', 'error');
+    } finally {
+      setSavingCommissionId(null);
+    }
+  };
+
   const remove = async (type, id) => {
     const confirmed = await confirm({
       title: 'Delete this item?',
@@ -122,12 +149,39 @@ const ManageCategories = () => {
             <button type="submit" className="btn-primary px-6">Add</button>
           </form>
           <div className="space-y-2">
-            {propertyTypes.map((t) => (
-              <div key={t._id} className="flex items-center justify-between border-b border-navy/5 pb-2">
-                <span>{t.name}</span>
-                <button onClick={() => remove('property-types', t._id)} className="text-brick text-sm hover:underline">Remove</button>
-              </div>
-            ))}
+            {propertyTypes.map((t) => {
+              const draft = commissionDrafts[t._id] ?? (t.defaultCommissionPercentage ?? 0);
+              const saving = savingCommissionId === t._id;
+              return (
+                <div key={t._id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-navy/5 pb-2">
+                  <span className="font-medium text-navy">{t.name}</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label htmlFor={`commission-${t._id}`} className="text-xs text-slate-muted whitespace-nowrap">
+                      Default Commission %
+                    </label>
+                    <input
+                      id={`commission-${t._id}`}
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      className="input-field w-24 py-1.5 text-sm"
+                      value={draft}
+                      onChange={(e) => setCommissionDrafts((prev) => ({ ...prev, [t._id]: e.target.value }))}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => saveCommission(t)}
+                      disabled={saving}
+                      className="btn-gold text-xs px-3 py-1.5 whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {saving ? 'Saving...' : 'Save'}
+                    </button>
+                    <button onClick={() => remove('property-types', t._id)} className="text-brick text-sm hover:underline">Remove</button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
