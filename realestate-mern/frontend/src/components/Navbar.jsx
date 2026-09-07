@@ -40,14 +40,13 @@ const Navbar = () => {
     <header className="bg-navy sticky top-0 z-40 shadow-lifted">
       <div className="max-w-7xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between">
         <Link to="/" className="font-display text-xl text-ivory tracking-tight">
-          Youth Real <span className="text-brass">Estate Pvt.Ltd</span>
+          Youth <span className="text-brass">Real Estate</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-8">
           <NavLink to="/" end className={navLinkClass}>Home</NavLink>
           <NavLink to="/properties" className={navLinkClass}>Properties</NavLink>
           <NavLink to="/land-converter" className={navLinkClass}>Land Converter</NavLink>
-          <NavLink to="/blogs" className={navLinkClass}>Blog</NavLink>
           <NavLink to="/about" className={navLinkClass}>About</NavLink>
           <NavLink to="/contact" className={navLinkClass}>Contact</NavLink>
         </nav>
@@ -68,6 +67,15 @@ const Navbar = () => {
               ) : (
                 <Link to="/profile" className="text-xs font-semibold uppercase tracking-wide text-brass border border-brass/40 rounded-sm px-3 py-2 hover:bg-brass/10 transition-colors">
                   Verification Pending
+                </Link>
+              )}
+              {!isAdmin && (
+                <Link
+                  to="/wallet"
+                  className="hidden lg:flex items-center gap-1.5 text-xs font-semibold text-brass-light border border-brass/30 rounded-full px-3 py-1.5 hover:bg-brass/10 transition-colors"
+                  title="Youth Coin balance"
+                >
+                  <span>🪙</span> {(user.ycCoin ?? 0).toLocaleString()} YC
                 </Link>
               )}
               <NotificationBell />
@@ -100,6 +108,17 @@ const Navbar = () => {
                     <Link to="/profile" onClick={() => setMenuOpen(false)} className="block px-4 py-2 text-sm hover:bg-parchment">
                       My Profile
                     </Link>
+                    {!isAdmin && (
+                      <Link to="/wallet" onClick={() => setMenuOpen(false)} className="flex items-center justify-between px-4 py-2 text-sm hover:bg-parchment">
+                        <span>My Wallet</span>
+                        <span className="text-xs font-semibold text-brass">{(user.ycCoin ?? 0).toLocaleString()} YC</span>
+                      </Link>
+                    )}
+                    {!isAdmin && (
+                      <Link to="/my-visits" onClick={() => setMenuOpen(false)} className="block px-4 py-2 text-sm hover:bg-parchment">
+                        My Site Visits
+                      </Link>
+                    )}
                     <Link to="/notifications" onClick={() => setMenuOpen(false)} className="flex items-center justify-between px-4 py-2 text-sm hover:bg-parchment">
                       <span>Notifications</span>
                       {unreadCount > 0 && (
@@ -154,6 +173,11 @@ const Navbar = () => {
                 <Link to="/my-properties" className={navLinkClass({ isActive: false })} onClick={() => setOpen(false)}>My Properties</Link>
               )}
               <Link to="/profile" className={navLinkClass({ isActive: false })} onClick={() => setOpen(false)}>My Profile</Link>
+              {!isAdmin && (
+                <Link to="/wallet" className={navLinkClass({ isActive: false })} onClick={() => setOpen(false)}>
+                  My Wallet ({(user.ycCoin ?? 0).toLocaleString()} YC)
+                </Link>
+              )}
               <Link to="/notifications" className={navLinkClass({ isActive: false })} onClick={() => setOpen(false)}>
                 Notifications{unreadCount > 0 ? ` (${unreadCount})` : ''}
               </Link>
