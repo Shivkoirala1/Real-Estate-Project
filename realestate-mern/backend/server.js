@@ -18,7 +18,6 @@ const inquiryRoutes = require('./routes/inquiryRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const rewardRoutes = require('./routes/rewardRoutes');
-const siteVisitRoutes = require('./routes/siteVisitRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 
 connectDB();
@@ -48,7 +47,6 @@ app.use('/api/inquiries', inquiryRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/rewards', rewardRoutes);
-app.use('/api/site-visits', siteVisitRoutes);
 app.use('/api/reviews', reviewRoutes);
 
 app.use(notFound);

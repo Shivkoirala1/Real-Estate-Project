@@ -6,16 +6,4 @@ const generateToken = (id, role) => {
   });
 };
 
-const verifyToken = (token) => {
-  try {
-    return jwt.verify(token, process.env.JWT_SECRET);
-  } catch (error) {
-    console.error("Token verification error:", error);
-    throw new Error("Invalid token");
-  }
-};
-
-module.exports = {
-  generateToken,
-  verifyToken
-};
+module.exports = generateToken;
