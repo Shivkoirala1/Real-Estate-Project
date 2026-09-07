@@ -78,8 +78,11 @@ const propertySchema = new mongoose.Schema(
     isArchived: { type: Boolean, default: false },
 
     views: { type: Number, default: 0 },
+    shares: { type: Number, default: 0 },
 
     listedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    soldTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    soldAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
