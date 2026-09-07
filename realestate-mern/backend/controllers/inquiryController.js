@@ -203,7 +203,7 @@ const replyToInquiry = asyncHandler(async (req, res) => {
   // property); the original inquirer replies from the "inquirer" side.
   const side = isAdmin ? 'owner' : 'inquirer';
   const displayName = side === 'owner'
-    ? (inquiry.property?.listedBy?.name || 'Ashland Estates')
+    ? (inquiry.property?.listedBy?.name || 'Youth Real Estate')
     : req.user.name;
 
   inquiry.messages.push({
