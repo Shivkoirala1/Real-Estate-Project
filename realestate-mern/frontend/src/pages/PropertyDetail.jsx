@@ -46,6 +46,18 @@ const PropertyDetail = () => {
   const [errors, setErrors] = useState({});
   const [sending, setSending] = useState(false);
 
+  // Book-a-visit
+  const [visitForm, setVisitForm] = useState({ preferredDate: '', note: '' });
+  const [visitSending, setVisitSending] = useState(false);
+  const [visitBooked, setVisitBooked] = useState(false);
+
+  // Reviews
+  const [reviews, setReviews] = useState([]);
+  const [avgRating, setAvgRating] = useState(0);
+  const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
+  const [reviewSending, setReviewSending] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+
   useEffect(() => {
     if (user) {
       setForm((f) => ({
@@ -82,6 +94,19 @@ const PropertyDetail = () => {
     };
     load();
     window.scrollTo(0, 0);
+  }, [id]);
+
+  useEffect(() => {
+    const loadReviews = async () => {
+      try {
+        const { data } = await api.get(`/reviews/property/${id}`);
+        setReviews(data.reviews);
+        setAvgRating(data.avgRating);
+      } catch (err) {
+        // Non-critical - the rest of the page still works without reviews
+      }
+    };
+    loadReviews();
   }, [id]);
 
   const handleFavorite = async () => {
@@ -140,9 +165,62 @@ const PropertyDetail = () => {
     }
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
     navigator.clipboard.writeText(window.location.href);
     showToast('Link copied to clipboard');
+    if (user) {
+      try {
+        await api.post(`/properties/${property._id}/share`);
+      } catch (err) {
+        // Non-critical - the link was still copied either way
+      }
+    }
+  };
+
+  const handleBookVisit = async (e) => {
+    e.preventDefault();
+    if (!user) return showToast('Please sign in to book a site visit', 'error');
+    if (!visitForm.preferredDate) return showToast('Please choose a preferred date', 'error');
+
+    setVisitSending(true);
+    try {
+      await api.post('/site-visits', {
+        propertyId: property._id,
+        preferredDate: visitForm.preferredDate,
+        note: visitForm.note,
+      });
+      setVisitBooked(true);
+      showToast('Visit request sent! You earned 100 YC 🎉');
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to book visit', 'error');
+    } finally {
+      setVisitSending(false);
+    }
+  };
+
+  const handleReviewSubmit = async (e) => {
+    e.preventDefault();
+    if (!user) return showToast('Please sign in to write a review', 'error');
+    setReviewError('');
+    setReviewSending(true);
+    try {
+      const { data } = await api.post('/reviews', {
+        propertyId: property._id,
+        rating: reviewForm.rating,
+        comment: reviewForm.comment,
+      });
+      setReviews((prev) => [data.review, ...prev]);
+      setAvgRating((prevAvg) => {
+        const total = prevAvg * reviews.length + reviewForm.rating;
+        return Math.round((total / (reviews.length + 1)) * 10) / 10;
+      });
+      setReviewForm({ rating: 5, comment: '' });
+      showToast('Review posted! You earned 100 YC 🎉');
+    } catch (err) {
+      setReviewError(err.response?.data?.message || 'Failed to post review');
+    } finally {
+      setReviewSending(false);
+    }
   };
 
   if (loading) return <p className="text-center py-24 text-slate-muted">Loading property...</p>;
@@ -267,7 +345,7 @@ const PropertyDetail = () => {
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <p className="font-display text-lg text-navy leading-tight">{property.listedBy?.name || 'Ashland Estates'}</p>
+                  <p className="font-display text-lg text-navy leading-tight">{property.listedBy?.name || 'Youth Real Estate'}</p>
                   {property.listedBy?.verificationStatus === 'verified' && (
                     <span title="Identity verified" className="text-sage text-sm">✓</span>
                   )}
@@ -349,7 +427,106 @@ const PropertyDetail = () => {
               </form>
             )}
           </div>
+
+          {/* Book a site visit */}
+          {!(user && property.listedBy?._id === user._id) && (
+            <div className="bg-white border border-navy/10 rounded-sm p-6 shadow-card mt-6">
+              <p className="font-semibold text-navy mb-1">Book a site visit</p>
+              <p className="text-xs text-slate-muted mb-4">Request an in-person viewing — earn 100 YC when you book, plus 300 YC once the visit is completed.</p>
+              {visitBooked ? (
+                <div className="bg-sage-light text-sage text-sm px-4 py-3 rounded-sm">
+                  Your visit request has been sent. The lister will confirm a time with you shortly.
+                </div>
+              ) : (
+                <form onSubmit={handleBookVisit} className="space-y-3">
+                  <input
+                    type="date"
+                    min={new Date().toISOString().slice(0, 10)}
+                    className="input-field"
+                    value={visitForm.preferredDate}
+                    onChange={(e) => setVisitForm({ ...visitForm, preferredDate: e.target.value })}
+                  />
+                  <textarea
+                    rows={2}
+                    placeholder="Preferred time or any notes (optional)"
+                    className="input-field"
+                    value={visitForm.note}
+                    onChange={(e) => setVisitForm({ ...visitForm, note: e.target.value })}
+                  />
+                  <button disabled={visitSending} type="submit" className="btn-secondary w-full">
+                    {visitSending ? 'Booking...' : 'Request a visit'}
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Reviews */}
+      <div className="mt-16">
+        <div className="flex items-center gap-3 mb-6">
+          <h2 className="text-2xl">Reviews</h2>
+          {reviews.length > 0 && (
+            <span className="text-sm text-slate-muted">
+              ★ {avgRating} · {reviews.length} review{reviews.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+
+        {user && property.listedBy?._id !== user._id && !reviews.some((r) => r.user?._id === user._id) && (
+          <form onSubmit={handleReviewSubmit} className="border border-navy/10 rounded-sm p-6 mb-8 bg-parchment/40">
+            <p className="font-semibold text-navy mb-3">Write a review <span className="text-xs font-normal text-brass">(earn 100 YC)</span></p>
+            <div className="flex items-center gap-1 mb-3">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setReviewForm({ ...reviewForm, rating: star })}
+                  className={`text-2xl leading-none ${star <= reviewForm.rating ? 'text-brass' : 'text-navy/15'}`}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+            <textarea
+              rows={3}
+              placeholder="Share your experience with this property or the lister..."
+              className="input-field mb-3"
+              value={reviewForm.comment}
+              onChange={(e) => setReviewForm({ ...reviewForm, comment: e.target.value })}
+            />
+            {reviewError && <p className="text-xs text-brick mb-2">{reviewError}</p>}
+            <button disabled={reviewSending} type="submit" className="btn-primary text-sm px-5 py-2.5">
+              {reviewSending ? 'Posting...' : 'Post review'}
+            </button>
+          </form>
+        )}
+
+        {reviews.length === 0 ? (
+          <p className="text-slate-muted text-sm">No reviews yet — be the first to share your experience.</p>
+        ) : (
+          <div className="space-y-5">
+            {reviews.map((r) => (
+              <div key={r._id} className="border-b border-navy/10 pb-5">
+                <div className="flex items-center gap-3 mb-1.5">
+                  <div className="w-9 h-9 rounded-full bg-brass text-navy flex items-center justify-center font-display text-sm overflow-hidden flex-shrink-0">
+                    {r.user?.selfiePhoto ? (
+                      <img src={r.user.selfiePhoto} alt={r.user.name} className="w-full h-full object-cover" />
+                    ) : (
+                      r.user?.name?.charAt(0).toUpperCase() || '?'
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-navy">{r.user?.name || 'Anonymous'}</p>
+                    <p className="text-xs text-brass">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</p>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-ink leading-relaxed">{r.comment}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {similar.length > 0 && (

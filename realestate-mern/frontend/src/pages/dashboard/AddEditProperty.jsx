@@ -543,7 +543,7 @@ const AddEditProperty = () => {
                 <span>NPR — Nepalese Rupee</span>
                 <span className="text-xs text-slate-muted">Fixed</span>
               </div>
-              <p className="text-xs text-slate-muted mt-1">All listings on Ashland Estates are priced in Nepalese Rupees.</p>
+              <p className="text-xs text-slate-muted mt-1">All listings on Youth Real Estate are priced in Nepalese Rupees.</p>
             </div>
             <div className="flex items-center gap-2 mt-2">
               <input type="checkbox" id="negotiable" checked={form.negotiable} onChange={(e) => updateField('negotiable', e.target.checked)} />

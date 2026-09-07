@@ -1,290 +1,172 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
-const MISSION_ITEMS = [
-  'To promote transparent and responsible real estate practices.',
-  'To help customers make informed property decisions.',
-  'To connect buyers, sellers, builders, investors, and service providers through one ecosystem.',
-  'To make property ownership more achievable through structured and practical solutions.',
-  'To use technology and data to create a simpler and better real estate experience.',
-  'To build long-term relationships - not one-time transactions.',
-];
+const journeySteps = ['Discover', 'Compare', 'Verify', 'Finance', 'Buy', 'Build', 'Manage', 'Grow'];
 
-const LIFECYCLE_STEPS = ['Discover', 'Compare', 'Verify', 'Finance', 'Buy', 'Build', 'Manage', 'Grow'];
+const promiseValues = ['Trust', 'Transparency', 'Responsibility', 'Innovation', 'Customer Success'];
 
-const REWARDS_LEVEL_STEPS = ['Explore', 'Earn XP', 'Level Up', 'Earn YC', 'Unlock Benefits'];
-
-const PROMISE_LINES = ['Every property.', 'Every customer.', 'Every transaction.', 'Every relationship.'];
-
-const REWARD_CARDS = [
+const leadership = [
   {
-    title: 'XP',
-    subtitle: 'Experience Points',
-    body: 'Earn XP by engaging with the Youth Real Estate ecosystem - exploring properties, completing activities, referring others, and interacting with our services. XP helps you grow your level and unlock new benefits.',
+    name: 'Yam Kumar Karki',
+    initials: 'YK',
+    role: 'Founder & CEO',
+    tag: 'Real Estate Entrepreneur',
+    bio: [
+      "Yam Kumar Karki is the Founder & CEO of Youth Real Estate Pvt. Ltd., a growing real estate venture focused on building a more trusted, transparent, and customer-focused property ecosystem in Nepal.",
+      'With a strong interest in real estate, construction, property development, and entrepreneurship, he is working to bring a more modern approach to the traditional real estate industry.',
+      'His vision goes beyond buying and selling properties — he aims to create an ecosystem where people can discover property opportunities, receive professional guidance, access property-related services, and make important real estate decisions with greater confidence. As an entrepreneur, he is particularly focused on creating opportunities for young people and middle-income families to participate in real estate through practical, transparent, and accessible solutions.',
+    ],
+    quote: 'To make real estate more trusted, accessible, and opportunity-driven for the next generation.',
   },
   {
-    title: 'YC',
-    subtitle: 'Youth Coin',
-    body: 'YC Coin is our customer rewards system. Members can earn YC Coins through eligible activities and use them for selected discounts, rewards, and benefits across the Youth Real Estate ecosystem.',
-  },
-  {
-    title: 'LVL',
-    subtitle: 'Level System',
-    body: 'As your XP increases, your Youth Level increases. Higher levels can unlock exclusive rewards, privileges, offers, and community benefits.',
+    name: 'Chudaraj Basnet',
+    initials: 'CB',
+    role: 'Developer, Investor & Strategic Supporter',
+    tag: 'Youth Real Estate',
+    bio: [
+      'Chudaraj Basnet is associated with Youth Real Estate as a Developer, Investor, and Strategic Supporter.',
+      'He contributes to the growth and development of the company by supporting its projects, business opportunities, and long-term vision. His involvement represents a shared commitment to building sustainable opportunities and contributing to the growth of Youth Real Estate.',
+    ],
   },
 ];
-
-// A small, tasteful stand-in for a headshot when no photo is available yet -
-// initials on a solid navy circle, in the site's own display typeface.
-const InitialsAvatar = ({ initials }) => (
-  <div className="w-20 h-20 rounded-full bg-navy text-ivory flex items-center justify-center font-display text-2xl flex-shrink-0">
-    {initials}
-  </div>
-);
-
-const FlowSteps = ({ steps }) => (
-  <div className="flex flex-wrap items-center gap-2">
-    {steps.map((step, i) => (
-      <React.Fragment key={step}>
-        <span className="text-xs font-semibold uppercase tracking-wide text-navy border border-brass/40 rounded-full px-3 py-1.5 whitespace-nowrap">
-          {step}
-        </span>
-        {i < steps.length - 1 && <span className="text-brass/60">&rarr;</span>}
-      </React.Fragment>
-    ))}
-  </div>
-);
-
-const SectionHeading = ({ eyebrow, title }) => (
-  <>
-    {eyebrow && <p className="eyebrow mb-2">{eyebrow}</p>}
-    <h2 className="text-2xl md:text-3xl mb-5">{title}</h2>
-  </>
-);
-
-const PullQuote = ({ children }) => (
-  <blockquote className="border-l-4 border-brass pl-5 md:pl-6 py-1 my-6 text-lg md:text-xl font-display text-navy leading-snug">
-    {children}
-  </blockquote>
-);
 
 const About = () => {
   return (
-    <div className="max-w-4xl mx-auto px-5 md:px-8 py-16">
-      {/* Header */}
-      <p className="eyebrow mb-2">Our story</p>
-      <h1 className="text-4xl md:text-5xl mb-3">About Youth Real Estate Pvt. Ltd.</h1>
-      <p className="text-brass font-display text-lg md:text-xl italic mb-8">
-        Building Trust. Creating Opportunities. Shaping Better Property Decisions.
-      </p>
-
-      <p className="text-slate-ink leading-relaxed mb-5">
-        <strong className="text-navy">Youth Real Estate</strong> is a modern real estate company built with a
-        simple belief: <strong className="text-navy">property ownership should be safe, transparent, informed,
-        and achievable for everyone.</strong>
-      </p>
-      <p className="text-slate-ink leading-relaxed mb-5">
-        We are more than a property-selling company. We are building a{' '}
-        <strong className="text-navy">complete real estate ecosystem</strong> that connects people with the right
-        property, the right information, the right financial planning, and the right services - under one
-        trusted platform.
-      </p>
-      <p className="text-slate-ink leading-relaxed mb-16">
-        From <strong className="text-navy">buying and selling property to construction, property management,
-        home services, investment solutions, and digital property services</strong>, our goal is to simplify
-        every step of the property journey.
-      </p>
-
-      {/* Our Approach */}
-      <section className="mb-16 pt-16 border-t border-navy/10">
-        <SectionHeading eyebrow="How we work" title="Our Approach" />
-        <p className="text-slate-ink leading-relaxed mb-4">
-          We believe that a property decision should never be based only on price or promises.
+    <div>
+      {/* Hero / intro */}
+      <section className="max-w-5xl mx-auto px-5 md:px-8 pt-16 pb-4">
+        <p className="eyebrow mb-2">Our story</p>
+        <h1 className="text-4xl md:text-5xl mb-4">About Youth Real Estate</h1>
+        <p className="text-brass font-display italic text-lg md:text-xl mb-8">
+          Building Trust. Creating Opportunities. Shaping Better Property Decisions.
         </p>
-        <p className="text-slate-ink leading-relaxed">
-          We focus on understanding our customers' needs, budgets, goals, and future plans before recommending a
-          property. We emphasize <strong className="text-navy">transparent information, responsible guidance,
-          proper documentation, and a customer-first experience.</strong>
+        <p className="text-slate-ink leading-relaxed mb-6 text-lg">
+          Youth Real Estate is a modern real estate company built with a simple belief: property ownership
+          should be safe, transparent, informed, and achievable for everyone.
         </p>
-        <PullQuote>Our role is not simply to sell a property. Our role is to help you make a better property decision.</PullQuote>
-      </section>
-
-      {/* Our Vision */}
-      <section className="mb-16 pt-16 border-t border-navy/10">
-        <SectionHeading eyebrow="Where we're headed" title="Our Vision" />
-        <p className="text-slate-ink leading-relaxed">
-          To become <strong className="text-navy">Nepal's most trusted and technology-driven real estate
-          ecosystem</strong>, making property ownership simpler, more transparent, and more accessible for
-          individuals, families, investors, and businesses.
-        </p>
-      </section>
-
-      {/* Our Mission */}
-      <section className="mb-16 pt-16 border-t border-navy/10">
-        <SectionHeading eyebrow="What drives us" title="Our Mission" />
-        <ul className="space-y-3">
-          {MISSION_ITEMS.map((item) => (
-            <li key={item} className="flex items-start gap-3 text-slate-ink leading-relaxed">
-              <span className="mt-2 w-1.5 h-1.5 rounded-full bg-brass flex-shrink-0" />
-              <span>{item}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {/* More Than Real Estate */}
-      <section className="mb-16 pt-16 border-t border-navy/10">
-        <SectionHeading eyebrow="The full picture" title="More Than Real Estate" />
         <p className="text-slate-ink leading-relaxed mb-6">
-          At Youth Real Estate Pvt. Ltd, we are building for the <strong className="text-navy">entire property
-          lifecycle</strong>.
+          We are more than a property-selling company. We are building a complete real estate ecosystem that
+          connects people with the right property, the right information, the right financial planning, and
+          the right services — under one trusted platform. From buying and selling property to construction,
+          property management, home services, investment solutions, and digital property services, our goal is
+          to simplify every step of the property journey.
         </p>
-        <div className="bg-parchment/60 border border-navy/10 rounded-sm p-6 mb-6">
-          <FlowSteps steps={LIFECYCLE_STEPS} />
+      </section>
+
+      {/* Journey strip */}
+      <section className="max-w-5xl mx-auto px-5 md:px-8 mb-14">
+        <div className="bg-navy rounded-sm px-6 py-6 md:px-10 md:py-8 flex flex-wrap items-center justify-center gap-x-2 gap-y-3">
+          {journeySteps.map((step, i) => (
+            <React.Fragment key={step}>
+              <span className="text-ivory font-display text-sm md:text-base tracking-wide">{step}</span>
+              {i < journeySteps.length - 1 && <span className="text-brass-light">→</span>}
+            </React.Fragment>
+          ))}
         </div>
-        <p className="text-slate-ink leading-relaxed">
-          Because for us, the relationship does not end when a property is purchased.
+        <p className="text-center text-sm text-slate-muted italic mt-4">
+          Because for us, the relationship doesn't end when a property is purchased — it begins there.
         </p>
-        <PullQuote>It begins there.</PullQuote>
+      </section>
+
+      {/* Approach */}
+      <section className="max-w-5xl mx-auto px-5 md:px-8 mb-16">
+        <p className="eyebrow mb-2">Our approach</p>
+        <h2 className="text-3xl mb-5">A decision, not just a transaction</h2>
+        <p className="text-slate-ink leading-relaxed mb-4 max-w-3xl">
+          We believe that a property decision should never be based only on price or promises. We focus on
+          understanding our customers' needs, budgets, goals, and future plans before recommending a property —
+          emphasizing transparent information, responsible guidance, proper documentation, and a customer-first
+          experience.
+        </p>
+        <p className="text-slate-ink leading-relaxed max-w-3xl font-medium">
+          Our role isn't simply to sell a property. Our role is to help you make a better property decision.
+        </p>
+      </section>
+
+      {/* Vision & Mission */}
+      <section className="max-w-5xl mx-auto px-5 md:px-8 mb-16 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="border border-navy/10 rounded-sm p-8 bg-sage-light/40">
+          <p className="font-display text-xl text-navy mb-3">Our Vision</p>
+          <p className="text-sm text-slate-ink leading-relaxed">
+            To become Nepal's most trusted and technology-driven real estate ecosystem, making property
+            ownership simpler, more transparent, and more accessible for individuals, families, investors, and
+            businesses.
+          </p>
+        </div>
+        <div className="border border-navy/10 rounded-sm p-8 bg-brick-light/40">
+          <p className="font-display text-xl text-navy mb-3">Our Mission</p>
+          <ul className="text-sm text-slate-ink leading-relaxed space-y-1.5 list-disc list-inside">
+            <li>Promote transparent and responsible real estate practices.</li>
+            <li>Help customers make informed property decisions.</li>
+            <li>Connect buyers, sellers, builders, investors, and service providers through one ecosystem.</li>
+            <li>Make property ownership more achievable through structured, practical solutions.</li>
+            <li>Use technology and data to create a simpler, better real estate experience.</li>
+            <li>Build long-term relationships — not one-time transactions.</li>
+          </ul>
+        </div>
       </section>
 
       {/* Our Promise */}
-      <section className="mb-16 pt-16 border-t border-navy/10">
-        <SectionHeading eyebrow="What we stand for" title="Our Promise" />
-        <p className="text-slate-ink leading-relaxed mb-6">
-          We are committed to building our business around{' '}
-          <strong className="text-navy">Trust, Transparency, Responsibility, Innovation, and Customer
-          Success.</strong>
-        </p>
-        <div className="flex flex-wrap gap-x-8 gap-y-1 mb-6">
-          {PROMISE_LINES.map((line) => (
-            <p key={line} className="font-display text-lg text-navy">{line}</p>
-          ))}
-        </div>
-        <p className="text-brass font-display text-xl italic">We believe in doing real estate differently.</p>
-      </section>
-
-      {/* Youth Rewards & Level System */}
-      <section className="mb-16 pt-16 border-t border-navy/10">
-        <SectionHeading eyebrow="Member benefits" title="Youth Rewards & Level System" />
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
-          {REWARD_CARDS.map((card) => (
-            <div key={card.title} className="border border-navy/10 rounded-sm p-6">
-              <div className="w-11 h-11 rounded-full bg-navy text-ivory flex items-center justify-center font-display text-sm mb-4">
-                {card.title}
-              </div>
-              <p className="font-display text-lg mb-2">{card.subtitle}</p>
-              <p className="text-sm text-slate-muted leading-relaxed">{card.body}</p>
+      <section className="max-w-5xl mx-auto px-5 md:px-8 mb-20">
+        <p className="eyebrow mb-2">Our promise</p>
+        <h2 className="text-3xl mb-8">We believe in doing real estate differently</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+          {promiseValues.map((value) => (
+            <div key={value} className="border border-navy/10 rounded-sm p-5 text-center hover:border-brass hover:shadow-card transition-all">
+              <p className="font-display text-base text-navy">{value}</p>
             </div>
           ))}
-        </div>
-        <div className="bg-parchment/60 border border-navy/10 rounded-sm p-6">
-          <FlowSteps steps={REWARDS_LEVEL_STEPS} />
         </div>
       </section>
 
       {/* Leadership */}
-      <section className="pt-16 border-t border-navy/10">
-        <p className="eyebrow mb-2">The people behind it</p>
-        <h2 className="text-3xl mb-10">Leadership</h2>
+      <section className="bg-parchment/60 py-20">
+        <div className="max-w-5xl mx-auto px-5 md:px-8">
+          <p className="eyebrow mb-2">The people behind it</p>
+          <h2 className="text-3xl mb-4">Leadership</h2>
+          <p className="text-slate-ink leading-relaxed mb-12 max-w-2xl">
+            Youth Real Estate is led by a small team combining entrepreneurship, investment, development, and
+            innovation to create a stronger, more customer-focused real estate ecosystem.
+          </p>
 
-        <div className="space-y-10">
-          {/* Yam Kumar Karki */}
-          <div className="bg-white border border-navy/10 rounded-sm p-6 md:p-8">
-            <div className="flex items-start gap-5 mb-6">
-              <InitialsAvatar initials="YK" />
-              <div>
-                <h3 className="text-2xl mb-1">Yam Kumar Karki</h3>
-                <p className="text-xs font-semibold uppercase tracking-wide text-brass">
-                  Founder &amp; CEO | Real Estate Entrepreneur
-                </p>
+          <div className="space-y-8">
+            {leadership.map((person) => (
+              <div key={person.name} className="bg-white border border-navy/10 rounded-sm shadow-card p-8 md:p-10 flex flex-col md:flex-row gap-8">
+                <div className="flex-shrink-0 flex md:flex-col items-center md:items-start gap-4">
+                  <div className="w-24 h-24 md:w-28 md:h-28 rounded-full bg-navy flex items-center justify-center flex-shrink-0">
+                    <span className="font-display text-2xl md:text-3xl text-brass-light">{person.initials}</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="font-display text-2xl text-navy leading-snug">{person.name}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-brass mb-1">{person.role}</p>
+                  <p className="text-sm text-slate-muted mb-4">{person.tag}</p>
+                  {person.bio.map((para, i) => (
+                    <p key={i} className="text-sm text-slate-ink leading-relaxed mb-3 last:mb-0">{para}</p>
+                  ))}
+                  {person.quote && (
+                    <blockquote className="border-l-2 border-brass pl-4 mt-5 italic text-navy font-display text-lg leading-snug">
+                      “{person.quote}”
+                    </blockquote>
+                  )}
+                </div>
               </div>
-            </div>
-
-            <div className="space-y-4 text-slate-ink leading-relaxed">
-              <p>
-                Pawan Karki is the Founder &amp; CEO of <strong className="text-navy">Youth Real Estate Pvt.
-                Ltd.</strong>, a growing real estate venture focused on building a more trusted, transparent, and
-                customer-focused property ecosystem in Nepal.
-              </p>
-              <p>
-                With a strong interest in real estate, construction, property development, and entrepreneurship,
-                Pawan is working to bring a more modern approach to the traditional real estate industry.
-              </p>
-              <p>
-                His vision goes beyond buying and selling properties. He aims to create an ecosystem where people
-                can discover property opportunities, receive professional guidance, access property-related
-                services, and make important real estate decisions with greater confidence.
-              </p>
-              <p>
-                As an entrepreneur, he is particularly focused on creating opportunities for young people and
-                middle-income families to participate in real estate through practical, transparent, and
-                accessible solutions.
-              </p>
-            </div>
-
-            <div className="mt-6">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-muted mb-2">His Vision</p>
-              <PullQuote>
-                &ldquo;To make real estate more trusted, accessible, and opportunity-driven for the next
-                generation.&rdquo;
-              </PullQuote>
-            </div>
-
-            <div className="space-y-4 text-slate-ink leading-relaxed">
-              <p>
-                Pawan believes that real estate should not be built only around transactions. It should be built
-                around <strong className="text-navy">trust, relationships, transparency, and long-term
-                value.</strong>
-              </p>
-              <p>
-                Through Youth Real Estate, his long-term vision is to develop a complete real estate ecosystem
-                that connects <strong className="text-navy">buyers, sellers, investors, agents, builders,
-                homeowners, and property service providers</strong> through technology and professional services.
-              </p>
-              <p>
-                From property marketplace and construction services to property management, home services,
-                investment opportunities, and digital solutions, Pawan is working toward building a broader real
-                estate platform designed for the changing needs of Nepal's next generation.
-              </p>
-            </div>
-
-            <div className="mt-6 pt-6 border-t border-navy/10 text-sm">
-              <p className="font-semibold text-navy">Yam Kumar Karki</p>
-              <p className="font-semibold text-navy">Founder &amp; CEO</p>
-              <p className="font-semibold text-navy">Youth Real Estate Pvt. Ltd.</p>
-            </div>
-          </div>
-
-          {/* Chudaraj Basnet */}
-          <div className="bg-white border border-navy/10 rounded-sm p-6 md:p-8">
-            <div className="flex items-start gap-5 mb-6">
-              <InitialsAvatar initials="CB" />
-              <div>
-                <h3 className="text-2xl mb-1">Chudaraj Basnet</h3>
-                <p className="text-xs font-semibold uppercase tracking-wide text-brass">
-                  Developer, Investor &amp; Strategic Supporter
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4 text-slate-ink leading-relaxed">
-              <p>
-                Chudaraj Basnet is associated with Youth Real Estate as a Developer, Investor, and Strategic
-                Supporter.
-              </p>
-              <p>
-                He contributes to the growth and development of the company by supporting its projects, business
-                opportunities, and long-term vision. His involvement represents a shared commitment to building
-                sustainable opportunities and contributing to the growth of Youth Real Estate.
-              </p>
-            </div>
+            ))}
           </div>
         </div>
+      </section>
 
-        <p className="text-slate-ink leading-relaxed mt-10 max-w-2xl">
-          Together, the leadership aims to combine entrepreneurship, investment, development, and innovation to
-          create a stronger and more customer-focused real estate ecosystem.
+      {/* CTA */}
+      <section className="max-w-5xl mx-auto px-5 md:px-8 py-16 text-center">
+        <p className="font-display text-2xl text-navy mb-3">Ready to make your next move?</p>
+        <p className="text-slate-muted mb-6 max-w-xl mx-auto">
+          Explore verified listings or get in touch with our team — we're here to help you make a better
+          property decision.
         </p>
+        <div className="flex items-center justify-center gap-4">
+          <Link to="/properties" className="btn-gold">Browse properties</Link>
+          <Link to="/contact" className="text-sm font-medium text-brass hover:underline">Contact us →</Link>
+        </div>
       </section>
     </div>
   );

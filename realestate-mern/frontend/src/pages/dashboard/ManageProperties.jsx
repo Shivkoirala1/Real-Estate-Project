@@ -16,6 +16,9 @@ const ManageProperties = ({ showHeader = true }) => {
   const navigate = useNavigate();
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [soldModalProperty, setSoldModalProperty] = useState(null);
+  const [buyerEmail, setBuyerEmail] = useState('');
+  const [soldSubmitting, setSoldSubmitting] = useState(false);
   const isAdmin = user?.role === 'admin';
 
   const load = async () => {
@@ -34,6 +37,15 @@ const ManageProperties = ({ showHeader = true }) => {
   const handleStatusChange = async (property, newStatus) => {
     if (newStatus === property.status) return;
 
+    // Marking a property SOLD is the one status change that can attribute a
+    // buyer (unlocking the purchase/sale/referral rewards), so it gets its
+    // own small modal instead of the plain confirm dialog.
+    if (newStatus === 'sold') {
+      setSoldModalProperty(property);
+      setBuyerEmail('');
+      return;
+    }
+
     const confirmed = await confirm({
       title: 'Update property status?',
       message: `Change "${property.title}" from ${statusLabels[property.status]} to ${statusLabels[newStatus]}? Once saved, buyers will immediately see the new status.`,
@@ -48,6 +60,23 @@ const ManageProperties = ({ showHeader = true }) => {
       load();
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to update status', 'error');
+    }
+  };
+
+  const handleConfirmSold = async (attributeBuyer) => {
+    setSoldSubmitting(true);
+    try {
+      await api.patch(`/properties/${soldModalProperty._id}/status`, {
+        status: 'sold',
+        ...(attributeBuyer && buyerEmail.trim() ? { buyerEmail: buyerEmail.trim() } : {}),
+      });
+      showToast(attributeBuyer && buyerEmail.trim() ? 'Marked as sold — buyer and seller rewards awarded' : 'Property marked as sold');
+      setSoldModalProperty(null);
+      load();
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update status', 'error');
+    } finally {
+      setSoldSubmitting(false);
     }
   };
 
@@ -140,6 +169,45 @@ const ManageProperties = ({ showHeader = true }) => {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Mark-as-sold buyer attribution modal */}
+      {soldModalProperty && (
+        <div className="fixed inset-0 bg-navy/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-sm shadow-lifted max-w-md w-full p-6">
+            <p className="font-display text-xl text-navy mb-2">Mark "{soldModalProperty.title}" as sold</p>
+            <p className="text-sm text-slate-muted mb-4 leading-relaxed">
+              If you know the buyer's account email, enter it below to award the purchase reward to the buyer
+              and the sale reward to you (and a referral bonus if they were referred). Leave it blank to just
+              mark the property sold without attributing a buyer.
+            </p>
+            <input
+              type="email"
+              placeholder="Buyer's account email (optional)"
+              className="input-field mb-4"
+              value={buyerEmail}
+              onChange={(e) => setBuyerEmail(e.target.value)}
+            />
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setSoldModalProperty(null)}
+                disabled={soldSubmitting}
+                className="btn-secondary flex-1 text-sm py-2.5"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmSold(true)}
+                disabled={soldSubmitting}
+                className="btn-primary flex-1 text-sm py-2.5"
+              >
+                {soldSubmitting ? 'Saving...' : 'Confirm sold'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

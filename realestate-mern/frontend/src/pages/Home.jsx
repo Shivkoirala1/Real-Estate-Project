@@ -58,7 +58,7 @@ const Home = () => {
         <div className="absolute inset-0 bg-navy-dark/20" />
 
         <div className="max-w-7xl mx-auto px-5 md:px-8 pt-20 pb-32 relative">
-          <p className="eyebrow mb-4 hero-text-shadow">Youth Real Estate Pvt.Ltd — Nepal's Trusted Ghar-Jagga Marketplace</p>
+          <p className="eyebrow mb-4 hero-text-shadow">Youth Real Estate — Nepal's Trusted Ghar-Jagga Marketplace</p>
           <h1 className="text-4xl md:text-6xl text-white leading-[1.05] max-w-3xl mb-6 hero-text-shadow">
             Find your dream <span className="italic text-brass-light">ghar</span> in the heart of Nepal.
           </h1>
@@ -133,7 +133,7 @@ const Home = () => {
       {/* Why choose us */}
       <section className="max-w-7xl mx-auto px-5 md:px-8 mt-24 grid grid-cols-1 md:grid-cols-2 gap-14 items-center">
         <div>
-          <p className="eyebrow mb-2">Why Ashland Estates</p>
+          <p className="eyebrow mb-2">Why Youth Real Estate</p>
           <h2 className="text-3xl mb-6">A platform built on trust</h2>
           <div className="space-y-6">
             {[
