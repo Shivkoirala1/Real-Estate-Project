@@ -4,6 +4,7 @@ const { PropertyType } = require('../models/Category');
 const asyncHandler = require('../utils/asyncHandler');
 const { validatePropertyInput } = require('../utils/validateProperty');
 const { notifyMany } = require('../utils/notify');
+const { awardReward } = require('../utils/rewards');
 
 // Empty-string values for ObjectId-ref fields (e.g. a poster leaving the
 // district/city dropdown unselected) previously crashed property creation
@@ -159,10 +160,8 @@ const createProperty = asyncHandler(async (req, res) => {
   body.currency = 'NPR';
 
   const files = req.files || {};
-  // Cloudinary storage puts the real, permanent image URL on `.path` -
-  // `.filename` is just an internal Cloudinary id, not a usable link.
-  const images = files.images ? files.images.map((f) => f.path) : [];
-  const coverImage = files.coverImage ? files.coverImage[0].path : (images[0] || '');
+  const images = files.images ? files.images.map((f) => `/uploads/${f.filename}`) : [];
+  const coverImage = files.coverImage ? `/uploads/${files.coverImage[0].filename}` : (images[0] || '');
 
   // The Land vs House/Apartment/etc. posting forms ask for different
   // required fields - look up which one this listing's type maps to so
@@ -233,12 +232,10 @@ const updateProperty = asyncHandler(async (req, res) => {
     }
   }
 
-  // Cloudinary storage puts the real, permanent image URL on `.path` -
-  // `.filename` is just an internal Cloudinary id, not a usable link.
-  const newImages = files.images ? files.images.map((f) => f.path) : [];
+  const newImages = files.images ? files.images.map((f) => `/uploads/${f.filename}`) : [];
   const finalImages = [...keptExisting, ...newImages];
 
-  const newCoverImage = files.coverImage ? files.coverImage[0].path : currentMedia.coverImage;
+  const newCoverImage = files.coverImage ? `/uploads/${files.coverImage[0].filename}` : currentMedia.coverImage;
 
   body.media = {
     coverImage: newCoverImage || finalImages[0] || '',
@@ -305,6 +302,20 @@ const updatePropertyStatus = asyncHandler(async (req, res) => {
   const wasAlreadySold = property.status === 'sold';
 
   property.status = status;
+
+  // When a property newly becomes sold, the owner can optionally attribute
+  // the sale to a specific buyer (e.g. someone who inquired or booked a site
+  // visit). That's what unlocks the buyer/seller purchase rewards below, and
+  // is also what a referral sale reward is chained off of.
+  let buyer = null;
+  if (status === 'sold' && !wasAlreadySold && req.body.buyerEmail) {
+    buyer = await User.findOne({ email: req.body.buyerEmail.trim().toLowerCase() });
+    if (buyer) {
+      property.soldTo = buyer._id;
+      property.soldAt = new Date();
+    }
+  }
+
   await property.save();
 
   // Alert admins whenever a property newly becomes sold - not on a repeat
@@ -321,6 +332,18 @@ const updatePropertyStatus = asyncHandler(async (req, res) => {
         link: '/dashboard/admin/properties',
       }
     );
+
+    if (buyer) {
+      await awardReward(buyer._id, 'PROPERTY_BUY', { refId: property._id, refModel: 'Property' });
+      await awardReward(property.listedBy, 'PROPERTY_SELL', { refId: property._id, refModel: 'Property' });
+
+      // If the buyer originally signed up through a referral, the referrer
+      // earns the (much larger) referral-sale bonus on top of their
+      // original sign-up bonus.
+      if (buyer.referredBy) {
+        await awardReward(buyer.referredBy, 'REFERRAL_SALE', { refId: property._id, refModel: 'Property' });
+      }
+    }
   }
 
   res.json({ success: true, property });
@@ -376,6 +399,14 @@ const toggleFavorite = asyncHandler(async (req, res) => {
   }
 
   await user.save();
+
+  // Rewarded once per property - unfavoriting and re-favoriting the same
+  // property again won't pay out a second time (awardReward dedupes on
+  // user + action + refId).
+  if (favorited) {
+    await awardReward(user._id, 'PROPERTY_SAVE', { refId: property._id, refModel: 'Property' });
+  }
+
   res.json({ success: true, favorited });
 });
 
@@ -390,6 +421,24 @@ const getFavorites = asyncHandler(async (req, res) => {
   res.json({ success: true, favorites: user.favorites });
 });
 
+// @desc    Log that the logged-in user shared a property (e.g. tapped the
+//          share button), rewarding YC/XP the first time per property
+// @route   POST /api/properties/:id/share
+// @access  Private
+const shareProperty = asyncHandler(async (req, res) => {
+  const property = await Property.findById(req.params.id);
+  if (!property) {
+    return res.status(404).json({ success: false, message: 'Property not found' });
+  }
+
+  property.shares += 1;
+  await property.save();
+
+  await awardReward(req.user._id, 'PROPERTY_SHARE', { refId: property._id, refModel: 'Property' });
+
+  res.json({ success: true, shares: property.shares });
+});
+
 module.exports = {
   getProperties,
   getProperty,
@@ -400,4 +449,5 @@ module.exports = {
   getMyProperties,
   toggleFavorite,
   getFavorites,
+  shareProperty,
 };
