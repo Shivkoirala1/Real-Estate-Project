@@ -10,6 +10,7 @@ const {
   getMyProperties,
   toggleFavorite,
   getFavorites,
+  shareProperty,
 } = require('../controllers/propertyController');
 const { protect, requireVerified } = require('../middleware/auth');
 const upload = require('../middleware/upload');
@@ -23,7 +24,7 @@ const propertyUpload = upload.fields([
 router.get('/', getProperties);
 
 // Logged-in scoped routes (must be defined before the /:id catch-all)
-router.get('/my/listings', protect,  getMyProperties);
+router.get('/my/listings', protect, getMyProperties);
 router.get('/my/favorites', protect, getFavorites);
 
 router.get('/:id', getProperty);
@@ -36,5 +37,6 @@ router.delete('/:id', protect, requireVerified, deleteProperty);
 
 // Any registered user - favorites
 router.post('/:id/favorite', protect, toggleFavorite);
+router.post('/:id/share', protect, shareProperty);
 
 module.exports = router;
