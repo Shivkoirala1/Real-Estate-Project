@@ -1,14 +1,6 @@
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
-import React from 'react';
-import { Routes, Route } from 'react-router-dom';
 
-import Navbar from './components/Navbar';
-import Footer from './components/Footer';
-import ProtectedRoute from './components/ProtectedRoute';
-import PostGate from './components/PostGate';
-import DashboardLayout from './components/dashboard/DashboardLayout';
-import MyPropertiesLayout from './components/MyPropertiesLayout';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
