@@ -31,6 +31,53 @@ const typeIcon = {
       <circle cx="7.5" cy="7.5" r="1.5" />
     </svg>
   ),
+  sale_submitted: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M6 2h12v20l-3-2-3 2-3-2-3 2V2z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 8h6M9 12h6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  sale_verified: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8.5 12l2.5 2.5 4.5-5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  sale_rejected: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M15 9l-6 6M9 9l6 6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  commission_paid: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M6 12h.01M18 12h.01" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  emi_installment_due: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  emi_installment_overdue: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 9v4M12 17h.01" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  conversation_message: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  conversation_followup: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   system: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="12" cy="12" r="10" />
@@ -45,6 +92,14 @@ const iconTint = {
   inquiry_responded: 'bg-sage-light text-sage',
   inquiry_followup: 'bg-navy/10 text-navy',
   property_sold: 'bg-brick-light text-brick',
+  sale_submitted: 'bg-brass-light/25 text-brass-dark',
+  sale_verified: 'bg-sage-light text-sage',
+  sale_rejected: 'bg-brick-light text-brick',
+  commission_paid: 'bg-sage-light text-sage',
+  emi_installment_due: 'bg-navy/10 text-navy',
+  emi_installment_overdue: 'bg-brick-light text-brick',
+  conversation_message: 'bg-sage-light text-sage',
+  conversation_followup: 'bg-navy/10 text-navy',
   system: 'bg-parchment text-slate-ink',
 };
 

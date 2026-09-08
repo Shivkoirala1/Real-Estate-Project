@@ -1,5 +1,11 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import api from '../api/axios';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import {
+  getNotifications,
+  getUnreadCount,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  deleteNotification as deleteNotificationRequest,
+} from '../services/notificationService';
 import { useAuth } from './AuthContext';
 
 const NotificationContext = createContext(null);
@@ -17,7 +23,7 @@ export const NotificationProvider = ({ children }) => {
     if (!user) return;
     setLoading(true);
     try {
-      const { data } = await api.get('/notifications', { params: { filter, limit: 30 } });
+      const data = await getNotifications({ filter, limit: 30 });
       setNotifications(data.notifications);
       setUnreadCount(data.unreadCount);
     } catch (err) {
@@ -30,7 +36,7 @@ export const NotificationProvider = ({ children }) => {
   const refreshUnreadCount = useCallback(async () => {
     if (!user) return;
     try {
-      const { data } = await api.get('/notifications/unread-count');
+      const data = await getUnreadCount();
       setUnreadCount(data.unreadCount);
     } catch (err) {
       // silent fail
@@ -41,7 +47,7 @@ export const NotificationProvider = ({ children }) => {
     setNotifications((prev) => prev.map((n) => (n._id === id ? { ...n, isRead: true } : n)));
     setUnreadCount((c) => Math.max(0, c - 1));
     try {
-      await api.patch(`/notifications/${id}/read`);
+      await markNotificationAsRead(id);
     } catch (err) {
       // resync on failure
       refreshUnreadCount();
@@ -52,7 +58,7 @@ export const NotificationProvider = ({ children }) => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
     setUnreadCount(0);
     try {
-      await api.patch('/notifications/read-all');
+      await markAllNotificationsAsRead();
     } catch (err) {
       refreshUnreadCount();
     }
@@ -67,7 +73,7 @@ export const NotificationProvider = ({ children }) => {
     });
     if (wasUnread) setUnreadCount((c) => Math.max(0, c - 1));
     try {
-      await api.delete(`/notifications/${id}`);
+      await deleteNotificationRequest(id);
     } catch (err) {
       fetchNotifications();
     }
@@ -105,4 +111,14 @@ export const NotificationProvider = ({ children }) => {
   );
 };
 
-export const useNotifications = () => useContext(NotificationContext);
+export const useNotifications = () => {
+  const context = useContext(NotificationContext);
+
+  if (!context) {
+    throw new Error(
+      'useNotifications must be used within NotificationProvider'
+    );
+  }
+
+  return context;
+};

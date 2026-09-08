@@ -4,7 +4,7 @@ const { PropertyType } = require('../models/Category');
 const asyncHandler = require('../utils/asyncHandler');
 const { validatePropertyInput } = require('../utils/validateProperty');
 const { notifyMany } = require('../utils/notify');
-const { awardReward } = require('../utils/rewards');
+const { effectiveCommissionPercentage, estimatedCommissionAmount } = require('../utils/commission');
 
 // Empty-string values for ObjectId-ref fields (e.g. a poster leaving the
 // district/city dropdown unselected) previously crashed property creation
@@ -24,6 +24,42 @@ const sanitizeLocation = (location) => {
     }
   }
   return cleaned;
+};
+
+// Spec v2 (Feature 2): normalize the optional per-listing commission
+// override. Accepts a number 0-100 (plain number or numeric string - the
+// multipart form sends strings); empty string / null / the literal string
+// 'null' all mean "clear the override" so the property type default applies
+// again. Absent (undefined) means "don't touch it" on updates.
+//   { ok: false }                    -> invalid, caller responds 400
+//   { ok: true, present, value }     -> value is a number 0-100 or null
+const parseCommissionPercentage = (raw) => {
+  if (raw === undefined) return { ok: true, present: false, value: undefined };
+  if (raw === null || raw === '' || raw === 'null') return { ok: true, present: true, value: null };
+  const pct = Number(raw);
+  if (Number.isNaN(pct) || pct < 0 || pct > 100) return { ok: false };
+  return { ok: true, present: true, value: pct };
+};
+
+// Agents/admins get the effective commission figure attached; everyone else
+// gets the raw commission fields stripped entirely (closes a prior exposure
+// where `propertyType.defaultCommissionPercentage` leaked to anonymous
+// visitors via the public property endpoints).
+const applyCommissionVisibility = (propertyDoc, viewerRole) => {
+  const plain = propertyDoc.toObject ? propertyDoc.toObject() : propertyDoc;
+  const canSeeCommission = viewerRole === 'agent' || viewerRole === 'admin';
+
+  if (canSeeCommission) {
+    const pct = effectiveCommissionPercentage(plain, plain.propertyType);
+    plain.effectiveCommissionPercentage = pct;
+    plain.estimatedCommissionAmount = estimatedCommissionAmount(plain.price, pct);
+  } else {
+    delete plain.commissionPercentage;
+    if (plain.propertyType && typeof plain.propertyType === 'object') {
+      delete plain.propertyType.defaultCommissionPercentage;
+    }
+  }
+  return plain;
 };
 
 // @desc    Get all properties with search, filter, sort, pagination
@@ -85,7 +121,7 @@ const getProperties = asyncHandler(async (req, res) => {
 
   const [properties, total] = await Promise.all([
     Property.find(query)
-      .populate('propertyType', 'name')
+      .populate('propertyType', 'name defaultCommissionPercentage')
       .populate('location.city', 'name')
       .populate('location.district', 'name')
       .populate('listedBy', 'name email phone')
@@ -95,13 +131,15 @@ const getProperties = asyncHandler(async (req, res) => {
     Property.countDocuments(query),
   ]);
 
+  const visibleProperties = properties.map((p) => applyCommissionVisibility(p, req.user?.role));
+
   res.json({
     success: true,
-    count: properties.length,
+    count: visibleProperties.length,
     total,
     page: pageNum,
     pages: Math.ceil(total / limitNum),
-    properties,
+    properties: visibleProperties,
   });
 });
 
@@ -114,7 +152,7 @@ const getProperty = asyncHandler(async (req, res) => {
 
   const query = isObjectId ? { _id: id } : { slug: id };
   const property = await Property.findOne(query)
-    .populate('propertyType', 'name category')
+    .populate('propertyType', 'name category defaultCommissionPercentage')
     .populate('location.city', 'name')
     .populate('location.district', 'name')
     .populate('listedBy', 'name email phone selfiePhoto verificationStatus createdAt');
@@ -135,7 +173,11 @@ const getProperty = asyncHandler(async (req, res) => {
     .limit(4)
     .select('title price media.coverImage location status slug');
 
-  res.json({ success: true, property, similarProperties });
+  res.json({
+    success: true,
+    property: applyCommissionVisibility(property, req.user?.role),
+    similarProperties,
+  });
 });
 
 // @desc    Create new property listing
@@ -159,9 +201,19 @@ const createProperty = asyncHandler(async (req, res) => {
   // client submits here, even if the form field were somehow tampered with.
   body.currency = 'NPR';
 
-  const files = req.files || {};
-  const images = files.images ? files.images.map((f) => `/uploads/${f.filename}`) : [];
-  const coverImage = files.coverImage ? `/uploads/${files.coverImage[0].filename}` : (images[0] || '');
+  // Optional commission override - reject out-of-range/non-numeric input
+  // here (with a friendly 400) instead of letting the model validator throw
+  // a generic 500 further down.
+  const commission = parseCommissionPercentage(body.commissionPercentage);
+  if (!commission.ok) {
+    return res.status(400).json({ success: false, message: 'Commission percentage must be between 0 and 100' });
+  }
+  // On create, an untouched field simply means "no override" (null default).
+  body.commissionPercentage = commission.value === undefined ? null : commission.value;
+
+const files = req.files || {};
+const images = files.images ? files.images.map((f) => f.path) : [];
+const coverImage = files.coverImage ? files.coverImage[0].path : (images[0] || '');
 
   // The Land vs House/Apartment/etc. posting forms ask for different
   // required fields - look up which one this listing's type maps to so
@@ -216,6 +268,18 @@ const updateProperty = asyncHandler(async (req, res) => {
   // Currency is fixed to NPR platform-wide, same as on creation.
   body.currency = 'NPR';
 
+  // Optional commission override - same normalization as on create, but the
+  // field is only applied when the request actually included it, so partial
+  // edits don't wipe an existing override. Clearing (null/''/'null') is
+  // still explicit, and authorization was already checked above, so only
+  // the owner/admin can change commission settings.
+  const commission = parseCommissionPercentage(body.commissionPercentage);
+  if (!commission.ok) {
+    return res.status(400).json({ success: false, message: 'Commission percentage must be between 0 and 100' });
+  }
+  if (commission.present) body.commissionPercentage = commission.value;
+  else delete body.commissionPercentage;
+
   const currentMedia = property.media.toObject ? property.media.toObject() : property.media;
   const files = req.files || {};
 
@@ -232,10 +296,10 @@ const updateProperty = asyncHandler(async (req, res) => {
     }
   }
 
-  const newImages = files.images ? files.images.map((f) => `/uploads/${f.filename}`) : [];
-  const finalImages = [...keptExisting, ...newImages];
+ const newImages = files.images ? files.images.map((f) => f.path) : [];
+const finalImages = [...keptExisting, ...newImages];
 
-  const newCoverImage = files.coverImage ? `/uploads/${files.coverImage[0].filename}` : currentMedia.coverImage;
+const newCoverImage = files.coverImage ? files.coverImage[0].path : currentMedia.coverImage;
 
   body.media = {
     coverImage: newCoverImage || finalImages[0] || '',

@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const generateToken = require('../utils/generateToken');
+const generateToken = require('../utils/generateToken').generateToken;
 const asyncHandler = require('../utils/asyncHandler');
 const sendEmail = require('../utils/sendEmail');
 const sendSMS = require('../utils/sendSMS');
@@ -384,10 +384,10 @@ const updateProfile = asyncHandler(async (req, res) => {
   if (avatar !== undefined) user.avatar = avatar;
   if (dateOfBirth !== undefined) user.dateOfBirth = dateOfBirth || null;
 
-  const files = req.files || {};
-  if (files.selfiePhoto) user.selfiePhoto = `/uploads/${files.selfiePhoto[0].filename}`;
-  if (files.citizenshipPhotoFront) user.citizenshipPhotoFront = `/uploads/${files.citizenshipPhotoFront[0].filename}`;
-  if (files.citizenshipPhotoBack) user.citizenshipPhotoBack = `/uploads/${files.citizenshipPhotoBack[0].filename}`;
+    const files = req.files || {};
+  if (files.selfiePhoto) user.selfiePhoto = files.selfiePhoto[0].path;
+  if (files.citizenshipPhotoFront) user.citizenshipPhotoFront = files.citizenshipPhotoFront[0].path;
+  if (files.citizenshipPhotoBack) user.citizenshipPhotoBack = files.citizenshipPhotoBack[0].path;
   if (files.selfiePhoto || files.citizenshipPhotoFront || files.citizenshipPhotoBack) {
     user.verificationStatus = 'pending';
   }
@@ -450,6 +450,7 @@ const logout = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  updateProfile,
   register,
   verifyEmail,
   resendVerification,
@@ -459,7 +460,6 @@ module.exports = {
   forgotPassword,
   resetPassword,
   getMe,
-  updateProfile,
   changePassword,
   logout,
 };

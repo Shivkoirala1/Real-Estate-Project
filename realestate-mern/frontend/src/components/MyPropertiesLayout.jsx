@@ -15,7 +15,7 @@ const MyPropertiesLayout = ({ children }) => {
         <NavLink to="/my-properties" end className={tabClass}>All Listings</NavLink>
         <NavLink to="/my-properties/new" className={tabClass}>Post a Property</NavLink>
         <NavLink to="/my-properties/inquiries" className={tabClass}>My Inquiries</NavLink>
-        <NavLink to="/my-properties/visits" className={tabClass}>Visit Requests</NavLink>
+
       </nav>
       {children}
     </div>

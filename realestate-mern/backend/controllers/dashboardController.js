@@ -1,6 +1,9 @@
 const Property = require('../models/Property');
 const User = require('../models/User');
-const Inquiry = require('../models/Inquiry');
+const ContactForm = require('../models/ContactForm');
+const Lead = require('../models/Lead');
+// Spec v2 (Feature 1): pending sale verification queue size on the admin card
+const Sale = require('../models/Sale');
 const asyncHandler = require('../utils/asyncHandler');
 
 // @desc    Get admin dashboard statistics
@@ -15,7 +18,11 @@ const getAdminStats = asyncHandler(async (req, res) => {
     totalUsers,
     pendingVerifications,
     recentListings,
-    newInquiries,
+    newContactForms,
+    totalLeads,
+    activeLeads,
+    agentCount,
+    pendingSaleVerifications,
   ] = await Promise.all([
     Property.countDocuments({ isArchived: false }),
     Property.countDocuments({ status: 'available', isArchived: false }),
@@ -24,7 +31,11 @@ const getAdminStats = asyncHandler(async (req, res) => {
     User.countDocuments({ role: 'user' }),
     User.countDocuments({ verificationStatus: 'pending' }),
     Property.find({ isArchived: false }).sort({ createdAt: -1 }).limit(5).select('title price status media.coverImage createdAt'),
-    Inquiry.countDocuments({ status: 'new' }),
+    ContactForm.countDocuments({ status: 'new' }),
+    Lead.countDocuments({}),
+    Lead.countDocuments({ stage: { $nin: ['closed', 'lost'] } }),
+    User.countDocuments({ role: 'agent' }),
+    Sale.countDocuments({ status: 'pending_review' }),
   ]);
 
   res.json({
@@ -36,7 +47,12 @@ const getAdminStats = asyncHandler(async (req, res) => {
       reservedProperties,
       totalUsers,
       pendingVerifications,
-      newInquiries,
+      newInquiries: newContactForms, // legacy stat name kept for existing UI
+      newContactForms,
+      totalLeads,
+      activeLeads,
+      agentCount,
+      pendingSaleVerifications,
     },
     recentListings,
   });

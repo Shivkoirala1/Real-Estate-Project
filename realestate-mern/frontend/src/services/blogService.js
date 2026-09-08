@@ -1,4 +1,4 @@
-import api from "../api/axios";
+import api from "../utils/axios";
 
 // GET /api/blogs?page=&limit=&status=&search=  (admin — all blogs, any status)
 export const getAllBlogs = async ({ page = 1, limit = 10, status, search, orderBy } = {}) => {

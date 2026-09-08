@@ -1,17 +1,19 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { formatPrice, statusStyles, imageUrl } from '../utils/format';
+import { formatPrice, imageUrl } from '../utils/format';
+import StatusBadge from './StatusBadge';
 
 const PropertyCard = ({ property }) => {
-  const status = statusStyles[property.status] || statusStyles.available;
-
   return (
     <Link
       to={`/properties/${property.slug || property._id}`}
       className="group block bg-white rounded-sm overflow-hidden shadow-card hover:shadow-lifted transition-shadow duration-200"
     >
       <div className="relative h-52 overflow-hidden bg-parchment">
-        <span className="ribbon z-10" style={{ backgroundColor: status.bg }}>{status.label}</span>
+        <div className="absolute top-0 left-0 z-10 flex flex-col items-start gap-1">
+          <StatusBadge type="status" value={property.status} className="rounded-br-sm" />
+          <StatusBadge type="saleType" value={property.saleType} className="ml-2" />
+        </div>
         <img
           src={imageUrl(property.media?.coverImage)}
           alt={property.title}
@@ -33,6 +35,11 @@ const PropertyCard = ({ property }) => {
           {!!property.details?.bathrooms && <span>{property.details.bathrooms} Baths</span>}
           {!!property.details?.landArea && <span>{property.details.landArea} {property.details.landAreaUnit}</span>}
         </div>
+        {property.estimatedCommissionAmount != null && (
+          <div className="mt-2 pt-2 border-t border-navy/10 text-xs text-brass-dark font-medium">
+            Est. commission: NPR {property.estimatedCommissionAmount.toLocaleString()} ({property.effectiveCommissionPercentage}%)
+          </div>
+        )}
       </div>
     </Link>
   );

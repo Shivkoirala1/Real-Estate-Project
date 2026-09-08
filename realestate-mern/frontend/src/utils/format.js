@@ -9,6 +9,11 @@ export const statusStyles = {
   sold: { bg: '#A6472F', label: 'Sold' },
 };
 
+export const saleTypeStyles = {
+  sale: { bg: '#10293B', label: 'For Sale' },   // navy
+  rent: { bg: '#C79A3D', label: 'For Rent' },   // brass
+};
+
 export const timeAgo = (date) => {
   if (!date) return '';
   const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);

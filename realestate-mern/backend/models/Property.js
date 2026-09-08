@@ -13,6 +13,16 @@ const propertySchema = new mongoose.Schema(
     price: { type: Number, required: [true, 'Price is required'] },
     currency: { type: String, default: 'NPR', enum: ['NPR'] }, // platform is NPR-only by design
     negotiable: { type: Boolean, default: false },
+    // Spec v2 (Feature 2): optional commission override % for this specific
+    // listing. When set, it takes precedence over the parent PropertyType's
+    // defaultCommissionPercentage (e.g. a distressed sale the owner wants
+    // to move faster). Left null, the property type default applies.
+    commissionPercentage: {
+      type: Number,
+      min: [0, 'Commission percentage cannot be negative'],
+      max: [100, 'Commission percentage cannot exceed 100'],
+      default: null,
+    },
 
     location: {
       country: { type: String, default: 'Nepal' },
@@ -102,5 +112,11 @@ propertySchema.pre('validate', function (next) {
 propertySchema.index({ title: 'text', description: 'text' });
 propertySchema.index({ price: 1 });
 propertySchema.index({ status: 1 });
+
+// Single source of truth for whether a listing still accepts new inquiries
+// and visit requests. Only 'sold' blocks - 'reserved' stays open by design.
+propertySchema.methods.canReceiveInquiries = function () {
+  return this.status !== 'sold';
+};
 
 module.exports = mongoose.model('Property', propertySchema);

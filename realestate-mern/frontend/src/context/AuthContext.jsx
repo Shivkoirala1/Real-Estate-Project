@@ -1,5 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import api from '../api/axios';
+import {
+  getCurrentUser,
+  loginUser,
+  registerUser,
+  verifyEmail as verifyEmailRequest,
+  resendVerificationCode,
+  forgotPassword as forgotPasswordRequest,
+  resetPassword as resetPasswordRequest,
+} from '../services/authService';
 
 const AuthContext = createContext(null);
 
@@ -9,6 +17,7 @@ export const AuthProvider = ({ children }) => {
 
   // logout must be declared BEFORE useEffect so it can be referenced in the catch block
   const logout = () => {
+    // Clear both storages first to ensure a clean state
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     sessionStorage.removeItem('token');
@@ -24,7 +33,7 @@ export const AuthProvider = ({ children }) => {
         return;
       }
       try {
-        const { data } = await api.get('/auth/me');
+        const data = await getCurrentUser();
         if (data && data.user) {
           setUser(data.user);
         } else {
@@ -46,7 +55,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password, rememberMe = false) => {
-    const { data } = await api.post('/auth/login', { email, password });
+    const data = await loginUser(email, password);
 
     // Clear both storages first to ensure a clean state
     localStorage.removeItem('token');
@@ -63,19 +72,16 @@ export const AuthProvider = ({ children }) => {
   };
 
   const register = async (formData) => {
-    const { data } = await api.post('/auth/register', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
     // No token comes back here anymore - the account exists but is inactive
     // until the emailed 6-digit code is confirmed via verifyEmail().
-    return data;
+    return registerUser(formData);
   };
 
   // Confirms the code emailed at registration (or via resend) and, on
   // success, logs the user in immediately since that's the natural moment
   // they've proven ownership of the account.
   const verifyEmail = async (email, code) => {
-    const { data } = await api.post('/auth/verify-email', { email, code });
+    const data = await verifyEmailRequest(email, code);
     sessionStorage.setItem('token', data.token);
     sessionStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
@@ -83,18 +89,15 @@ export const AuthProvider = ({ children }) => {
   };
 
   const resendVerification = async (email) => {
-    const { data } = await api.post('/auth/resend-verification', { email });
-    return data;
+    return resendVerificationCode(email);
   };
 
   const forgotPassword = async (email) => {
-    const { data } = await api.post('/auth/forgot-password', { email });
-    return data;
+    return forgotPasswordRequest(email);
   };
 
   const resetPassword = async (email, code, password) => {
-    const { data } = await api.post('/auth/reset-password', { email, code, password });
-    return data;
+    return resetPasswordRequest(email, code, password);
   };
 
   const updateUser = (updated) => {
@@ -115,4 +118,14 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+
+  if (!context) {
+    throw new Error(
+      'useAuth must be used within AuthProvider'
+    );
+  }
+
+  return context;
+};
