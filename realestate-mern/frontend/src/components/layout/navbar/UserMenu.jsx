@@ -209,6 +209,16 @@ const UserMenu = ({ unreadCount = 0 }) => {
               >
                 My Visits
               </Link>
+
+              
+              <Link
+                to="/wallet"
+                onClick={closeMenu}
+                className={menuLinkClass}
+                role="menuitem"
+              >
+                My Wallet
+              </Link>
             </>
           )}
 
