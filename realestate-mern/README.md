@@ -1,4 +1,4 @@
-# Ashland Estates — Real Estate Management System (MERN Stack)
+# Youth Real Estate — Real Estate Management System (MERN Stack)
 
 A full-stack MVP real estate platform built with MongoDB, Express, React, and Node.js, based on the
 provided project specification. It supports visitors browsing/searching properties, registered users
