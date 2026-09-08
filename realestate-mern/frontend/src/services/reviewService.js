@@ -1,4 +1,4 @@
-import api from "./api";
+import api from "../utils/axios";
 
 // Get all reviews for a property
 export const getPropertyReviews = async (propertyId) => {

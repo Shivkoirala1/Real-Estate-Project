@@ -59,7 +59,6 @@ const PropertyDetail = () => {
   const [errors, setErrors] = useState({});
   const [sending, setSending] = useState(false);
 
-<<<<<<< HEAD:realestate-mern/frontend/src/pages/public/PropertyDetail.jsx
   // Toggle between the inquiry form and the schedule-a-visit form
   const [contactMode, setContactMode] = useState('inquiry'); // 'inquiry' | 'visit'
   const [visitForm, setVisitForm] = useState({ requestedSlot: '', buyerNotes: '' });
@@ -68,11 +67,7 @@ const PropertyDetail = () => {
   const [visitRequested, setVisitRequested] = useState(false);
 
   // Pre-fill form fields with user info if available
-=======
-  // Book-a-visit
-  const [visitForm, setVisitForm] = useState({ preferredDate: '', note: '' });
-  const [visitSending, setVisitSending] = useState(false);
-  const [visitBooked, setVisitBooked] = useState(false);
+
 
   // Reviews
   const [reviews, setReviews] = useState([]);
@@ -81,7 +76,6 @@ const PropertyDetail = () => {
   const [reviewSending, setReviewSending] = useState(false);
   const [reviewError, setReviewError] = useState('');
 
->>>>>>> master:realestate-mern/frontend/src/pages/PropertyDetail.jsx
   useEffect(() => {
     if (user) {
       setForm((f) => ({
@@ -121,13 +115,10 @@ const PropertyDetail = () => {
     window.scrollTo(0, 0);
   }, [id]);
 
-<<<<<<< HEAD:realestate-mern/frontend/src/pages/public/PropertyDetail.jsx
-  // Handle saving the property to favorites
-=======
   useEffect(() => {
     const loadReviews = async () => {
       try {
-        const { data } = await api.get(`/reviews/property/${id}`);
+        const data = await getPropertyReviews(id);
         setReviews(data.reviews);
         setAvgRating(data.avgRating);
       } catch (err) {
@@ -137,7 +128,6 @@ const PropertyDetail = () => {
     loadReviews();
   }, [id]);
 
->>>>>>> master:realestate-mern/frontend/src/pages/PropertyDetail.jsx
   const handleFavorite = async () => {
     if (!user) return showToast('Please sign in to save properties', 'error');
     try {
@@ -202,7 +192,6 @@ const PropertyDetail = () => {
     }
   };
 
-<<<<<<< HEAD:realestate-mern/frontend/src/pages/public/PropertyDetail.jsx
   // Validate the schedule-a-visit form fields before submission
   const validateVisit = () => {
     const next = {};
@@ -259,10 +248,7 @@ const PropertyDetail = () => {
   };
 
   // Handle sharing the property link by copying it to the clipboard
-  const handleShare = () => {
-=======
   const handleShare = async () => {
->>>>>>> master:realestate-mern/frontend/src/pages/PropertyDetail.jsx
     navigator.clipboard.writeText(window.location.href);
     showToast('Link copied to clipboard');
     if (user) {
@@ -271,27 +257,6 @@ const PropertyDetail = () => {
       } catch (err) {
         // Non-critical - the link was still copied either way
       }
-    }
-  };
-
-  const handleBookVisit = async (e) => {
-    e.preventDefault();
-    if (!user) return showToast('Please sign in to book a site visit', 'error');
-    if (!visitForm.preferredDate) return showToast('Please choose a preferred date', 'error');
-
-    setVisitSending(true);
-    try {
-      await api.post('/site-visits', {
-        propertyId: property._id,
-        preferredDate: visitForm.preferredDate,
-        note: visitForm.note,
-      });
-      setVisitBooked(true);
-      showToast('Visit request sent! You earned 100 YC 🎉');
-    } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to book visit', 'error');
-    } finally {
-      setVisitSending(false);
     }
   };
 
@@ -451,7 +416,6 @@ const PropertyDetail = () => {
         </div>
 
         {/* Sidebar: contact + agent */}
-        <div>
           <div className="bg-white border border-navy/10 rounded-sm p-6 shadow-card sticky top-24">
             <p className="eyebrow mb-3">Listed by</p>
             <div className="flex items-center gap-3 mb-4">
@@ -612,40 +576,6 @@ const PropertyDetail = () => {
               </>
             )}
           </div>
-
-          {/* Book a site visit */}
-          {!(user && property.listedBy?._id === user._id) && (
-            <div className="bg-white border border-navy/10 rounded-sm p-6 shadow-card mt-6">
-              <p className="font-semibold text-navy mb-1">Book a site visit</p>
-              <p className="text-xs text-slate-muted mb-4">Request an in-person viewing — earn 100 YC when you book, plus 300 YC once the visit is completed.</p>
-              {visitBooked ? (
-                <div className="bg-sage-light text-sage text-sm px-4 py-3 rounded-sm">
-                  Your visit request has been sent. The lister will confirm a time with you shortly.
-                </div>
-              ) : (
-                <form onSubmit={handleBookVisit} className="space-y-3">
-                  <input
-                    type="date"
-                    min={new Date().toISOString().slice(0, 10)}
-                    className="input-field"
-                    value={visitForm.preferredDate}
-                    onChange={(e) => setVisitForm({ ...visitForm, preferredDate: e.target.value })}
-                  />
-                  <textarea
-                    rows={2}
-                    placeholder="Preferred time or any notes (optional)"
-                    className="input-field"
-                    value={visitForm.note}
-                    onChange={(e) => setVisitForm({ ...visitForm, note: e.target.value })}
-                  />
-                  <button disabled={visitSending} type="submit" className="btn-secondary w-full">
-                    {visitSending ? 'Booking...' : 'Request a visit'}
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Reviews */}

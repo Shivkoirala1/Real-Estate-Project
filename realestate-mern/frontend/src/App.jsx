@@ -46,8 +46,7 @@ import BlogForm from "./pages/admin/BlogForm";
 import ManageUsers from "./pages/admin/ManageUsers";
 import ManageCategories from "./pages/admin/ManageCategories";
 import BlogManagement from "./pages/admin/ManageBlogs";
-// import Inquiries from "./pages/dashboard/Inquiries";
-import Inquiries from "./pages/admin/RevampedInquiries";  // updated lead integrated inqueiris
+import Inquiries from "./pages/admin/RevampedInquiries";
 import Visits from "./pages/admin/Visits";
 import ConversationsInbox from "./pages/admin/ConversationsInbox";
 
@@ -81,6 +80,8 @@ function App() {
           <Route path="/properties/:id" element={<PropertyDetail />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
+          <Route path="/blogs" element={<BlogList />} />
+          <Route path="/blogs/:id" element={<BlogDetail />} />
           <Route path="/land-converter" element={<LandConverter />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -155,11 +156,6 @@ function App() {
           <Route path="/my-properties/inquiries" element={
             <ProtectedRoute>
               <MyPropertiesLayout><Inquiries /></MyPropertiesLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/my-properties/visits" element={
-            <ProtectedRoute>
-              <MyPropertiesLayout><SiteVisits /></MyPropertiesLayout>
             </ProtectedRoute>
           } />
 

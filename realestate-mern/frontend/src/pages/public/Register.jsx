@@ -1,15 +1,8 @@
 import React, { useState } from 'react';
-<<<<<<< HEAD:realestate-mern/frontend/src/pages/public/Register.jsx
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import CameraCapture from '../../components/CameraCapture';
-=======
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { useToast } from '../context/ToastContext';
-import CameraCapture from '../components/CameraCapture';
->>>>>>> master:realestate-mern/frontend/src/pages/Register.jsx
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\d{10}$/;
