@@ -4,6 +4,8 @@ const {
   register,
   verifyEmail,
   resendVerification,
+  sendPhoneOtp,
+  verifyPhone,
   login,
   updateProfile,
   forgotPassword,
@@ -24,6 +26,8 @@ const verificationUpload = upload.verification.fields([
 router.post('/register', verificationUpload, register);
 router.post('/verify-email', verifyEmail);
 router.post('/resend-verification', resendVerification);
+router.post('/send-phone-otp', protect, sendPhoneOtp);
+router.post('/verify-phone', protect, verifyPhone);
 router.post('/login', login);
 router.put('/profile', protect, verificationUpload, updateProfile);
 router.post('/forgot-password', forgotPassword);

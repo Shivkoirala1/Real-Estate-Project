@@ -44,7 +44,7 @@ const validateIdPhoto = (file) => {
 const Profile = () => {
   const { user, updateUser } = useAuth();
   const { showToast } = useToast();
-  const [form, setForm] = useState({ name: user?.name || '', phone: user?.phone || '' });
+  const [form, setForm] = useState({ name: user?.name || '', phone: user?.phone || '', dateOfBirth: user?.dateOfBirth ? user.dateOfBirth.slice(0, 10) : '' });
   const [loading, setLoading] = useState(false);
   const [selfieFile, setSelfieFile] = useState(null);
   const [selfiePreview, setSelfiePreview] = useState(null);
@@ -61,6 +61,13 @@ const Profile = () => {
   const [passwordErrors, setPasswordErrors] = useState({});
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Phone verification - a separate 2-step OTP flow (send code, then confirm
+  // it), independent of the main profile-details save.
+  const [phoneOtpSent, setPhoneOtpSent] = useState(false);
+  const [phoneOtpCode, setPhoneOtpCode] = useState('');
+  const [phoneOtpLoading, setPhoneOtpLoading] = useState(false);
+  const [phoneOtpError, setPhoneOtpError] = useState('');
 
   // Quick-glance counts for the shortcut cards. Failures here shouldn't block
   // the rest of the profile page from rendering, so they're fetched
@@ -143,6 +150,7 @@ const Profile = () => {
       const fd = new FormData();
       if (form.name) fd.append('name', form.name);
       if (form.phone !== undefined) fd.append('phone', form.phone);
+      if (form.dateOfBirth !== undefined) fd.append('dateOfBirth', form.dateOfBirth);
       if (selfieFile) fd.append('selfiePhoto', selfieFile);
       if (citizenshipFront) fd.append('citizenshipPhotoFront', citizenshipFront);
       if (citizenshipBack) fd.append('citizenshipPhotoBack', citizenshipBack);
@@ -188,12 +196,43 @@ const Profile = () => {
   };
 
   const handleDiscard = () => {
-    setForm({ name: user?.name || '', phone: user?.phone || '' });
+    setForm({ name: user?.name || '', phone: user?.phone || '', dateOfBirth: user?.dateOfBirth ? user.dateOfBirth.slice(0, 10) : '' });
     setSelfieFile(null);
     setSelfiePreview(null);
     setCitizenshipFront(null);
     setCitizenshipBack(null);
     setErrors({});
+  };
+
+  const handleSendPhoneOtp = async () => {
+    setPhoneOtpError('');
+    setPhoneOtpLoading(true);
+    try {
+      await api.post('/auth/send-phone-otp');
+      setPhoneOtpSent(true);
+      showToast('A verification code has been sent to your phone');
+    } catch (err) {
+      setPhoneOtpError(err.response?.data?.message || 'Failed to send code');
+    } finally {
+      setPhoneOtpLoading(false);
+    }
+  };
+
+  const handleVerifyPhoneOtp = async (e) => {
+    e.preventDefault();
+    setPhoneOtpError('');
+    setPhoneOtpLoading(true);
+    try {
+      const { data } = await api.post('/auth/verify-phone', { code: phoneOtpCode });
+      updateUser(data.user);
+      setPhoneOtpSent(false);
+      setPhoneOtpCode('');
+      showToast('Phone number verified! You earned 50 YC 🎉');
+    } catch (err) {
+      setPhoneOtpError(err.response?.data?.message || 'Verification failed');
+    } finally {
+      setPhoneOtpLoading(false);
+    }
   };
 
   const verification = verificationCopy[user?.verificationStatus] || verificationCopy.pending;
@@ -306,6 +345,43 @@ const Profile = () => {
                       placeholder="e.g. 98XXXXXXXX"
                       value={form.phone}
                       onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    />
+                    {user?.phone && (
+                      <div className="mt-2">
+                        {user.isPhoneVerified ? (
+                          <p className="text-xs text-sage flex items-center gap-1"><span>✓</span> Phone number verified</p>
+                        ) : phoneOtpSent ? (
+                          <form onSubmit={handleVerifyPhoneOtp} className="flex items-center gap-2 mt-1">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              maxLength={6}
+                              placeholder="6-digit code"
+                              className="input-field w-36 text-sm py-2"
+                              value={phoneOtpCode}
+                              onChange={(e) => setPhoneOtpCode(e.target.value.replace(/\D/g, ''))}
+                            />
+                            <button type="submit" disabled={phoneOtpLoading} className="btn-primary text-xs px-4 py-2">
+                              {phoneOtpLoading ? 'Verifying...' : 'Verify'}
+                            </button>
+                            <button type="button" onClick={handleSendPhoneOtp} className="text-xs text-brass hover:underline">Resend code</button>
+                          </form>
+                        ) : (
+                          <button type="button" onClick={handleSendPhoneOtp} disabled={phoneOtpLoading} className="text-xs font-medium text-brass hover:underline">
+                            {phoneOtpLoading ? 'Sending...' : 'Verify phone number (earn 50 YC)'}
+                          </button>
+                        )}
+                        {phoneOtpError && <p className="text-xs text-brick mt-1">{phoneOtpError}</p>}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="label-field">Date of birth <span className="text-slate-muted text-xs font-normal">(optional — for your birthday bonus 🎂)</span></label>
+                    <input
+                      type="date"
+                      className="input-field"
+                      value={form.dateOfBirth}
+                      onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
                     />
                   </div>
                 </div>
@@ -471,6 +547,30 @@ const Profile = () => {
                       <span className="font-semibold">Note from admin:</span> {user.verificationNote}
                     </p>
                   )}
+                </div>
+              </div>
+            )}
+
+            {!isAdmin && (
+              <div className="bg-navy rounded-sm p-6">
+                <p className="font-semibold text-ivory text-sm mb-2">Refer a friend</p>
+                <p className="text-sm text-ivory/60 leading-relaxed mb-3">
+                  Share your code — you both earn Youth Coins when they join.
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-white/10 text-brass-light text-sm font-semibold px-3 py-2 rounded-sm tracking-wide">
+                    {user?.referralCode}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(user?.referralCode || '');
+                      showToast('Referral code copied');
+                    }}
+                    className="text-xs font-medium text-brass hover:underline flex-shrink-0"
+                  >
+                    Copy
+                  </button>
                 </div>
               </div>
             )}

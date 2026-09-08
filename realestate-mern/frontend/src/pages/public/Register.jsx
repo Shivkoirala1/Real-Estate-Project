@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
+<<<<<<< HEAD:realestate-mern/frontend/src/pages/public/Register.jsx
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import CameraCapture from '../../components/CameraCapture';
+=======
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import CameraCapture from '../components/CameraCapture';
+>>>>>>> master:realestate-mern/frontend/src/pages/Register.jsx
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\d{10}$/;
@@ -13,8 +20,12 @@ const Register = () => {
   const { register } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' });
+  const [form, setForm] = useState({
+    name: '', email: '', phone: '', password: '', confirmPassword: '',
+    referralCode: searchParams.get('ref') || '',
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [stepOneErrors, setStepOneErrors] = useState({});
 
@@ -119,6 +130,7 @@ const Register = () => {
       fd.append('email', form.email);
       fd.append('password', form.password);
       if (form.phone) fd.append('phone', form.phone);
+      if (form.referralCode) fd.append('referralCode', form.referralCode.trim());
       fd.append('selfiePhoto', selfieFile);
       fd.append('citizenshipPhotoFront', citizenshipFront);
       fd.append('citizenshipPhotoBack', citizenshipBack);
@@ -177,6 +189,17 @@ const Register = () => {
               onChange={(e) => handleFormChange('phone', e.target.value.replace(/\D/g, ''))}
             />
             {stepOneErrors.phone && <p className="text-xs text-brick mt-1">{stepOneErrors.phone}</p>}
+          </div>
+          <div>
+            <label className="label-field">Referral code <span className="text-slate-muted text-xs font-normal">(optional)</span></label>
+            <input
+              type="text"
+              placeholder="e.g. RAM4F82"
+              className="input-field uppercase"
+              value={form.referralCode}
+              onChange={(e) => handleFormChange('referralCode', e.target.value.toUpperCase())}
+            />
+            <p className="text-xs text-slate-muted mt-1">Have a friend's code? Enter it and you'll both earn Youth Coins.</p>
           </div>
           <div>
             <label className="label-field">Password</label>

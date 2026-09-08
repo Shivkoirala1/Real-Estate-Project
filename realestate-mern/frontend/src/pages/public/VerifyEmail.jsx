@@ -34,7 +34,7 @@ const VerifyEmail = () => {
     setLoading(true);
     try {
       await verifyEmail(email.trim(), code.trim());
-      showToast('Email verified — welcome to Ashland Estates!');
+      showToast('Email verified — welcome to Youth Real Estate!');
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.message || 'Verification failed. Please check the code and try again.');

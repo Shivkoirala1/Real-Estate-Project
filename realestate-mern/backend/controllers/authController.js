@@ -2,7 +2,9 @@ const User = require('../models/User');
 const generateToken = require('../utils/generateToken').generateToken;
 const asyncHandler = require('../utils/asyncHandler');
 const sendEmail = require('../utils/sendEmail');
+const sendSMS = require('../utils/sendSMS');
 const { generateCode, hashCode, CODE_TTL_MS } = require('../utils/otp');
+const { awardReward } = require('../utils/rewards');
 
 const normalizeEmail = (email = '') => email.toLowerCase().trim();
 
@@ -14,9 +16,9 @@ const sendVerificationEmail = async (user) => {
 
   await sendEmail({
     to: user.email,
-    subject: 'Verify your Ashland Estates email address',
+    subject: 'Verify your Youth Real Estate email address',
     text: `Your verification code is ${code}. It expires in 15 minutes.`,
-    html: `<p>Hi ${user.name},</p><p>Your Ashland Estates email verification code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px;">${code}</p><p>This code expires in 15 minutes. If you didn't create this account, you can ignore this email.</p>`,
+    html: `<p>Hi ${user.name},</p><p>Your Youth Real Estate email verification code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px;">${code}</p><p>This code expires in 15 minutes. If you didn't create this account, you can ignore this email.</p>`,
   });
 };
 
@@ -24,16 +26,16 @@ const sendVerificationEmail = async (user) => {
 // @route   POST /api/auth/register
 // @access  Public
 const register = asyncHandler(async (req, res) => {
-  const { name, email, password, phone } = req.body;
+  const { name, email, password, phone, referralCode } = req.body;
 
   if (!name || !email || !password) {
     return res.status(400).json({ success: false, message: 'Name, email and password are required' });
   }
 
   const files = req.files || {};
-  const selfiePhoto = files.selfiePhoto ? files.selfiePhoto[0].path : '';
-  const citizenshipPhotoFront = files.citizenshipPhotoFront ? files.citizenshipPhotoFront[0].path : '';
-  const citizenshipPhotoBack = files.citizenshipPhotoBack ? files.citizenshipPhotoBack[0].path : '';
+  const selfiePhoto = files.selfiePhoto ? `/uploads/${files.selfiePhoto[0].filename}` : '';
+  const citizenshipPhotoFront = files.citizenshipPhotoFront ? `/uploads/${files.citizenshipPhotoFront[0].filename}` : '';
+  const citizenshipPhotoBack = files.citizenshipPhotoBack ? `/uploads/${files.citizenshipPhotoBack[0].filename}` : '';
 
   if (!selfiePhoto || !citizenshipPhotoFront || !citizenshipPhotoBack) {
     return res.status(400).json({
@@ -48,6 +50,14 @@ const register = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'An account with this email already exists' });
   }
 
+  // Referral code is optional. An invalid/unknown code is silently ignored
+  // rather than blocking registration - referral rewards just won't apply.
+  let referredBy = null;
+  if (referralCode && referralCode.trim()) {
+    const referrer = await User.findOne({ referralCode: referralCode.trim().toUpperCase() });
+    if (referrer) referredBy = referrer._id;
+  }
+
   const user = await User.create({
     name,
     email: normalizedEmail,
@@ -59,15 +69,10 @@ const register = asyncHandler(async (req, res) => {
     citizenshipPhotoBack,
     verificationStatus: 'pending',
     isEmailVerified: false,
+    referredBy,
   });
 
-  // Don't make the user wait for the email to send - respond immediately
-  // once the account exists, and let the email go out in the background.
-  // If it fails, we log it instead of blocking/failing the registration
-  // response (the user can always hit "resend code" from the frontend).
-  sendVerificationEmail(user).catch((err) => {
-    console.error('Failed to send verification email:', err.message);
-  });
+  await sendVerificationEmail(user);
 
   // Deliberately no token/user returned here - the account can't be used to
   // sign in until the emailed code is confirmed via /auth/verify-email.
@@ -110,12 +115,26 @@ const verifyEmail = asyncHandler(async (req, res) => {
   user.emailVerificationExpires = undefined;
   await user.save();
 
+  // Account registration only counts once the email is confirmed (an
+  // unverified account isn't a "real" account yet), so both the
+  // registration and the verification reward are granted at this point.
+  await awardReward(user._id, 'ACCOUNT_REGISTER');
+  await awardReward(user._id, 'EMAIL_VERIFY');
+
+  // If this account was referred, the referrer earns their reward now too -
+  // once the referred friend's account is actually real (email verified).
+  if (user.referredBy) {
+    await awardReward(user.referredBy, 'REFERRAL_ACCOUNT', { refId: user._id, refModel: 'User' });
+  }
+
+  const rewardedUser = await User.findById(user._id);
+
   const token = generateToken(user._id, user.role);
   res.json({
     success: true,
     token,
-    user: user.toSafeObject(),
-    message: 'Email verified successfully. Welcome to Ashland Estates!',
+    user: rewardedUser.toSafeObject(),
+    message: 'Email verified successfully. Welcome to Youth Real Estate!',
   });
 });
 
@@ -132,13 +151,112 @@ const resendVerification = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'This email is already verified. Please sign in.' });
   }
 
-  // Same as registration - respond immediately, send the email in the background.
-  sendVerificationEmail(user).catch((err) => {
-    console.error('Failed to resend verification email:', err.message);
-  });
-
+  await sendVerificationEmail(user);
   res.json({ success: true, message: 'A new verification code has been sent to your email' });
 });
+
+// @desc    Send a 6-digit code to the logged-in user's phone number to verify it
+// @route   POST /api/auth/send-phone-otp
+// @access  Private
+const sendPhoneOtp = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id);
+
+  if (!user.phone) {
+    return res.status(400).json({ success: false, message: 'Add a phone number to your profile first' });
+  }
+  if (user.isPhoneVerified) {
+    return res.status(400).json({ success: false, message: 'Your phone number is already verified' });
+  }
+
+  const { code, hash } = generateCode();
+  user.phoneVerificationCodeHash = hash;
+  user.phoneVerificationExpires = new Date(Date.now() + CODE_TTL_MS);
+  await user.save();
+
+  await sendSMS({
+    to: user.phone,
+    message: `Your Youth Real Estate phone verification code is ${code}. It expires in 15 minutes.`,
+  });
+
+  res.json({ success: true, message: 'A verification code has been sent to your phone' });
+});
+
+// @desc    Confirm the SMS'd 6-digit code and mark the phone as verified
+// @route   POST /api/auth/verify-phone
+// @access  Private
+const verifyPhone = asyncHandler(async (req, res) => {
+  const { code } = req.body;
+  if (!code) return res.status(400).json({ success: false, message: 'Code is required' });
+
+  const user = await User.findById(req.user._id).select('+phoneVerificationCodeHash +phoneVerificationExpires');
+
+  if (user.isPhoneVerified) {
+    return res.status(400).json({ success: false, message: 'Your phone number is already verified' });
+  }
+  if (!user.phoneVerificationCodeHash || !user.phoneVerificationExpires || user.phoneVerificationExpires < new Date()) {
+    return res.status(400).json({ success: false, message: 'This code has expired. Please request a new one.' });
+  }
+  if (hashCode(code) !== user.phoneVerificationCodeHash) {
+    return res.status(400).json({ success: false, message: 'Incorrect verification code' });
+  }
+
+  user.isPhoneVerified = true;
+  user.phoneVerificationCodeHash = undefined;
+  user.phoneVerificationExpires = undefined;
+  await user.save();
+
+  await awardReward(user._id, 'PHONE_VERIFY');
+  const rewardedUser = await User.findById(user._id);
+
+  res.json({ success: true, user: rewardedUser.toSafeObject(), message: 'Phone number verified successfully' });
+});
+
+// Start-of-day (UTC) for a given date - used to compare login dates without
+// time-of-day noise.
+const startOfDay = (date) => {
+  const d = new Date(date);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+};
+
+// Applies daily-login, 7-day-streak, and birthday-bonus rewards for a
+// successful login. Mutates and saves the streak/date fields on `user`
+// directly (cheap, always-on bookkeeping); reward payouts go through
+// awardReward (which handles its own dedupe), so this is safe to call on
+// every single login.
+const applyLoginRewards = async (user) => {
+  const todayStart = startOfDay(new Date());
+  const todayKey = todayStart.toISOString().slice(0, 10);
+  const isNewLoginDay = !user.lastLoginDate || startOfDay(user.lastLoginDate).getTime() !== todayStart.getTime();
+
+  if (isNewLoginDay) {
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const isConsecutiveDay =
+      user.lastLoginDate && todayStart.getTime() - startOfDay(user.lastLoginDate).getTime() === oneDayMs;
+    user.loginStreak = isConsecutiveDay ? user.loginStreak + 1 : 1;
+    user.lastLoginDate = todayStart;
+    await user.save();
+
+    await awardReward(user._id, 'DAILY_LOGIN', { key: `daily-${todayKey}` });
+
+    if (user.loginStreak % 7 === 0 && user.loginStreak > user.lastStreakMilestone) {
+      await awardReward(user._id, 'LOGIN_STREAK_7DAY', { key: `streak-${user.loginStreak}` });
+      user.lastStreakMilestone = user.loginStreak;
+      await user.save();
+    }
+  }
+
+  if (user.dateOfBirth) {
+    const now = new Date();
+    const dob = new Date(user.dateOfBirth);
+    const isBirthdayToday = now.getUTCMonth() === dob.getUTCMonth() && now.getUTCDate() === dob.getUTCDate();
+    if (isBirthdayToday && user.lastBirthdayBonusYear !== now.getUTCFullYear()) {
+      await awardReward(user._id, 'BIRTHDAY_BONUS', { key: `birthday-${now.getUTCFullYear()}` });
+      user.lastBirthdayBonusYear = now.getUTCFullYear();
+      await user.save();
+    }
+  }
+};
 
 // @desc    Login user
 // @route   POST /api/auth/login
@@ -168,32 +286,11 @@ const login = asyncHandler(async (req, res) => {
     });
   }
 
+  await applyLoginRewards(user);
+  const rewardedUser = await User.findById(user._id);
+
   const token = generateToken(user._id, user.role);
-  res.json({ success: true, token, user: user.toSafeObject() });
-});
-
-
-// @desc    Update own profile (name, phone, avatar, verification documents)
-// @route   PUT /api/auth/profile
-// @access  Private
-const updateProfile = asyncHandler(async (req, res) => {
-  const { name, phone, avatar } = req.body;
-  const user = await User.findById(req.user._id);
-
-  if (name) user.name = name;
-  if (phone !== undefined) user.phone = phone;
-  if (avatar !== undefined) user.avatar = avatar;
-
-  const files = req.files || {};
-  if (files.selfiePhoto) user.selfiePhoto = files.selfiePhoto[0].path;
-  if (files.citizenshipPhotoFront) user.citizenshipPhotoFront = files.citizenshipPhotoFront[0].path;
-  if (files.citizenshipPhotoBack) user.citizenshipPhotoBack = files.citizenshipPhotoBack[0].path;
-  if (files.selfiePhoto || files.citizenshipPhotoFront || files.citizenshipPhotoBack) {
-    user.verificationStatus = 'pending';
-  }
-
-  await user.save();
-  res.json({ success: true, user: user.toSafeObject() });
+  res.json({ success: true, token, user: rewardedUser.toSafeObject() });
 });
 
 // @desc    Request a password reset code by email
@@ -216,14 +313,11 @@ const forgotPassword = asyncHandler(async (req, res) => {
   user.passwordResetExpires = new Date(Date.now() + CODE_TTL_MS);
   await user.save();
 
-  // Respond immediately - don't make the user wait for the email itself to send.
-  sendEmail({
+  await sendEmail({
     to: user.email,
-    subject: 'Reset your Ashland Estates password',
+    subject: 'Reset your Youth Real Estate password',
     text: `Your password reset code is ${code}. It expires in 15 minutes. If you didn't request this, you can ignore this email.`,
     html: `<p>Hi ${user.name},</p><p>Your password reset code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px;">${code}</p><p>This code expires in 15 minutes. If you didn't request this, you can safely ignore this email.</p>`,
-  }).catch((err) => {
-    console.error('Failed to send password reset email:', err.message);
   });
 
   res.json(genericResponse);
@@ -269,6 +363,45 @@ const getMe = asyncHandler(async (req, res) => {
   res.json({ success: true, user: user ? user.toSafeObject() : null });
 });
 
+// @desc    Update own profile (name, phone, avatar, verification documents)
+// @route   PUT /api/auth/profile
+// @access  Private
+const updateProfile = asyncHandler(async (req, res) => {
+  const { name, phone, avatar, dateOfBirth } = req.body;
+  const user = await User.findById(req.user._id);
+
+  // "Profile complete" = phone number on file. Name, selfie, and citizenship
+  // photos are already required at registration, so phone is the one
+  // optional field left to fill in - checked before it's overwritten below.
+  const completingProfileNow = !user.phone && phone;
+
+  if (name) user.name = name;
+  if (phone !== undefined) {
+    // Changing the phone number invalidates any existing verification
+    if (phone !== user.phone) user.isPhoneVerified = false;
+    user.phone = phone;
+  }
+  if (avatar !== undefined) user.avatar = avatar;
+  if (dateOfBirth !== undefined) user.dateOfBirth = dateOfBirth || null;
+
+    const files = req.files || {};
+  if (files.selfiePhoto) user.selfiePhoto = files.selfiePhoto[0].path;
+  if (files.citizenshipPhotoFront) user.citizenshipPhotoFront = files.citizenshipPhotoFront[0].path;
+  if (files.citizenshipPhotoBack) user.citizenshipPhotoBack = files.citizenshipPhotoBack[0].path;
+  if (files.selfiePhoto || files.citizenshipPhotoFront || files.citizenshipPhotoBack) {
+    user.verificationStatus = 'pending';
+  }
+
+  await user.save();
+
+  let rewardedUser = user;
+  if (completingProfileNow) {
+    await awardReward(user._id, 'PROFILE_COMPLETE');
+    rewardedUser = await User.findById(user._id);
+  }
+
+  res.json({ success: true, user: rewardedUser.toSafeObject() });
+});
 
 // @desc    Change own password - requires the current password to match,
 //          and the new password to be confirmed, before it is applied
@@ -321,6 +454,8 @@ module.exports = {
   register,
   verifyEmail,
   resendVerification,
+  sendPhoneOtp,
+  verifyPhone,
   login,
   forgotPassword,
   resetPassword,

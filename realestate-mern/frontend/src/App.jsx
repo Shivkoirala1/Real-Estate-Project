@@ -1,5 +1,5 @@
-import React from "react";
-import { Routes, Route } from "react-router-dom";
+import React from 'react';
+import { Routes, Route } from 'react-router-dom';
 
 // Components
 import Navbar from "./components/layout/Navbar";
@@ -32,6 +32,8 @@ import Notifications from "./pages/user/Notifications";
 import MyVisits from "./pages/user/MyVisits";
 import MyConversations from "./pages/user/MyConversations";
 import MyLeads from "./pages/user/MyLeads";
+import Wallet from './pages/user/Wallet';
+
 
 // Agent and Admin dashboards
 import AgentDashboard from "./pages/agent/AgentDashboard";
@@ -77,8 +79,6 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/properties" element={<PropertyListing />} />
           <Route path="/properties/:id" element={<PropertyDetail />} />
-          <Route path="/blogs" element={<BlogList />} />
-          <Route path="/blogs/:slug" element={<BlogDetail />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/land-converter" element={<LandConverter />} />
@@ -89,30 +89,11 @@ function App() {
           <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Any registered user */}
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <Profile />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/favorites"
-            element={
-              <ProtectedRoute>
-                <Favorites />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/notifications"
-            element={
-              <ProtectedRoute>
-                <Notifications />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+          <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
+          <Route path="/favorites" element={<ProtectedRoute><Favorites /></ProtectedRoute>} />
+          <Route path="/my-visits" element={<ProtectedRoute><MyVisits /></ProtectedRoute>} />
+          <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
 
           <Route
             path="my-visits"
@@ -156,50 +137,31 @@ function App() {
           />
 
           {/* My Properties - open to every registered user, posting itself is gated by verification */}
-          <Route
-            path="/my-properties"
-            element={
-              <ProtectedRoute>
-                <MyPropertiesLayout>
-                  <ManageProperties showHeader={false} />
-                </MyPropertiesLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/my-properties/new"
-            element={
-              <ProtectedRoute>
-                <MyPropertiesLayout>
-                  <PostGate>
-                    <AddEditProperty />
-                  </PostGate>
-                </MyPropertiesLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/my-properties/:id/edit"
-            element={
-              <ProtectedRoute>
-                <MyPropertiesLayout>
-                  <PostGate>
-                    <AddEditProperty />
-                  </PostGate>
-                </MyPropertiesLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/my-properties/inquiries"
-            element={
-              <ProtectedRoute>
-                <MyPropertiesLayout>
-                  <Inquiries />
-                </MyPropertiesLayout>
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/my-properties" element={
+            <ProtectedRoute>
+              <MyPropertiesLayout><ManageProperties showHeader={false} /></MyPropertiesLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/my-properties/new" element={
+            <ProtectedRoute>
+              <MyPropertiesLayout><PostGate><AddEditProperty /></PostGate></MyPropertiesLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/my-properties/:id/edit" element={
+            <ProtectedRoute>
+              <MyPropertiesLayout><PostGate><AddEditProperty /></PostGate></MyPropertiesLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/my-properties/inquiries" element={
+            <ProtectedRoute>
+              <MyPropertiesLayout><Inquiries /></MyPropertiesLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/my-properties/visits" element={
+            <ProtectedRoute>
+              <MyPropertiesLayout><SiteVisits /></MyPropertiesLayout>
+            </ProtectedRoute>
+          } />
 
           {/* Agent dashboard */}
 

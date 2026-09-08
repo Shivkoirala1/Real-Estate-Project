@@ -31,6 +31,8 @@ const commissionRoutes = require('./routes/commissionRoutes');
 const emiPlanRoutes = require('./routes/emiPlanRoutes');
 const agentRoutes = require('./routes/agentRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const rewardRoutes = require('./routes/rewardRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
 
 connectDB();
 
@@ -50,7 +52,8 @@ try {
 }
 
 const app = express();
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
+
+app.use(cors({ origin: process.env.CLIENT_ORIGIN || process.env.CLIENT_URL }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -86,6 +89,8 @@ app.use('/api/commissions', commissionRoutes);
 app.use('/api/emi-plans', emiPlanRoutes);
 app.use('/api/agents', agentRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/rewards', rewardRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
