@@ -76,10 +76,19 @@ const Navbar = () => {
           className="font-display text-xl tracking-tight text-ivory"
           onClick={closeMobileMenu}
         >
-          Youth Real{' '}
-          <span className="text-brass">
-            Estate Pvt.Ltd
+   <div className="flex items-center gap-1">
+          <img
+            src="/logo.webp"
+            alt="Youth Real Estate Logo"
+            className="min-h-8 max-h-10 w-auto inline-block mr-2 rounded-full"
+          />
+          <div>
+          <span>Youth</span>
+          <span className="text-brass block">
+           Real Estate
           </span>
+          </div>
+          </div>
         </Link>
 
         {/* Desktop Navigation */}

@@ -68,7 +68,7 @@ const Contact = () => {
         <div className="space-y-5">
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">Office Address</p>
-            <p className="font-medium text-navy">123 Market Street, Biratnagar, Nepal</p>
+            <p className="font-medium text-navy">Itahari Ward-6 Anamnagar, Nepal</p>
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">Phone</p>
@@ -76,7 +76,7 @@ const Contact = () => {
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">Email</p>
-            <p className="font-medium text-navy">info@ashlandestates.com</p>
+            <p className="font-medium text-navy">youthrealestate@gmail.com</p>
           </div>
         </div>
       </div>

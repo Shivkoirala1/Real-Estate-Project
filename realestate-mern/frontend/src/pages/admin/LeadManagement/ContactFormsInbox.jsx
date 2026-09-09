@@ -168,12 +168,12 @@ const ContactFormsInbox = ({ onConverted }) => {
                         Convert to Lead
                       </button>
                     )}
-                    <button
+                    {/* <button
                       onClick={() => setRespondTarget(form)}
                       className="btn-secondary text-xs px-3 py-1.5"
                     >
                       Respond
-                    </button>
+                    </button> */}
                     <button
                       onClick={() => handleDelete(form)}
                       className="text-xs text-slate-muted hover:text-brick"
@@ -229,13 +229,13 @@ const ContactFormsInbox = ({ onConverted }) => {
         </div>
       )}
 
-      {respondTarget && (
+      {/* {respondTarget && (
         <RespondToContactModal
           contactForm={respondTarget}
           onClose={() => setRespondTarget(null)}
           onResponded={loadForms}
         />
-      )}
+      )} */}
 
       {convertTarget && (
         <ConvertToLeadModal
