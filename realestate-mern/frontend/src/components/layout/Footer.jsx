@@ -24,9 +24,9 @@ const Footer = () => {
         <div>
           <p className="eyebrow mb-4">Contact</p>
           <ul className="space-y-2 text-sm text-ivory/70">
-            <li>123 Market Street, Biratnagar, Nepal</li>
+            <li>Itahari Ward-6 Anamnagar, Nepal</li>
             <li>+977 1-4567890</li>
-            <li>info@ashlandestates.com</li>
+            <li>youthrealestate@gmail.com</li>
           </ul>
         </div>
         <div>
@@ -34,7 +34,7 @@ const Footer = () => {
           <ul className="space-y-2 text-sm text-ivory/70">
             <li><a href="#" className="hover:text-brass">Facebook</a></li>
             <li><a href="#" className="hover:text-brass">Instagram</a></li>
-            <li><a href="#" className="hover:text-brass">LinkedIn</a></li>
+            <li><a href="#" className="hover:text-brass">Tiktok</a></li>
           </ul>
         </div>
       </div>

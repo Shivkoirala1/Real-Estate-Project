@@ -97,15 +97,6 @@ function App() {
           <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
 
           <Route
-            path="my-visits"
-            element={
-              <ProtectedRoute>
-                <MyVisits />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
             path="/my-conversations"
             element={
               <ProtectedRoute>
