@@ -80,3 +80,4 @@ export const updateInstallment = async (planId, installmentNumber, payload) => {
   );
   return data;
 };
+

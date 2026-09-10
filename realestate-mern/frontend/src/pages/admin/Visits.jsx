@@ -1,12 +1,8 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
-import {
-  getVisits,
-  updateVisit,
-} from "../../services/visitService";
-
-import {getUsers} from "../../services/userService";
+import { getVisits, updateVisit } from "../../services/visitService";
+import {utcToNepaliInput, nepaliInputToUTC} from "../../utils/timeConverter";
+import { getAgents } from "../../services/agentService";
 import { useAuth } from "../../context/AuthContext";
 import ConvertToLeadModal from "./LeadManagement/ConvertToLeadModal";
 
@@ -28,21 +24,13 @@ const statusLabel = {
   cancelled: "Cancelled",
 };
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return "—";
+// const formatDate = (dateStr) => {
+//   if (!dateStr) return "—";
 
-  return new Date(dateStr).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-};
 
 const Visits = () => {
   const [visits, setVisits] = useState([]);
- 
+
   const [agents, setAgents] = useState([]);
 
   const { user } = useAuth();
@@ -86,7 +74,7 @@ const Visits = () => {
           pages: 1,
           total: 0,
           limit: PAGE_SIZE,
-        }
+        },
       );
     } catch (err) {
       console.error("Failed to load visits:", err);
@@ -98,8 +86,8 @@ const Visits = () => {
 
   const fetchAgents = useCallback(async () => {
     try {
-      const data = await getUsers({ role: "agent" });
-      setAgents(data.users ??[]);
+      const data = await getAgents();
+      setAgents(data.agents ?? []);
     } catch (err) {
       console.error("Failed to load agents:", err);
     }
@@ -143,9 +131,7 @@ const Visits = () => {
 
   const handleReject = async (visit) => {
     if (
-      !window.confirm(
-        "Reject this visit request? The buyer will be notified."
-      )
+      !window.confirm("Reject this visit request? The buyer will be notified.")
     ) {
       return;
     }
@@ -201,9 +187,7 @@ const Visits = () => {
         <div>
           <p className="eyebrow mb-2">Admin</p>
 
-          <h1 className="text-3xl">
-            Visit Queue
-          </h1>
+          <h1 className="text-3xl">Visit Queue</h1>
 
           <p className="text-sm text-slate-muted mt-1">
             Review, assign and coordinate buyer visits. Every request is
@@ -221,62 +205,39 @@ const Visits = () => {
         {/* Status */}
         <select
           value={filters.status}
-          onChange={(e) =>
-            handleFilterChange("status", e.target.value)
-          }
+          onChange={(e) => handleFilterChange("status", e.target.value)}
           className="input-field lg:max-w-xs"
         >
           <option value="">All Statuses</option>
 
-          <option value="pending_agent_review">
-            Pending Review
-          </option>
+          <option value="pending_agent_review">Pending Review</option>
 
-          <option value="confirmed">
-            Confirmed
-          </option>
+          <option value="confirmed">Confirmed</option>
 
-          <option value="rejected">
-            Rejected
-          </option>
+          <option value="rejected">Rejected</option>
 
-          <option value="completed">
-            Completed
-          </option>
+          <option value="completed">Completed</option>
 
-          <option value="cancelled">
-            Cancelled
-          </option>
+          <option value="cancelled">Cancelled</option>
         </select>
 
         {/* Visit Type */}
         <select
           value={filters.visitType}
-          onChange={(e) =>
-            handleFilterChange("visitType", e.target.value)
-          }
+          onChange={(e) => handleFilterChange("visitType", e.target.value)}
           className="input-field lg:max-w-xs"
         >
           <option value="">All Visit Types</option>
 
-          <option value="property">
-            Property Site Visit
-          </option>
+          <option value="property">Property Site Visit</option>
 
-          <option value="office">
-            Office Consultation
-          </option>
+          <option value="office">Office Consultation</option>
         </select>
 
         {/* Agent */}
         <select
           value={filters.assignedAgent}
-          onChange={(e) =>
-            handleFilterChange(
-              "assignedAgent",
-              e.target.value
-            )
-          }
+          onChange={(e) => handleFilterChange("assignedAgent", e.target.value)}
           className="input-field lg:max-w-xs"
         >
           <option value="">All Agents</option>
@@ -291,9 +252,7 @@ const Visits = () => {
 
       {/* Table */}
       {loading ? (
-        <p className="text-slate-muted">
-          Loading visits...
-        </p>
+        <p className="text-slate-muted">Loading visits...</p>
       ) : visits.length === 0 ? (
         <div className="bg-white border border-navy/10 rounded-sm py-16 text-center">
           <p className="text-slate-muted">
@@ -306,29 +265,17 @@ const Visits = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-muted border-b border-navy/10">
-                  <th className="px-5 py-3">
-                    Buyer
-                  </th>
+                  <th className="px-5 py-3">Buyer</th>
 
-                  <th className="px-5 py-3">
-                    Visit
-                  </th>
+                  <th className="px-5 py-3">Visit</th>
 
-                  <th className="px-5 py-3">
-                    Requested Slot
-                  </th>
+                  <th className="px-5 py-3">Requested Slot</th>
 
-                  <th className="px-5 py-3">
-                    Agent
-                  </th>
+                  <th className="px-5 py-3">Agent</th>
 
-                  <th className="px-5 py-3">
-                    Status
-                  </th>
+                  <th className="px-5 py-3">Status</th>
 
-                  <th className="px-5 py-3">
-                    Actions
-                  </th>
+                  <th className="px-5 py-3">Actions</th>
                 </tr>
               </thead>
 
@@ -342,8 +289,7 @@ const Visits = () => {
                     <td className="px-5 py-4">
                       <div>
                         <p className="font-medium text-navy">
-                          {visit.requestedBy?.name ||
-                            "Unknown Buyer"}
+                          {visit.requestedBy?.name || "Unknown Buyer"}
                         </p>
 
                         <p className="text-xs text-slate-muted mt-0.5">
@@ -375,9 +321,7 @@ const Visits = () => {
 
                     {/* Slot */}
                     <td className="px-5 py-4 text-slate-muted whitespace-nowrap">
-                      {formatDate(
-                        visit.requestedSlot
-                      )}
+                      {utcToNepaliInput(visit.requestedSlot)}
                     </td>
 
                     {/* Agent */}
@@ -387,9 +331,7 @@ const Visits = () => {
                           {visit.assignedAgent.name}
                         </span>
                       ) : (
-                        <span className="text-slate-muted">
-                          Unassigned
-                        </span>
+                        <span className="text-slate-muted">Unassigned</span>
                       )}
                     </td>
 
@@ -401,8 +343,7 @@ const Visits = () => {
                           "bg-navy/5 text-slate-muted"
                         }`}
                       >
-                        {statusLabel[visit.status] ??
-                          visit.status}
+                        {statusLabel[visit.status] ?? visit.status}
                       </span>
 
                       {visit.convertedLead && (
@@ -410,7 +351,11 @@ const Visits = () => {
                           className="status-badge bg-sage-light text-sage mt-1"
                           title={`Lead: ${visit.convertedLead.name || "linked"}`}
                         >
-                          Lead · {(visit.convertedLead.stage || "new").replace(/_/g, " ")}
+                          Lead ·{" "}
+                          {(visit.convertedLead.stage || "new").replace(
+                            /_/g,
+                            " ",
+                          )}
                         </span>
                       )}
                     </td>
@@ -418,22 +363,17 @@ const Visits = () => {
                     {/* Actions */}
                     <td className="px-5 py-4">
                       <div className="flex flex-wrap gap-2 min-w-[280px]">
-                        {visit.status ===
-                          "pending_agent_review" && (
+                        {visit.status === "pending_agent_review" && (
                           <>
                             <button
-                              onClick={() =>
-                                handleApprove(visit)
-                              }
+                              onClick={() => handleApprove(visit)}
                               className="text-white bg-sage hover:opacity-90 px-3 py-1.5 rounded-sm text-xs transition-opacity"
                             >
                               Approve
                             </button>
 
                             <button
-                              onClick={() =>
-                                handleReject(visit)
-                              }
+                              onClick={() => handleReject(visit)}
                               className="text-white bg-brick hover:opacity-90 px-3 py-1.5 rounded-sm text-xs transition-opacity"
                             >
                               Reject
@@ -442,40 +382,40 @@ const Visits = () => {
                         )}
 
                         <button
-                        disabled={visit.status === "completed" || visit.status === "cancelled"}
-                          onClick={() =>
-                            openModal("assign", visit)
+                          disabled={
+                            visit.status === "completed" ||
+                            visit.status === "cancelled"
                           }
+                          onClick={() => openModal("assign", visit)}
                           className="disabled:opacity-40 disabled:cursor-not-allowed text-navy border border-navy/10 hover:border-brass hover:text-brass px-3 py-1.5 rounded-sm text-xs transition-colors"
                         >
                           Assign Agent
                         </button>
 
                         <button
-                          disabled={visit.status === "completed" || visit.status === "cancelled"}
-                          onClick={() =>
-                            openModal(
-                              "reschedule",
-                              visit
-                            )
+                          disabled={
+                            visit.status === "completed" ||
+                            visit.status === "cancelled"
                           }
+                          onClick={() => openModal("reschedule", visit)}
                           className="disabled:opacity-40 disabled:cursor-not-allowed text-navy border border-navy/10 hover:border-brass hover:text-brass px-3 py-1.5 rounded-sm text-xs transition-colors"
                         >
                           Reschedule
                         </button>
 
                         <button
-                            disabled={visit.status === "completed" || visit.status === "cancelled"}
-                          onClick={() =>
-                            openModal("notes", visit)
+                          disabled={
+                            visit.status === "completed" ||
+                            visit.status === "cancelled"
                           }
+                          onClick={() => openModal("notes", visit)}
                           className="disabled:opacity-40 disabled:cursor-not-allowed text-navy border border-navy/10 hover:border-brass hover:text-brass px-3 py-1.5 rounded-sm text-xs transition-colors"
                         >
                           Notes
                         </button>
 
-                        {user?.role === "admin" && (
-                          visit.convertedLead ? (
+                        {user?.role === "admin" &&
+                          (visit.convertedLead ? (
                             <Link
                               to={`/dashboard/lead-management/leads/${
                                 visit.convertedLead._id || visit.convertedLead
@@ -493,8 +433,7 @@ const Visits = () => {
                             >
                               Convert to Lead
                             </button>
-                          )
-                        )}
+                          ))}
                       </div>
                     </td>
                   </tr>
@@ -509,22 +448,14 @@ const Visits = () => {
               Showing{" "}
               {pagination.total === 0
                 ? 0
-                : (pagination.page - 1) *
-                    PAGE_SIZE +
-                  1}
-              –
-              {Math.min(
-                pagination.page * PAGE_SIZE,
-                pagination.total
-              )}{" "}
-              of {pagination.total}
+                : (pagination.page - 1) * PAGE_SIZE + 1}
+              –{Math.min(pagination.page * PAGE_SIZE, pagination.total)} of{" "}
+              {pagination.total}
             </p>
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() =>
-                  goToPage(page - 1)
-                }
+                onClick={() => goToPage(page - 1)}
                 disabled={page <= 1}
                 className="text-sm px-3 py-1.5 rounded-sm border border-navy/10 text-slate-muted hover:border-navy/20 disabled:opacity-40 disabled:cursor-not-allowed"
               >
@@ -532,17 +463,12 @@ const Visits = () => {
               </button>
 
               <span className="text-sm text-navy px-2">
-                {pagination.page} /{" "}
-                {pagination.pages}
+                {pagination.page} / {pagination.pages}
               </span>
 
               <button
-                onClick={() =>
-                  goToPage(page + 1)
-                }
-                disabled={
-                  page >= pagination.pages
-                }
+                onClick={() => goToPage(page + 1)}
+                disabled={page >= pagination.pages}
                 className="text-sm px-3 py-1.5 rounded-sm border border-navy/10 text-slate-muted hover:border-navy/20 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Next
@@ -593,46 +519,28 @@ const Visits = () => {
   );
 };
 
-
 /* -------------------------------------------------------------------------- */
 /* Assign Agent Modal                                                         */
 /* -------------------------------------------------------------------------- */
 
-const AssignAgentModal = ({
-  visit,
-  agents,
-  onClose,
-  onAssign,
-}) => {
-  const [agentId, setAgentId] = useState(
-    visit?.assignedAgent?._id || ""
-  );
+const AssignAgentModal = ({ visit, agents, onClose, onAssign }) => {
+  const [agentId, setAgentId] = useState(visit?.assignedAgent?._id || "");
 
   return (
-    <Modal
-      title="Assign Agent"
-      onClose={onClose}
-    >
+    <Modal title="Assign Agent" onClose={onClose}>
       <p className="text-sm text-slate-muted mb-4">
         Select an agent to handle this visit.
       </p>
 
       <select
         value={agentId}
-        onChange={(e) =>
-          setAgentId(e.target.value)
-        }
+        onChange={(e) => setAgentId(e.target.value)}
         className="input-field w-full"
       >
-        <option value="">
-          Select an agent
-        </option>
+        <option value="">Select an agent</option>
 
         {agents.map((agent) => (
-          <option
-            key={agent._id}
-            value={agent._id}
-          >
+          <option key={agent._id} value={agent._id}>
             {agent.name}
           </option>
         ))}
@@ -648,94 +556,80 @@ const AssignAgentModal = ({
   );
 };
 
-
 /* -------------------------------------------------------------------------- */
 /* Reschedule Modal                                                           */
 /* -------------------------------------------------------------------------- */
 
-const RescheduleModal = ({
-  visit,
-  onClose,
-  onReschedule,
-}) => {
+const RescheduleModal = ({ visit, onClose, onReschedule }) => {
   const [slot, setSlot] = useState(() => {
-    if (!visit?.requestedSlot) return "";
-
-    const date = new Date(
-      visit.requestedSlot
-    );
-
-    const offset =
-      date.getTimezoneOffset() * 60000;
-
-    return new Date(
-      date.getTime() - offset
-    )
-      .toISOString()
-      .slice(0, 16);
+    return utcToNepaliInput(visit?.requestedSlot);
   });
 
+  const handleSubmit = (e) => {
+    e.preventDefault();
+
+    if (!slot) return;
+
+    const utcSlot = nepaliInputToUTC(slot);
+
+    onReschedule(utcSlot);
+  };
+
   return (
-    <Modal
-      title="Reschedule Visit"
-      onClose={onClose}
-    >
-      <p className="text-sm text-slate-muted mb-4">
+    <Modal title="Reschedule Visit" onClose={onClose}>
+      <p className="mb-4 text-sm text-slate-muted">
         Choose a new date and time for this
         {visit?.visitType === "office"
           ? " consultation."
           : " site visit."}
       </p>
 
-      <label className="block text-xs uppercase tracking-wide text-slate-muted mb-2">
-        New Date & Time
-      </label>
+      <form onSubmit={handleSubmit}>
+        <label className="mb-2 block text-xs uppercase tracking-wide text-slate-muted">
+          New Date & Time
+        </label>
 
-      <input
-        type="datetime-local"
-        value={slot}
-        min={new Date()
-          .toISOString()
-          .slice(0, 16)}
-        onChange={(e) =>
-          setSlot(e.target.value)
-        }
-        className="input-field w-full"
-      />
+        <input
+          type="datetime-local"
+          value={slot}
+          min={utcToNepaliInput(new Date())}
+          onChange={(e) => setSlot(e.target.value)}
+          className="input-field w-full"
+        />
 
-      <ModalActions
-        onClose={onClose}
-        onSubmit={() => onReschedule(slot)}
-        submitText="Reschedule"
-        disabled={!slot}
-      />
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-secondary"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            className="btn-primary"
+          >
+            Reschedule
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 };
-
 
 /* -------------------------------------------------------------------------- */
 /* Internal Notes Modal                                                       */
 /* -------------------------------------------------------------------------- */
 
-const InternalNotesModal = ({
-  visit,
-  onClose,
-  onSave,
-}) => {
-  const [notes, setNotes] = useState(
-    visit?.internalNotes || ""
-  );
+const InternalNotesModal = ({ visit, onClose, onSave }) => {
+  const [notes, setNotes] = useState(visit?.internalNotes || "");
 
   return (
-    <Modal
-      title="Internal Notes"
-      onClose={onClose}
-    >
+    <Modal title="Internal Notes" onClose={onClose}>
       <div className="bg-brick-light/50 border border-brick/10 rounded-sm p-3 mb-4">
         <p className="text-xs text-brick">
-          These notes are internal and will not be
-          shown to the buyer.
+          These notes are internal and will not be shown to the buyer.
         </p>
       </div>
 
@@ -746,9 +640,7 @@ const InternalNotesModal = ({
       <textarea
         rows={6}
         value={notes}
-        onChange={(e) =>
-          setNotes(e.target.value)
-        }
+        onChange={(e) => setNotes(e.target.value)}
         placeholder="Add coordination notes for admins and agents..."
         className="input-field w-full resize-none"
       />
@@ -762,23 +654,16 @@ const InternalNotesModal = ({
   );
 };
 
-
 /* -------------------------------------------------------------------------- */
 /* Generic Modal                                                              */
 /* -------------------------------------------------------------------------- */
 
-const Modal = ({
-  title,
-  children,
-  onClose,
-}) => {
+const Modal = ({ title, children, onClose }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 px-4">
       <div className="bg-white w-full max-w-lg rounded-sm border border-navy/10 shadow-xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-navy/10">
-          <h2 className="text-lg text-navy font-medium">
-            {title}
-          </h2>
+          <h2 className="text-lg text-navy font-medium">{title}</h2>
 
           <button
             onClick={onClose}
@@ -789,25 +674,17 @@ const Modal = ({
           </button>
         </div>
 
-        <div className="px-5 py-5">
-          {children}
-        </div>
+        <div className="px-5 py-5">{children}</div>
       </div>
     </div>
   );
 };
 
-
 /* -------------------------------------------------------------------------- */
 /* Modal Actions                                                              */
 /* -------------------------------------------------------------------------- */
 
-const ModalActions = ({
-  onClose,
-  onSubmit,
-  submitText,
-  disabled = false,
-}) => {
+const ModalActions = ({ onClose, onSubmit, submitText, disabled = false }) => {
   return (
     <div className="flex justify-end gap-2 mt-6">
       <button

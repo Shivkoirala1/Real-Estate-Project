@@ -11,8 +11,8 @@ import {
   deleteLead,
   getSuggestedAction,
 } from '../../../services/leadService';
-import { getUsers } from '../../../services/userService';
 import { useToast } from '../../../context/ToastContext';
+import { getAgents } from '../../../services/agentService';
 import { useConfirm } from '../../../context/ConfirmContext';
 import { useAuth } from '../../../context/AuthContext';
 import LeadActivityTimeline from '../../../components/LeadManagement/LeadActivityTimeline';
@@ -71,8 +71,8 @@ const LeadDetail = () => {
   }, [lead]);
 
   useEffect(() => {
-    getUsers({ role: 'admin' })
-      .then((data) => setAgents(data.users || []))
+    getAgents()
+      .then((data) => setAgents(data.agents || []))
       .catch(() => setAgents([]));
   }, []);
 

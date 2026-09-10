@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useLeads } from '../../../context/LeadContext';
-import { getUsers } from '../../../services/userService';
 import LeadStats from './LeadStats';
 import LeadKanban from './LeadKanban';
 import LeadList from './LeadList';
 import ContactFormsInbox from './ContactFormsInbox';
 import CreateLeadModal from './CreateLeadModal';
 import { STAGES, STAGE_META, SOURCES, SOURCE_META, PRIORITIES } from '../../../utils/leadConstants';
+import { getAgents } from '../../../services/agentService';
 
 // Unified Lead Management dashboard - the single surface for the whole lead
 // pipeline: kanban board, table view, and the contact form inbox whose
@@ -23,8 +23,8 @@ const LeadDashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
-    getUsers({ role: 'admin' })
-      .then((data) => setAgents(data.users || []))
+    getAgents()
+      .then((data) => setAgents(data.agents || []))
       .catch(() => setAgents([]));
   }, []);
 

@@ -277,7 +277,7 @@ const getVisitById = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Update visit status / assign agent (Middleman coordination)
+// @desc    Update visit status / assign agent (Middleman coordination) 
 // @route   PATCH /api/visits/:id
 // @access  Private (Admin)
 const updateVisit = asyncHandler(async (req, res) => {

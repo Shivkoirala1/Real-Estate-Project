@@ -14,6 +14,7 @@ import { formatPrice } from "../../utils/format";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { useConfirm } from "../../context/ConfirmContext";
+import {nepaliInputToUTC} from "../../utils/timeConverter";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\d{10}$/;
@@ -254,7 +255,7 @@ const PropertyDetail = () => {
       await createVisit({
         property: property._id,
         visitType: "property",
-        requestedSlot: visitForm.requestedSlot,
+        requestedSlot: nepaliInputToUTC(visitForm.requestedSlot),
         buyerNotes: visitForm.buyerNotes,
         inquiryId: visitForm.inquiryId,
       });
