@@ -65,7 +65,7 @@ const canManage = (plan, user) => {
 /**
  * @desc    Create an EMI plan for a verified sale with paymentType = emi
  * @route   POST /api/emi-plans
- * @access  Private (admin/agent)
+ * @access  Private (admin)
  */
 const createEmiPlan = asyncHandler(async (req, res) => {
   const { saleId, principalAmount, tenureMonths, installmentAmount, startDate, remarks } = req.body;
@@ -111,11 +111,11 @@ const createEmiPlan = asyncHandler(async (req, res) => {
     });
   }
 
-  // Only the filing agent (or an admin) manages a sale's EMI plan
-  if (String(sale.agent) !== String(req.user._id) && req.user.role !== 'admin') {
+  // Only the admin creates a sale's EMI plan
+  if (req.user.role !== 'admin') {
     return res.status(403).json({
       success: false,
-      message: 'Only the agent who filed the sale (or an admin) can manage its EMI plan.',
+      message: 'Only the admin can create EMI plans.',
     });
   }
 

@@ -166,7 +166,7 @@ const agentNavGroups = [
       },
       {
         label: 'EMI Plans',
-        to: '/dashboard/agent/emi-plans',
+        to: '/dashboard/agent/emi-sales',
       },
     ],
   },

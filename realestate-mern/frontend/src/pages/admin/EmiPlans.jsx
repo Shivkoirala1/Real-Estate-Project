@@ -466,7 +466,7 @@ const EmiPlans = () => {
     if (nextPage >= 1 && nextPage <= pagination.totalPages) setPage(nextPage);
   };
 
-  const openPlan = (plan) => navigate(`/dashboard/agent/emi-plans/${plan._id}`);
+  const openPlan = (plan) => navigate(`/dashboard/admin/emi-plans/${plan._id}`);
 
   const nextDueText = (plan) =>
     plan.nextDueInstallment
@@ -490,7 +490,8 @@ const EmiPlans = () => {
 
   return (
     <div>
-      <p className="eyebrow mb-2">Agent</p>
+      {/* Admin name */}    
+      <p className="eyebrow mb-2">Admin</p>
       <h1 className="text-3xl mb-8">EMI Plans</h1>
 
       {/* Summary cards - global totals, not narrowed by the list filters */}
@@ -574,7 +575,7 @@ const EmiPlans = () => {
         <div className="bg-white border border-navy/10 rounded-sm py-16 px-6 text-center">
           <p className="text-slate-muted">
             No EMI plans yet. Plans are initialized from a verified sale with
-            payment type EMI (see My Sales).
+            payment type EMI.
           </p>
         </div>
       ) : plans.length > 0 ? (
