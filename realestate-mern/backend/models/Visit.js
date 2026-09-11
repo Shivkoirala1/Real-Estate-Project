@@ -32,6 +32,14 @@ const visitSchema = new mongoose.Schema(
       type: Date,
       required: [true, 'Visit date and time slot are required'],
     },
+    // Lead created from / linked to this visit. Set automatically when an
+    // accepted visit is converted by the pipeline (ensureLeadFromVisit) or
+    // manually by an admin (convert-to-lead).
+    convertedLead: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Lead',
+      default: null,
+    },
     status: {
       type: String,
       enum: [

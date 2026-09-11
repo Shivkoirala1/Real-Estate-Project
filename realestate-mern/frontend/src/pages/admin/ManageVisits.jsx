@@ -4,6 +4,8 @@ import { getVisits, updateVisit } from "../../services/visitService";
 import {utcToNepaliInput, nepaliInputToUTC} from "../../utils/timeConverter";
 import { getAgents } from "../../services/agentService";
 import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
+import { useConfirm } from "../../context/ConfirmContext";
 import ConvertToLeadModal from "./LeadManagement/ConvertToLeadModal";
 
 const PAGE_SIZE = 10;
@@ -24,16 +26,14 @@ const statusLabel = {
   cancelled: "Cancelled",
 };
 
-// const formatDate = (dateStr) => {
-//   if (!dateStr) return "—";
-
-
 const Visits = () => {
   const [visits, setVisits] = useState([]);
 
   const [agents, setAgents] = useState([]);
 
   const { user } = useAuth();
+  const { showToast } = useToast();
+  const confirm = useConfirm();
   const [convertTarget, setConvertTarget] = useState(null);
 
   const [pagination, setPagination] = useState({
@@ -51,6 +51,7 @@ const Visits = () => {
 
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState(null);
 
   const [activeVisit, setActiveVisit] = useState(null);
   const [modal, setModal] = useState(null);
@@ -78,11 +79,16 @@ const Visits = () => {
       );
     } catch (err) {
       console.error("Failed to load visits:", err);
+      showToast(
+        err.response?.data?.message ||
+          "Failed to load the visit queue. Please try again.",
+        "error",
+      );
       setVisits([]);
     } finally {
       setLoading(false);
     }
-  }, [page, filters]);
+  }, [page, filters, showToast]);
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -112,33 +118,54 @@ const Visits = () => {
     }));
   };
 
-  const handleUpdate = async (id, payload) => {
+  const handleUpdate = async (id, payload, successMessage) => {
+    setUpdatingId(id);
+
     try {
       await updateVisit(id, payload);
-
+      showToast(successMessage || "Visit updated");
       closeModal();
       await fetchVisits();
     } catch (err) {
       console.error("Failed to update visit:", err);
+      showToast(
+        err.response?.data?.message ||
+          "Failed to update the visit. Please try again.",
+        "error",
+      );
+    } finally {
+      setUpdatingId(null);
     }
   };
 
   const handleApprove = async (visit) => {
-    await handleUpdate(visit._id, {
-      status: "confirmed",
-    });
+    await handleUpdate(
+      visit._id,
+      {
+        status: "confirmed",
+      },
+      "Visit confirmed - the buyer has been notified and the pipeline lead is ready",
+    );
   };
 
   const handleReject = async (visit) => {
-    if (
-      !window.confirm("Reject this visit request? The buyer will be notified.")
-    ) {
-      return;
-    }
-
-    await handleUpdate(visit._id, {
-      status: "rejected",
+    const confirmed = await confirm({
+      title: "Reject this visit request?",
+      message: `The buyer will be notified that their ${
+        visit.visitType === "office" ? "office consultation" : "site visit"
+      } could not be confirmed for the requested slot.`,
+      confirmLabel: "Yes, reject it",
+      cancelLabel: "No, go back",
     });
+    if (!confirmed) return;
+
+    await handleUpdate(
+      visit._id,
+      {
+        status: "rejected",
+      },
+      "Visit request rejected - the buyer has been notified",
+    );
   };
 
   const handleAssign = async (agentId) => {
@@ -146,7 +173,7 @@ const Visits = () => {
 
     await handleUpdate(activeVisit._id, {
       assignedAgent: agentId,
-    });
+    }, "Agent assigned to the visit");
   };
 
   const handleReschedule = async (requestedSlot) => {
@@ -154,7 +181,7 @@ const Visits = () => {
 
     await handleUpdate(activeVisit._id, {
       requestedSlot,
-    });
+    }, "Visit rescheduled - the buyer has been notified of the new slot");
   };
 
   const handleNotes = async (internalNotes) => {
@@ -162,7 +189,7 @@ const Visits = () => {
 
     await handleUpdate(activeVisit._id, {
       internalNotes,
-    });
+    }, "Internal notes saved");
   };
 
   const openModal = (type, visit) => {
@@ -180,6 +207,8 @@ const Visits = () => {
     setPage(newPage);
   };
 
+  const isBusy = (visit) => updatingId === visit._id;
+
   return (
     <div>
       {/* Header */}
@@ -190,8 +219,9 @@ const Visits = () => {
           <h1 className="text-3xl">Visit Queue</h1>
 
           <p className="text-sm text-slate-muted mt-1">
-            Review, assign and coordinate buyer visits. Every request is
-            automatically tracked as a pipeline lead with a conversation thread.
+            Review, assign and coordinate buyer visits. Confirming a request
+            notifies the buyer and automatically creates (or updates) the
+            pipeline lead with a conversation thread.
           </p>
         </div>
 
@@ -295,6 +325,12 @@ const Visits = () => {
                         <p className="text-xs text-slate-muted mt-0.5">
                           {visit.requestedBy?.email || "—"}
                         </p>
+
+                        {visit.requestedBy?.phone && (
+                          <p className="text-xs text-slate-muted mt-0.5">
+                            {visit.requestedBy.phone}
+                          </p>
+                        )}
                       </div>
                     </td>
 
@@ -314,6 +350,15 @@ const Visits = () => {
                         ) : (
                           <p className="text-xs text-slate-muted mt-1">
                             General office consultation
+                          </p>
+                        )}
+
+                        {visit.buyerNotes && (
+                          <p
+                            className="text-xs text-slate-muted mt-1 italic truncate"
+                            title={visit.buyerNotes}
+                          >
+                            Note: {visit.buyerNotes}
                           </p>
                         )}
                       </div>
@@ -366,15 +411,17 @@ const Visits = () => {
                         {visit.status === "pending_agent_review" && (
                           <>
                             <button
+                              disabled={isBusy(visit)}
                               onClick={() => handleApprove(visit)}
-                              className="text-white bg-sage hover:opacity-90 px-3 py-1.5 rounded-sm text-xs transition-opacity"
+                              className="text-white bg-sage hover:opacity-90 disabled:opacity-50 px-3 py-1.5 rounded-sm text-xs transition-opacity"
                             >
-                              Approve
+                              {isBusy(visit) ? "Saving..." : "Approve"}
                             </button>
 
                             <button
+                              disabled={isBusy(visit)}
                               onClick={() => handleReject(visit)}
-                              className="text-white bg-brick hover:opacity-90 px-3 py-1.5 rounded-sm text-xs transition-opacity"
+                              className="text-white bg-brick hover:opacity-90 disabled:opacity-50 px-3 py-1.5 rounded-sm text-xs transition-opacity"
                             >
                               Reject
                             </button>
@@ -383,6 +430,7 @@ const Visits = () => {
 
                         <button
                           disabled={
+                            isBusy(visit) ||
                             visit.status === "completed" ||
                             visit.status === "cancelled"
                           }
@@ -394,6 +442,7 @@ const Visits = () => {
 
                         <button
                           disabled={
+                            isBusy(visit) ||
                             visit.status === "completed" ||
                             visit.status === "cancelled"
                           }
@@ -405,6 +454,7 @@ const Visits = () => {
 
                         <button
                           disabled={
+                            isBusy(visit) ||
                             visit.status === "completed" ||
                             visit.status === "cancelled"
                           }
@@ -427,8 +477,9 @@ const Visits = () => {
                             </Link>
                           ) : (
                             <button
+                              disabled={isBusy(visit)}
                               onClick={() => setConvertTarget(visit)}
-                              className="text-ivory bg-navy hover:bg-navy-light px-3 py-1.5 rounded-sm text-xs transition-colors"
+                              className="text-ivory bg-navy hover:bg-navy-light disabled:opacity-50 px-3 py-1.5 rounded-sm text-xs transition-colors"
                               title="Create a pipeline lead from this visit"
                             >
                               Convert to Lead
@@ -581,12 +632,13 @@ const RescheduleModal = ({ visit, onClose, onReschedule }) => {
         Choose a new date and time for this
         {visit?.visitType === "office"
           ? " consultation."
-          : " site visit."}
+          : " site visit."}{" "}
+        The buyer will be notified of the new slot.
       </p>
 
       <form onSubmit={handleSubmit}>
         <label className="mb-2 block text-xs uppercase tracking-wide text-slate-muted">
-          New Date & Time
+          New Date &amp; Time
         </label>
 
         <input

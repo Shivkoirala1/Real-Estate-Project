@@ -109,6 +109,17 @@ const adminNavGroups = [
       },
     ],
   },
+
+  {
+    id: 'system',
+    label: 'Data & System',
+    items: [
+      {
+        label: 'Archives & Data Jobs',
+        to: '/dashboard/admin/archives',
+      },
+    ],
+  },
 ];
 
 // ------------------------------------------------------------
@@ -166,7 +177,7 @@ const agentNavGroups = [
       },
       {
         label: 'EMI Plans',
-        to: '/dashboard/agent/emi-plans',
+        to: '/dashboard/agent/emi-sales',
       },
     ],
   },

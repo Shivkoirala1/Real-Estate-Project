@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { getSales, getSaleById } from '../../services/saleService';
 
 // Status tab chips + badge colors (inline styles like LeadStatusBadge).
@@ -54,7 +53,7 @@ const PaymentTypeBadge = ({ type }) => (
 
 // ---------------- Detail modal ----------------
 
-const SaleDetailModal = ({ saleId, onClose, onInitializeEmi }) => {
+const SaleDetailModal = ({ saleId, onClose }) => {
   const [sale, setSale] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -78,7 +77,7 @@ const SaleDetailModal = ({ saleId, onClose, onInitializeEmi }) => {
     };
   }, [saleId]);
 
-  const showEmiCta = sale?.paymentType === 'emi' && sale?.status === 'verified';
+  const showEmiNote = sale?.paymentType === 'emi' && sale?.status === 'verified';
 
   return (
     <div
@@ -115,14 +114,9 @@ const SaleDetailModal = ({ saleId, onClose, onInitializeEmi }) => {
               </div>
             )}
 
-            {showEmiCta && (
-              <div className="bg-brass/10 border border-brass/30 rounded-sm px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-slate-ink">
-                  This sale was paid via EMI — set up the buyer's installment plan.
-                </p>
-                <button onClick={() => onInitializeEmi(sale)} className="btn-gold text-sm">
-                  Initialize EMI Plan →
-                </button>
+            {showEmiNote && (
+              <div className="bg-brass/10 border border-brass/30 rounded-sm px-4 py-3 text-sm text-slate-ink">
+                This sale was paid via EMI — the <span className="font-medium text-navy">admin</span> initializes the buyer's installment plan after sale confirmation. Once created, the schedule (without amount details) appears under <span className="font-medium text-navy">EMI Sales</span>.
               </div>
             )}
 
@@ -248,7 +242,6 @@ const SaleDetailModal = ({ saleId, onClose, onInitializeEmi }) => {
 
 // Agent's sale filings: submit -> admin verification -> verified/rejected.
 const MySales = () => {
-  const navigate = useNavigate();
 
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -297,10 +290,6 @@ const MySales = () => {
   const openDetail = (sale) => setDetailId(sale._id);
   const closeDetail = () => setDetailId(null);
 
-  const initializeEmi = (sale) => {
-    closeDetail();
-    navigate(`/dashboard/agent/emi-plans?new=${sale._id}`);
-  };
 
   const totalCount = counts.pending_review + counts.verified + counts.rejected;
   const totalPages = pagination?.totalPages || 1;
@@ -537,11 +526,7 @@ const MySales = () => {
       )}
 
       {detailId && (
-        <SaleDetailModal
-          saleId={detailId}
-          onClose={closeDetail}
-          onInitializeEmi={initializeEmi}
-        />
+        <SaleDetailModal saleId={detailId} onClose={closeDetail} />
       )}
     </div>
   );
