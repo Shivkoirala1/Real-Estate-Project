@@ -48,4 +48,10 @@ const conversationSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
+// Retention job scans exactly this shape (closed threads past their age cutoff)
+conversationSchema.index({ isActive: 1, updatedAt: 1 });
+// Inbox listing: a user's threads, most recently active first
+conversationSchema.index({ owner: 1, lastMessageAt: -1 });
+conversationSchema.index({ inquirer: 1, lastMessageAt: -1 });
+
 module.exports = mongoose.model('Conversation', conversationSchema);

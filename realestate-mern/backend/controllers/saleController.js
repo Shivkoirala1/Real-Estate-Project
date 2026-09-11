@@ -421,19 +421,33 @@ const verifySale = asyncHandler(async (req, res) => {
 
   // Notifications run after the transaction so they can never be rolled back
   // or duplicated by a transaction retry.
-  let agentMessage = `Your sale for "${property.title}" was verified by ${req.user.name}. Commission NPR ${commissionAmount.toLocaleString()} recorded.`;
-  if (sale.paymentType === 'emi') {
-    agentMessage += ' — please initialize the EMI plan for this sale.';
-  }
   await notify({
     recipient: sale.agent,
     type: 'sale_verified',
     title: 'Sale verified',
-    message: agentMessage,
+    message: `Your sale for "${property.title}" was verified by ${req.user.name}. Commission NPR ${commissionAmount.toLocaleString()} recorded.`,
     sale: sale._id,
     property: property._id,
     link: '/dashboard/agent/sales',
   });
+
+  // EMI plan initialization is an admin-only follow-up of the sale
+  // confirmation - agents never create plans (they only get read-only
+  // schedule visibility), so alert every admin instead of the agent.
+  if (sale.paymentType === 'emi') {
+    const admins = await User.find({ role: 'admin' }).select('_id');
+    await notifyMany(
+      admins.map((a) => a._id),
+      {
+        type: 'emi_plan_pending',
+        title: 'EMI plan awaiting initialization',
+        message: `The verified EMI sale for "${property.title}" has no installment plan yet. Initialize it from the EMI Plans panel.`,
+        sale: sale._id,
+        property: property._id,
+        link: `/dashboard/admin/emi-plans?new=${sale._id}`,
+      }
+    );
+  }
 
   res.json({
     success: true,

@@ -10,11 +10,20 @@ const mongoose = require('mongoose');
  *
  * Installment.status is stored as pending | paid | waived; 'overdue' is
  * computed from dueDate vs today and never stored (see virtuals/helpers).
+ *
+ * Buyer payment-verification requests (Spec v3): the buyer may attach a
+ * payment-slip photo and ask the admin to confirm a pending installment was
+ * paid. This is tracked per-installment under `verification` and never
+ * changes `status` by itself - only an explicit admin approve/reject does
+ * that. The admin's existing EMI Plan dashboard is the single place this
+ * queue is worked from.
  */
 
 // Stored statuses only - 'overdue' is always computed
 const INSTALLMENT_STATUSES = ['pending', 'paid', 'waived'];
 const PLAN_STATUSES = ['active', 'completed', 'defaulted', 'cancelled'];
+// 'none' = buyer hasn't submitted anything for this installment yet
+const VERIFICATION_STATUSES = ['none', 'pending', 'approved', 'rejected'];
 
 const emiPlanSchema = new mongoose.Schema(
   {
@@ -48,6 +57,23 @@ const emiPlanSchema = new mongoose.Schema(
         paidAmount: { type: Number, default: null, min: 0 },
         // Lightweight note for manual overrides ("buyer deferred one month", etc.)
         remarks: { type: String, default: '', trim: true },
+
+        // === BUYER-INITIATED PAYMENT VERIFICATION REQUEST ===
+        // The buyer claims they paid this installment and asks the admin to
+        // confirm it (optionally attaching a photo of the payment slip).
+        // This never auto-marks the installment paid - only the admin's
+        // review (approve/reject) changes `status` above.
+        verification: {
+          status: { type: String, enum: VERIFICATION_STATUSES, default: 'none' },
+          requestedAmount: { type: Number, default: null, min: 0 },
+          requestedDate: { type: Date, default: null }, // date the buyer claims they paid
+          paymentSlipUrl: { type: String, default: '' },
+          note: { type: String, default: '', trim: true }, // buyer's note to the reviewer
+          submittedAt: { type: Date, default: null },
+          reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+          reviewedAt: { type: Date, default: null },
+          reviewNote: { type: String, default: '', trim: true }, // admin's note (esp. on rejection)
+        },
       },
     ],
 
@@ -67,6 +93,9 @@ const emiPlanSchema = new mongoose.Schema(
             'rescheduled',
             'status_changed',
             'note_added',
+            'verification_requested',
+            'verification_approved',
+            'verification_rejected',
           ],
           default: 'note_added',
         },
@@ -87,10 +116,13 @@ const emiPlanSchema = new mongoose.Schema(
 emiPlanSchema.index({ agent: 1, status: 1 });
 emiPlanSchema.index({ buyer: 1, status: 1 });
 emiPlanSchema.index({ status: 1, 'installments.dueDate': 1 });
+// Archival job scans exactly this shape (settled plans past their age cutoff)
+emiPlanSchema.index({ status: 1, updatedAt: 1 });
 
 // ---------- Statics ----------
 emiPlanSchema.statics.STATUSES = PLAN_STATUSES;
 emiPlanSchema.statics.INSTALLMENT_STATUSES = INSTALLMENT_STATUSES;
+emiPlanSchema.statics.VERIFICATION_STATUSES = VERIFICATION_STATUSES;
 
 // ---------- Helpers ----------
 

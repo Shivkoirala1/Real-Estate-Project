@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "../../context/ToastContext";
-import { createEmiPlan, getEmiPlans } from "../../services/emiService";
+import { createEmiPlan, getEligibleEmiSales, getEmiPlans } from "../../services/emiService";
 import { getSaleById } from "../../services/saleService";
 
 const PAGE_SIZE = 10;
@@ -44,11 +44,150 @@ const chipClass = (active) =>
       : "bg-white text-slate-muted border-navy/15 hover:border-navy/40"
   }`;
 
-// 'Initialize EMI Plan' modal - opened via /dashboard/agent/emi-plans?new=<saleId>
+// Sale picker - verified EMI sales that still need a plan. EMI plan creation
+// is admin-only, so this entry point lives exclusively in the admin panel;
+// agents keep read-only schedule visibility on their own EMI Sales page.
+const SalePickerModal = ({ open, onClose, onPick }) => {
+  const [sales, setSales] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    let cancelled = false;
+    // Debounce while typing; load instantly on open
+    const timer = setTimeout(
+      () => {
+        setLoading(true);
+        setError("");
+
+        getEligibleEmiSales({ search: search.trim() || undefined, limit: 50 })
+          .then((data) => {
+            if (!cancelled) setSales(data.sales || []);
+          })
+          .catch((err) => {
+            if (!cancelled) {
+              setError(err.response?.data?.message || "Failed to load eligible sales.");
+            }
+          })
+          .finally(() => {
+            if (!cancelled) setLoading(false);
+          });
+      },
+      search ? 250 : 0,
+    );
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [open, search]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="sale-picker-title"
+    >
+      <div className="absolute inset-0 bg-navy-dark/60" onClick={onClose} />
+      <div className="relative bg-white rounded-sm shadow-lifted w-full max-w-lg max-h-[85vh] flex flex-col p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <p className="eyebrow mb-1">New Plan</p>
+            <h2 id="sale-picker-title" className="font-display text-xl text-navy">
+              Pick a verified EMI sale
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="text-slate-muted hover:text-navy text-2xl leading-none"
+          >
+            ×
+          </button>
+        </div>
+
+        <p className="text-sm text-slate-muted mb-4">
+          Only verified sales with payment type EMI and a registered buyer
+          account are listed — one plan per sale, created by admin.
+        </p>
+
+        <input
+          type="search"
+          className="input-field mb-4"
+          placeholder="Search by property, buyer or agent..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          aria-label="Search eligible sales"
+        />
+
+        <div className="flex-1 min-h-0 max-h-96 overflow-y-auto">
+          {error ? (
+            <div className="bg-brick-light border border-brick/30 text-brick rounded-sm p-3 text-sm">
+              {error}
+            </div>
+          ) : loading ? (
+            <p className="text-sm text-slate-muted py-6 text-center">Loading sales...</p>
+          ) : sales.length === 0 ? (
+            <div className="py-10 text-center">
+              <p className="text-slate-muted text-sm">
+                {search
+                  ? "No eligible sales match your search."
+                  : "No verified EMI sales are waiting for a plan. A sale appears here once it is verified with payment type EMI."}
+              </p>
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {sales.map((sale) => (
+                <li key={sale._id}>
+                  <button
+                    type="button"
+                    onClick={() => onPick(sale)}
+                    className="w-full text-left border border-navy/10 rounded-sm p-4 hover:border-brass/60 hover:bg-parchment/40 transition-colors"
+                  >
+                    <p className="font-medium text-navy text-sm">
+                      {sale.property?.title || "Untitled property"}
+                    </p>
+                    <p className="text-xs text-slate-muted mt-0.5">
+                      Buyer: {sale.buyer?.name || "—"} · Agent: {sale.agent?.name || "—"}
+                    </p>
+                    <p className="text-xs text-slate-muted mt-0.5">
+                      Agreed price: {npr(sale.agreedPrice)}
+                      {sale.downPaymentAmount
+                        ? ` · Down payment ${npr(sale.downPaymentAmount)}`
+                        : ""}
+                    </p>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex justify-end mt-5">
+          <button type="button" onClick={onClose} className="btn-secondary text-sm px-4 py-2">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// 'Initialize EMI Plan' modal - opened from the admin EMI Plans panel via
+// /dashboard/admin/emi-plans?new=<saleId> (sale picker or the
+// post-verification prompt on the Sales Verification page).
 const InitEmiModal = ({
   sale,
   saleLoading,
   saleError,
+  existingPlanId,
   submitting,
   onClose,
   onSubmit,
@@ -145,6 +284,22 @@ const InitEmiModal = ({
           <div className="bg-brick-light border border-brick/30 text-brick rounded-sm p-3 text-sm mb-5">
             {saleError}
           </div>
+        ) : existingPlanId ? (
+          <div className="bg-brass/10 border border-brass/30 rounded-sm p-4 text-sm mb-5">
+            <p className="font-medium text-navy mb-1">
+              This sale already has an EMI plan.
+            </p>
+            <p className="text-slate-muted mb-4">
+              Open the plan to manage installments, verifications or
+              rescheduling — duplicate plans are not allowed.
+            </p>
+            <Link
+              to={`/dashboard/admin/emi-plans/${existingPlanId}`}
+              className="btn-primary inline-block text-sm px-4 py-2"
+            >
+              Open EMI plan
+            </Link>
+          </div>
         ) : saleLoading ? (
           <p className="text-sm text-slate-muted mb-5">Loading sale...</p>
         ) : (
@@ -175,13 +330,13 @@ const InitEmiModal = ({
           )
         )}
 
-        {sale && !saleError && !saleLoading && !eligible && (
+        {sale && !saleError && !saleLoading && !eligible && !existingPlanId && (
           <div className="bg-brick-light border border-brick/30 text-brick rounded-sm p-3 text-sm mb-5">
             {ineligibilityReason}
           </div>
         )}
 
-        {sale && eligible && (
+        {sale && eligible && !existingPlanId && (
           <form onSubmit={handleSubmit}>
             {error && (
               <div className="bg-brick-light border border-brick/30 text-brick rounded-sm p-3 text-sm mb-4">
@@ -300,7 +455,7 @@ const InitEmiModal = ({
           </form>
         )}
 
-        {(!sale || !eligible) && (
+        {!existingPlanId && (!sale || !eligible) && (
           <div className="flex justify-end mt-2">
             <button
               type="button"
@@ -337,15 +492,22 @@ const EmiPlans = () => {
     dueThisMonth: 0,
     overdueInstallments: 0,
     totalOutstanding: 0,
+    pendingVerifications: 0,
   });
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [overdueOnly, setOverdueOnly] = useState(false);
 
+  // Sale picker state (admin-only creation entry point)
+  const [pickerOpen, setPickerOpen] = useState(false);
+
   // Init-flow state
   const [sale, setSale] = useState(null);
   const [saleLoading, setSaleLoading] = useState(false);
   const [saleError, setSaleError] = useState("");
+  // Set when the ?new=<saleId> sale already has a plan - shows a link to
+  // it instead of the create form (the backend rejects duplicates).
+  const [existingPlanId, setExistingPlanId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Load EMI plans with filters + pagination
@@ -388,12 +550,14 @@ const EmiPlans = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, statusFilter, overdueOnly]);
 
-  // Init flow: ?new=<saleId> arrives from My Sales
+  // Init flow: ?new=<saleId> arrives from the admin sale picker above or
+  // from the post-verification prompt on the Sales Verification page.
   useEffect(() => {
     if (!saleId) {
       setSale(null);
       setSaleError("");
       setSaleLoading(false);
+      setExistingPlanId(null);
       return;
     }
 
@@ -402,18 +566,30 @@ const EmiPlans = () => {
     setSale(null);
     setSaleError("");
     setSaleLoading(true);
+    setExistingPlanId(null);
 
     (async () => {
+      // If a plan already exists for this sale, surface that instead of
+      // the create form (the backend would reject a duplicate with 409).
+      try {
+        const planRes = await getEmiPlans({ sale: saleId, limit: 1 });
+        if (!cancelled && (planRes.plans || []).length > 0) {
+          setExistingPlanId(planRes.plans[0]._id);
+        }
+      } catch {
+        // Non-fatal - the backend still guards duplicates on submit
+      }
+
       try {
         const res = await getSaleById(saleId);
-
+        console.log("Fetched sale for EMI plan init:", res);
         if (!cancelled) {
-          setSale(res.data.sale || null);
+          setSale(res.sale || null);
         }
       } catch (err) {
         if (!cancelled) {
           setSaleError(
-            err.response?.data?.message || "Failed to load the sale.",
+            err.response?.message || "Failed to load the sale.",
           );
         }
       } finally {
@@ -436,6 +612,16 @@ const EmiPlans = () => {
 
       setSearchParams(next, { replace: true });
     }
+  };
+
+  // Sale picker hand-off: selecting a sale drives the InitEmiModal below
+  // through the same ?new=<saleId> flow.
+  const pickSale = (sale) => {
+    setPickerOpen(false);
+
+    const next = new URLSearchParams(searchParams);
+    next.set("new", sale._id);
+    setSearchParams(next);
   };
 
   const handleCreatePlan = async (payload) => {
@@ -473,29 +659,51 @@ const EmiPlans = () => {
       ? `${new Date(plan.nextDueInstallment.dueDate).toLocaleDateString()} · ${npr(plan.nextDueInstallment.amount)}`
       : "All settled";
 
-  const statusCell = (plan) => (
-    <div className="flex items-center gap-2 flex-wrap">
-      <span
-        className={`status-badge ${PLAN_BADGE[plan.status] || "bg-navy/10 text-slate-muted"}`}
-      >
-        {PLAN_LABEL[plan.status] || plan.status}
-      </span>
-      {plan.overdueCount > 0 && (
-        <span className="status-badge bg-brick-light text-brick">
-          {plan.overdueCount} overdue
+  const pendingVerificationCount = (plan) =>
+    (plan.installments || []).filter((i) => i.verification && i.verification.status === "pending").length;
+
+  const statusCell = (plan) => {
+    const pendingCount = pendingVerificationCount(plan);
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        <span
+          className={`status-badge ${PLAN_BADGE[plan.status] || "bg-navy/10 text-slate-muted"}`}
+        >
+          {PLAN_LABEL[plan.status] || plan.status}
         </span>
-      )}
-    </div>
-  );
+        {plan.overdueCount > 0 && (
+          <span className="status-badge bg-brick-light text-brick">
+            {plan.overdueCount} overdue
+          </span>
+        )}
+        {pendingCount > 0 && (
+          <span className="status-badge bg-brass/15 text-brass-dark">
+            {pendingCount} to verify
+          </span>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div>
       {/* Admin name */}    
-      <p className="eyebrow mb-2">Admin</p>
-      <h1 className="text-3xl mb-8">EMI Plans</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+        <div>
+          <p className="eyebrow mb-2">Admin</p>
+          <h1 className="text-3xl">EMI Plans</h1>
+        </div>
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="btn-primary text-sm px-4 py-2.5 whitespace-nowrap"
+        >
+          + Initialize EMI Plan
+        </button>
+      </div>
 
       {/* Summary cards - global totals, not narrowed by the list filters */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-8">
         <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
           <p className="text-xs uppercase tracking-wide text-slate-muted mb-2">
             Active Plans
@@ -520,6 +728,16 @@ const EmiPlans = () => {
             className={`text-3xl font-display ${summary.overdueInstallments > 0 ? "text-brick" : "text-navy"}`}
           >
             {initialLoaded ? summary.overdueInstallments : "—"}
+          </p>
+        </div>
+        <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
+          <p className="text-xs uppercase tracking-wide text-slate-muted mb-2">
+            Pending Verifications
+          </p>
+          <p
+            className={`text-3xl font-display ${summary.pendingVerifications > 0 ? "text-brass-dark" : "text-navy"}`}
+          >
+            {initialLoaded ? (summary.pendingVerifications ?? 0) : "—"}
           </p>
         </div>
         <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
@@ -704,11 +922,18 @@ const EmiPlans = () => {
           sale={sale}
           saleLoading={saleLoading}
           saleError={saleError}
+          existingPlanId={existingPlanId}
           submitting={submitting}
           onClose={closeInit}
           onSubmit={handleCreatePlan}
         />
       )}
+
+      <SalePickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPick={pickSale}
+      />
     </div>
   );
 };

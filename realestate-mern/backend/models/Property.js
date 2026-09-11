@@ -112,6 +112,8 @@ propertySchema.pre('validate', function (next) {
 propertySchema.index({ title: 'text', description: 'text' });
 propertySchema.index({ price: 1 });
 propertySchema.index({ status: 1 });
+// Cold-storage job scans exactly this shape (soft-archived listings past their age cutoff)
+propertySchema.index({ isArchived: 1, updatedAt: 1 });
 
 // Single source of truth for whether a listing still accepts new inquiries
 // and visit requests. Only 'sold' blocks - 'reserved' stays open by design.

@@ -33,6 +33,7 @@ const agentRoutes = require('./routes/agentRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const rewardRoutes = require('./routes/rewardRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
+const archiveRoutes = require('./routes/archiveRoutes');
 
 connectDB();
 
@@ -49,6 +50,33 @@ try {
   }
 } catch (err) {
   console.error('EMI reminder scheduler not started:', err.message);
+}
+
+// Data lifecycle: cold-storage archival (weekly) and hard-delete retention
+// (nightly) for old/settled records. Both are dry-run-tested via the admin
+// API before relying on the schedule; see utils/archival.js and
+// utils/dataRetention.js for eligibility rules. Same defensive pattern as
+// the reminder job above - never crash boot over a scheduler problem.
+try {
+  if (process.env.DATA_LIFECYCLE_JOBS_ENABLED !== 'false') {
+    const cron = require('node-cron');
+    const { runArchivalPass } = require('./utils/archival');
+    const { runRetentionPass } = require('./utils/dataRetention');
+
+    // Weekly, Sunday 02:00 - move old settled EMI plans / sales / soft-archived
+    // properties to cold storage.
+    cron.schedule('0 2 * * 0', () => {
+      runArchivalPass().catch((err) => console.error('Archival job failed:', err.message));
+    });
+
+    // Nightly, 03:00 - hard-delete closed conversations and unconverted
+    // contact form submissions past their retention window.
+    cron.schedule('0 3 * * *', () => {
+      runRetentionPass().catch((err) => console.error('Data retention job failed:', err.message));
+    });
+  }
+} catch (err) {
+  console.error('Data lifecycle schedulers not started:', err.message);
 }
 
 const app = express();
@@ -91,6 +119,7 @@ app.use('/api/agents', agentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/rewards', rewardRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/admin/archives', archiveRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

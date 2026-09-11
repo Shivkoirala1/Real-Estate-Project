@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../utils/axios';
 import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmContext';
@@ -46,6 +46,7 @@ const money = (x) => `NPR ${Number(x || 0).toLocaleString()}`;
 const SalesVerification = () => {
   const { showToast } = useToast();
   const confirm = useConfirm();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const status = searchParams.get('status') || '';
@@ -143,11 +144,22 @@ const SalesVerification = () => {
     try {
       const data = await verifySale(sale._id);
       showToast('Sale verified — property marked sold, lead closed, commission recorded');
-      if (data.commission?.requiresEmiPlan) {
-        showToast('EMI sale — agent should initialize the EMI plan');
-      }
       closeReject();
       load();
+
+      // EMI plan creation lives in the admin panel - right after confirming
+      // an EMI sale, offer to initialize the buyer's installment plan.
+      if (data.commission?.requiresEmiPlan) {
+        const initNow = await confirm({
+          title: 'EMI sale verified',
+          message: `"${sale.property?.title || 'This property'}" was paid via EMI. Initialize the buyer's installment plan now?`,
+          confirmLabel: 'Initialize EMI plan',
+          cancelLabel: 'Later',
+        });
+        if (initNow) {
+          navigate(`/dashboard/admin/emi-plans?new=${sale._id}`);
+        }
+      }
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to verify sale', 'error');
     } finally {
@@ -365,10 +377,22 @@ const SalesVerification = () => {
                             </button>
                           </>
                         ) : sale.status === 'verified' ? (
-                          <p className="text-sm text-sage md:text-right">
-                            Reviewed by <span className="font-medium">{sale.reviewedBy?.name || 'admin'}</span>
-                            {sale.reviewedAt && <> on {new Date(sale.reviewedAt).toLocaleDateString()}</>}
-                          </p>
+                          <>
+                            <p className="text-sm text-sage md:text-right">
+                              Reviewed by <span className="font-medium">{sale.reviewedBy?.name || 'admin'}</span>
+                              {sale.reviewedAt && <> on {new Date(sale.reviewedAt).toLocaleDateString()}</>}
+                            </p>
+                            {sale.paymentType === 'emi' && (
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/dashboard/admin/emi-plans?new=${sale._id}`)}
+                                className="btn-gold text-sm px-4 py-2"
+                                title="Create or open the buyer's EMI installment plan for this sale"
+                              >
+                                Initialize EMI Plan
+                              </button>
+                            )}
+                          </>
                         ) : null}
                       </div>
                     </div>

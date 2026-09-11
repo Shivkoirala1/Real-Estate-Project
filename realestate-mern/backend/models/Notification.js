@@ -30,6 +30,12 @@ const notificationSchema = new mongoose.Schema(
         'commission_paid',         // Spec v2: admin marked the agent's commission as paid
         'emi_installment_due',     // Spec v2: reminder a few days before an installment's dueDate
         'emi_installment_overdue', // Spec v2: an installment is past its due date
+        'emi_plan_created',        // Spec v3: an EMI plan was initialized for a sale
+        'emi_installment_updated', // Spec v3: admin changed an installment's status/schedule
+        'emi_plan_status_changed', // Spec v3: plan-level status changed (e.g. defaulted, completed)
+        'emi_verification_requested', // Spec v3: buyer submitted proof of payment - admin/agent alert
+        'emi_verification_approved',  // Spec v3: admin confirmed the buyer's payment
+        'emi_verification_rejected',  // Spec v3: admin rejected the buyer's proof of payment
         'system',                  // generic/system notification, reserved for future use
       ],
       required: true,

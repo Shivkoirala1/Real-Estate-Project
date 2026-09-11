@@ -109,6 +109,17 @@ const adminNavGroups = [
       },
     ],
   },
+
+  {
+    id: 'system',
+    label: 'Data & System',
+    items: [
+      {
+        label: 'Archives & Data Jobs',
+        to: '/dashboard/admin/archives',
+      },
+    ],
+  },
 ];
 
 // ------------------------------------------------------------

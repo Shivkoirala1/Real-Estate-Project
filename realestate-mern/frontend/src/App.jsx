@@ -51,12 +51,13 @@ import ManageUsers from "./pages/admin/ManageUsers";
 import ManageCategories from "./pages/admin/ManageCategories";
 import BlogManagement from "./pages/admin/ManageBlogs";
 import Inquiries from "./pages/admin/RevampedInquiries";
-import Visits from "./pages/admin/Visits";
+import Visits from "./pages/admin/ManageVisits";
 import ConversationsInbox from "./pages/admin/ConversationsInbox";
 import EmiPlans from "./pages/admin/EmiPlans";
 import EmiPlanDetail from "./pages/admin/EmiPlanDetail";
 import SalesVerification from "./pages/admin/SalesVerification";
 import Commissions from "./pages/admin/Commissions";
+import DataArchives from "./pages/admin/DataArchives";
 import ManageAgents from "./pages/admin/ManageAgents";
 import Analytics from "./pages/admin/Analytics";
 import LeadDashboard from "./pages/admin/LeadManagement/LeadDashboard";
@@ -369,6 +370,16 @@ function App() {
               <ProtectedRoute roles={["admin"]}>
                 <DashboardLayout>
                   <Commissions />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin/archives"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <DataArchives />
                 </DashboardLayout>
               </ProtectedRoute>
             }

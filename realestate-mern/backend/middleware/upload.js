@@ -67,5 +67,33 @@ const uploadVerification = multer({
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB per file
 });
 
+// EMI payment-slip photos (buyer's proof of payment for a single installment)
+const paymentSlipStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'shram-sewa/emi-payment-slips',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+  },
+});
+
+// Images only, capped small - this is a single receipt/slip photo, not a gallery.
+const paymentSlipFileFilter = (req, file, cb) => {
+  const isImage = file.mimetype.startsWith('image/');
+  if (isImage) {
+    cb(null, true);
+  } else {
+    const err = new Error('Only PNG, JPG, or WEBP image files are allowed for payment slips');
+    err.statusCode = 400;
+    cb(err, false);
+  }
+};
+
+const uploadPaymentSlip = multer({
+  storage: paymentSlipStorage,
+  fileFilter: paymentSlipFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per file
+});
+
 module.exports = upload;
 module.exports.verification = uploadVerification;
+module.exports.paymentSlip = uploadPaymentSlip;
