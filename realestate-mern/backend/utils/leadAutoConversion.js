@@ -320,13 +320,15 @@ const ensureLeadFromVisit = async ({ visit, actor = null, overrides = {} }) => {
   const alreadyConverted = visit.convertedLead || (await Lead.findOne({ visit: visit._id }).select('_id'));
   if (alreadyConverted) {
     const existing = await Lead.findById(idOf(alreadyConverted));
-    if (existing) {
+    if (existing && !['closed', 'lost'].includes(existing.stage)) {
       if (!visit.convertedLead) {
         visit.convertedLead = existing._id;
         await visit.save();
       }
       return { lead: existing, conversation: null, created: false, deduped: true };
     }
+    // The previously linked lead is closed/lost - fall through and create a
+    // fresh, active lead for this visit instead of resurrecting a dead one.
   }
 
   // Make sure we have the requester's contact details and the property title
@@ -360,7 +362,9 @@ const ensureLeadFromVisit = async ({ visit, actor = null, overrides = {} }) => {
   }
 
   if (existingLead) {
-    existingLead.visit = visit._id;
+    // Link this visit onto the lead without stealing the slot of another
+    // visit that may already be recorded on it (leads keep a single visit ref).
+    if (!existingLead.visit) existingLead.visit = visit._id;
     if (!existingLead.property && visit.property) existingLead.property = idOf(visit.property);
     if (['new', 'contacted'].includes(existingLead.stage)) {
       existingLead.stage = 'site_visit_scheduled';

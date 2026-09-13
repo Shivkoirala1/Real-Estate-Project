@@ -107,6 +107,8 @@ const saleSchema = new mongoose.Schema(
 saleSchema.index({ status: 1, submittedAt: -1 });
 saleSchema.index({ agent: 1, status: 1 });
 saleSchema.index({ property: 1, status: 1 });
+// Archival job scans exactly this shape (settled sales past their age cutoff)
+saleSchema.index({ status: 1, updatedAt: 1 });
 // A verified sale is one-to-one with its lead - block double-filing
 saleSchema.index({ lead: 1, status: 1 }, { unique: true, sparse: true });
 

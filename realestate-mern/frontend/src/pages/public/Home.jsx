@@ -4,6 +4,7 @@ import { getProperties } from '../../services/propertyService';
 import { getPropertyTypes } from '../../services/categoryService';
 import SearchFilterBar from '../../components/SearchFilterBar';
 import PropertyCard from '../../components/PropertyCard';
+import PropertyCategories from '../../components/PropertyCategories';
 
 const Home = () => {
   const [featured, setFeatured] = useState([]);
@@ -77,21 +78,7 @@ const Home = () => {
       </div>
 
       {/* Property categories */}
-      <section className="max-w-7xl mx-auto px-5 md:px-8 mt-20">
-        <p className="eyebrow mb-2">Categories</p>
-        <h2 className="text-3xl mb-8">Browse by property type</h2>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {types.map((t) => (
-            <Link
-              key={t._id}
-              to={`/properties?propertyType=${t._id}`}
-              className="border border-navy/10 rounded-sm p-5 text-center hover:border-brass hover:shadow-card transition-all"
-            >
-              <p className="font-display text-lg text-navy">{t.name}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
+      <PropertyCategories types={types} />
 
       {/* Featured */}
       {featured.length > 0 && (

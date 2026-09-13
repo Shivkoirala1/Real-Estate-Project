@@ -32,7 +32,7 @@ const awardReward = async (userId, actionKey, { refId = null, refModel = null, k
   if (alreadyAwarded) return null;
 
   const yc = action.yc;
-  const xp = action.yc; // XP mirrors YC for now - see note in rewardLevels.js
+  const xp = action.yc * 2; 
 
   const [txn] = await Promise.all([
     RewardTransaction.create({ user: userId, action: actionKey, label: action.label, xp, yc, refId, refModel, key }),

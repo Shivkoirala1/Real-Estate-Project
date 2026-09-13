@@ -1,10 +1,10 @@
-const ContactForm = require('../models/ContactForm');
-const Lead = require('../models/Lead');
-const Conversation = require('../models/Conversation');
-const Property = require('../models/Property');
-const User = require('../models/User');
-const asyncHandler = require('../utils/asyncHandler');
-const { notify, notifyMany } = require('../utils/notify');
+const ContactForm = require("../models/ContactForm");
+const Lead = require("../models/Lead");
+const Conversation = require("../models/Conversation");
+const Property = require("../models/Property");
+const User = require("../models/User");
+const asyncHandler = require("../utils/asyncHandler");
+const { notify, notifyMany } = require("../utils/notify");
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\d{10}$/;
@@ -21,40 +21,43 @@ const createContactForm = asyncHandler(async (req, res) => {
   if (!name || !email || !message) {
     return res.status(400).json({
       success: false,
-      message: 'Name, email, and message are required',
+      message: "Name, email, and message are required",
     });
   }
 
   if (!EMAIL_REGEX.test(email)) {
     return res.status(400).json({
       success: false,
-      message: 'Please provide a valid email address',
+      message: "Please provide a valid email address",
     });
   }
 
   if (phone && !PHONE_REGEX.test(phone)) {
     return res.status(400).json({
       success: false,
-      message: 'Phone number must be exactly 10 digits',
+      message: "Phone number must be exactly 10 digits",
     });
   }
 
   // Check if property exists and if user is trying to contact about their own listing
   let propertyDoc = null;
   if (property) {
-    propertyDoc = await Property.findById(property).select('title listedBy status');
+    propertyDoc = await Property.findById(property).select(
+      "title listedBy status",
+    );
 
     if (!propertyDoc) {
       return res.status(404).json({
         success: false,
-        message: 'Property not found',
+        message: "Property not found",
       });
     }
 
     if (!propertyDoc.canReceiveInquiries()) {
       return res.status(400).json({
         success: false,
-        message: 'This property has been sold and is no longer accepting inquiries.',
+        message:
+          "This property has been sold and is no longer accepting inquiries.",
       });
     }
 
@@ -71,45 +74,45 @@ const createContactForm = asyncHandler(async (req, res) => {
   const contactForm = await ContactForm.create({
     name,
     email,
-    phone: phone || '',
-    subject: subject || 'General Inquiry',
+    phone: phone || "",
+    subject: subject || "General Inquiry",
     message,
     property: property || null,
     user: req.user ? req.user._id : null,
-    status: 'new',
+    status: "new",
   });
 
   // Notify admins about new contact form
-  const admins = await User.find({ role: 'admin' }).select('_id');
+  const admins = await User.find({ role: "admin" }).select("_id");
 
   if (propertyDoc) {
     await notifyMany(
       admins.map((a) => a._id),
       {
-        type: 'contact_form_received',
-        title: 'New contact form submission',
+        type: "contact_form_received",
+        title: "New contact form submission",
         message: `${name} sent an inquiry about "${propertyDoc.title}"`,
         contactForm: contactForm._id,
         property: propertyDoc._id,
-        link: '/dashboard/admin/lead-management',
-      }
+        link: "/dashboard/admin/lead-management",
+      },
     );
   } else {
     await notifyMany(
       admins.map((a) => a._id),
       {
-        type: 'contact_form_received',
-        title: 'New contact message',
-        message: `${name} sent a general inquiry: "${subject || 'General Inquiry'}"`,
+        type: "contact_form_received",
+        title: "New contact message",
+        message: `${name} sent a general inquiry: "${subject || "General Inquiry"}"`,
         contactForm: contactForm._id,
-        link: '/dashboard/admin/lead-management',
-      }
+        link: "/dashboard/admin/lead-management",
+      },
     );
   }
 
   res.status(201).json({
     success: true,
-    message: 'Your contact form has been submitted successfully',
+    message: "Your contact form has been submitted successfully",
     contactForm,
   });
 });
@@ -132,10 +135,10 @@ const getContactForms = asyncHandler(async (req, res) => {
 
   const [contactForms, total] = await Promise.all([
     ContactForm.find(query)
-      .populate('property', 'title slug')
-      .populate('user', 'name email')
-      .populate('respondedBy', 'name')
-      .populate('convertedLead', 'stage')
+      .populate("property", "title slug")
+      .populate("user", "name email")
+      .populate("respondedBy", "name")
+      .populate("convertedLead", "stage")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum),
@@ -169,8 +172,8 @@ const getSentContactForms = asyncHandler(async (req, res) => {
 
   const [contactForms, total] = await Promise.all([
     ContactForm.find({ user: req.user._id })
-      .populate('property', 'title slug media.coverImage')
-      .populate('respondedBy', 'name')
+      .populate("property", "title slug media.coverImage")
+      .populate("respondedBy", "name")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum),
@@ -197,26 +200,27 @@ const getSentContactForms = asyncHandler(async (req, res) => {
  */
 const getContactFormById = asyncHandler(async (req, res) => {
   const contactForm = await ContactForm.findById(req.params.id)
-    .populate('property', 'title slug media.coverImage')
-    .populate('user', 'name email')
-    .populate('respondedBy', 'name')
-    .populate('convertedLead', 'name stage source');
+    .populate("property", "title slug media.coverImage")
+    .populate("user", "name email")
+    .populate("respondedBy", "name")
+    .populate("convertedLead", "name stage source");
 
   if (!contactForm) {
     return res.status(404).json({
       success: false,
-      message: 'Contact form not found',
+      message: "Contact form not found",
     });
   }
 
   // Authorization: only the sender or admins can view
-  const isSender = contactForm.user && String(contactForm.user._id) === String(req.user._id);
-  const isAdmin = req.user.role === 'admin';
+  const isSender =
+    contactForm.user && String(contactForm.user._id) === String(req.user._id);
+  const isAdmin = req.user.role === "admin";
 
   if (!isAdmin && !isSender) {
     return res.status(403).json({
       success: false,
-      message: 'You are not authorized to view this contact form',
+      message: "You are not authorized to view this contact form",
     });
   }
 
@@ -234,29 +238,32 @@ const getContactFormById = asyncHandler(async (req, res) => {
 const updateContactFormStatus = asyncHandler(async (req, res) => {
   const { status } = req.body;
 
-  if (!['new', 'read', 'responded', 'converted'].includes(status)) {
+  if (!["new", "read", "responded", "converted"].includes(status)) {
     return res.status(400).json({
       success: false,
-      message: 'Invalid status. Must be one of: new, read, responded, converted',
+      message:
+        "Invalid status. Must be one of: new, read, responded, converted",
     });
   }
 
   const contactForm = await ContactForm.findByIdAndUpdate(
     req.params.id,
     { status },
-    { new: true, runValidators: true }
-  ).populate('property', 'title').populate('respondedBy', 'name');
+    { new: true, runValidators: true },
+  )
+    .populate("property", "title")
+    .populate("respondedBy", "name");
 
   if (!contactForm) {
     return res.status(404).json({
       success: false,
-      message: 'Contact form not found',
+      message: "Contact form not found",
     });
   }
 
   res.json({
     success: true,
-    message: 'Contact form status updated',
+    message: "Contact form status updated",
     contactForm,
   });
 });
@@ -272,16 +279,18 @@ const respondToContactForm = asyncHandler(async (req, res) => {
   if (!response || !response.trim()) {
     return res.status(400).json({
       success: false,
-      message: 'Response message is required',
+      message: "Response message is required",
     });
   }
 
-  const contactForm = await ContactForm.findById(req.params.id).populate('user');
+  const contactForm = await ContactForm.findById(req.params.id).populate(
+    "user",
+  );
 
   if (!contactForm) {
     return res.status(404).json({
       success: false,
-      message: 'Contact form not found',
+      message: "Contact form not found",
     });
   }
 
@@ -289,18 +298,22 @@ const respondToContactForm = asyncHandler(async (req, res) => {
   contactForm.response = response.trim();
   contactForm.respondedAt = new Date();
   contactForm.respondedBy = req.user._id;
-  contactForm.status = 'responded';
+  contactForm.status = "responded";
   await contactForm.save();
 
   // Notify the original sender if they're a registered user
   if (contactForm.user) {
+    const propertyId = contactForm.property || null;
+    const propertyDoc = propertyId ? await Property.findById(propertyId).select("title") : null;
+
     await notify({
       recipient: contactForm.user,
-      type: 'contact_form_responded',
-      title: 'Response to your contact form',
-      message: `Your inquiry has been responded to${contactForm.property ? ` about "${contactForm.property.title}"` : ''}`,
+      type: "contact_form_responded",
+      title: "Response to your contact form",
+      message: `Your inquiry has been responded to${propertyDoc ? ` about "${propertyDoc}"` : ""}`,
       contactForm: contactForm._id,
-      link: '/my-inquiries',
+      property: propertyDoc ? propertyDoc._id : null,
+      link: "/my-conversations",
     });
   }
 
@@ -312,7 +325,7 @@ const respondToContactForm = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    message: 'Response sent',
+    message: "Response sent",
     contactForm,
   });
 });
@@ -330,15 +343,20 @@ const respondToContactForm = asyncHandler(async (req, res) => {
 const convertContactFormToLead = asyncHandler(async (req, res) => {
   const { category, priority, assignedAgent, notes, property } = req.body;
 
-  const contactForm = await ContactForm.findById(req.params.id).populate('user', 'name email');
+  const contactForm = await ContactForm.findById(req.params.id).populate(
+    "user",
+    "name email",
+  );
   if (!contactForm) {
-    return res.status(404).json({ success: false, message: 'Contact form not found' });
+    return res
+      .status(404)
+      .json({ success: false, message: "Contact form not found" });
   }
 
-  if (contactForm.status === 'converted' && contactForm.convertedLead) {
+  if (contactForm.status === "converted" && contactForm.convertedLead) {
     return res.status(400).json({
       success: false,
-      message: 'This contact form has already been converted to a lead',
+      message: "This contact form has already been converted to a lead",
       leadId: contactForm.convertedLead,
     });
   }
@@ -346,17 +364,21 @@ const convertContactFormToLead = asyncHandler(async (req, res) => {
   // Validate agent if provided
   let agentDoc = null;
   if (assignedAgent) {
-    agentDoc = await User.findById(assignedAgent).select('name email');
+    agentDoc = await User.findById(assignedAgent).select("name email");
     if (!agentDoc) {
-      return res.status(404).json({ success: false, message: 'Assigned agent not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Assigned agent not found" });
     }
   }
 
   const propertyId = property || contactForm.property || null;
   if (propertyId) {
-    const propertyDoc = await Property.findById(propertyId).select('title');
+    const propertyDoc = await Property.findById(propertyId).select("title");
     if (!propertyDoc) {
-      return res.status(404).json({ success: false, message: 'Property not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Property not found" });
     }
   }
 
@@ -364,21 +386,21 @@ const convertContactFormToLead = asyncHandler(async (req, res) => {
   const lead = new Lead({
     name: contactForm.name,
     email: contactForm.email,
-    phone: contactForm.phone || '',
-    source: 'contact_form',
+    phone: contactForm.phone || "",
+    source: "contact_form",
     contactForm: contactForm._id,
     user: contactForm.user ? contactForm.user._id : null,
     property: propertyId,
     assignedAgent: assignedAgent || null,
-    category: category || 'property',
-    priority: priority || 'medium',
-    stage: 'new',
+    category: category || "property",
+    priority: priority || "medium",
+    stage: "new",
     notes: notes
       ? `Converted from contact form: ${notes}`
       : `Converted from contact form: "${contactForm.subject}"`,
   });
   lead.recordActivity({
-    type: 'converted',
+    type: "converted",
     message: `Lead created from contact form "${contactForm.subject}"`,
     by: req.user._id,
     byName: req.user.name,
@@ -397,7 +419,7 @@ const convertContactFormToLead = asyncHandler(async (req, res) => {
         {
           sender: contactForm.user._id,
           senderName: contactForm.name,
-          side: 'inquirer',
+          side: "inquirer",
           body: contactForm.message,
         },
       ],
@@ -409,7 +431,7 @@ const convertContactFormToLead = asyncHandler(async (req, res) => {
   }
 
   // 3) Mark the form as converted and cross-link
-  contactForm.status = 'converted';
+  contactForm.status = "converted";
   contactForm.convertedLead = lead._id;
   await contactForm.save();
 
@@ -417,23 +439,23 @@ const convertContactFormToLead = asyncHandler(async (req, res) => {
   if (agentDoc) {
     await notify({
       recipient: agentDoc._id,
-      type: 'lead_assigned',
-      title: 'New Lead Assigned to You',
+      type: "lead_assigned",
+      title: "New Lead Assigned to You",
       message: `Lead "${lead.name}" (from a contact form) has been assigned to you`,
       lead: lead._id,
-      link: '/dashboard/agent/leads',
+      link: "/dashboard/agent/leads",
     });
   }
 
   await lead.populate([
-    { path: 'assignedAgent', select: 'name email' },
-    { path: 'property', select: 'title' },
-    { path: 'contactForm', select: 'subject status' },
+    { path: "assignedAgent", select: "name email" },
+    { path: "property", select: "title" },
+    { path: "contactForm", select: "subject status" },
   ]);
 
   res.status(201).json({
     success: true,
-    message: 'Contact form converted to lead',
+    message: "Contact form converted to lead",
     lead,
     conversation,
   });
@@ -450,13 +472,13 @@ const deleteContactForm = asyncHandler(async (req, res) => {
   if (!contactForm) {
     return res.status(404).json({
       success: false,
-      message: 'Contact form not found',
+      message: "Contact form not found",
     });
   }
 
   res.json({
     success: true,
-    message: 'Contact form deleted',
+    message: "Contact form deleted",
   });
 });
 

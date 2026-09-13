@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import api from '../../utils/axios';
 import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmContext';
+import { reviewInstallmentVerification } from '../../services/emiService';
 
 const PLAN_BADGE = {
   active: 'bg-brass/15 text-brass-dark',
@@ -30,6 +31,18 @@ const INSTALLMENT_LABEL = {
   waived: 'Waived',
   overdue: 'Overdue',
   pending: 'Pending',
+};
+
+const VERIFICATION_BADGE = {
+  pending: 'bg-navy/10 text-navy',
+  approved: 'bg-sage-light text-sage',
+  rejected: 'bg-brick-light text-brick',
+};
+
+const VERIFICATION_LABEL = {
+  pending: 'Verification requested',
+  approved: 'Verified',
+  rejected: 'Verification rejected',
 };
 
 const npr = (x) => `NPR ${Number(x || 0).toLocaleString()}`;
@@ -257,6 +270,149 @@ const EditRemarksModal = ({ inst, busy, onClose, onSubmit }) => {
   );
 };
 
+// Buyer submitted proof of payment - admin approves (marks paid) or rejects with a reason
+const ReviewVerificationModal = ({ inst, busy, onClose, onSubmit }) => {
+  const verification = inst.verification || {};
+  const [action, setAction] = useState('approve');
+  const [paidAmount, setPaidAmount] = useState(String(verification.requestedAmount ?? inst.amount ?? ''));
+  const [paidDate, setPaidDate] = useState(toDateInput(verification.requestedDate));
+  const [reviewNote, setReviewNote] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (action === 'reject') {
+      if (!reviewNote.trim()) return setError('A reason is required to reject this request.');
+      setError('');
+      return onSubmit({ action: 'reject', reviewNote: reviewNote.trim() });
+    }
+    const amount = Number(paidAmount);
+    if (!Number.isFinite(amount) || amount < 0) return setError('Paid amount must be a number of at least 0.');
+    if (!paidDate) return setError('Paid date is required.');
+    setError('');
+    onSubmit({ action: 'approve', paidAmount: amount, paidDate, reviewNote: reviewNote.trim() });
+  };
+
+  return (
+    <ModalShell eyebrow={`Installment ${inst.installmentNumber}`} title="Review Payment Verification" onClose={onClose}>
+      <div className="bg-parchment/60 border border-navy/10 rounded-sm p-4 mb-5 text-sm">
+        <p className="flex justify-between gap-4 mb-1">
+          <span className="text-slate-muted">Buyer claims paid</span>
+          <span className="font-medium text-navy">{npr(verification.requestedAmount)}</span>
+        </p>
+        <p className="flex justify-between gap-4 mb-1">
+          <span className="text-slate-muted">Date paid</span>
+          <span className="text-navy">{verification.requestedDate ? new Date(verification.requestedDate).toLocaleDateString() : '—'}</span>
+        </p>
+        {verification.note && (
+          <p className="mt-2 text-xs text-slate-ink border-t border-navy/10 pt-2">Note: {verification.note}</p>
+        )}
+        {verification.paymentSlipUrl ? (
+          <a
+            href={verification.paymentSlipUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block mt-3"
+          >
+            <img
+              src={verification.paymentSlipUrl}
+              alt="Payment slip submitted by buyer"
+              className="max-h-48 rounded-sm border border-navy/10"
+            />
+          </a>
+        ) : (
+          <p className="text-xs text-slate-muted mt-3">No payment slip photo attached.</p>
+        )}
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        {error && <ErrorNote>{error}</ErrorNote>}
+
+        <div className="flex gap-2 mb-4">
+          <button
+            type="button"
+            onClick={() => setAction('approve')}
+            className={`flex-1 text-sm font-semibold uppercase tracking-wide px-3 py-2 rounded-sm border transition-colors ${
+              action === 'approve' ? 'bg-sage text-ivory border-sage' : 'bg-white text-slate-muted border-navy/15'
+            }`}
+          >
+            Approve
+          </button>
+          <button
+            type="button"
+            onClick={() => setAction('reject')}
+            className={`flex-1 text-sm font-semibold uppercase tracking-wide px-3 py-2 rounded-sm border transition-colors ${
+              action === 'reject' ? 'bg-brick text-ivory border-brick' : 'bg-white text-slate-muted border-navy/15'
+            }`}
+          >
+            Reject
+          </button>
+        </div>
+
+        {action === 'approve' ? (
+          <div className="space-y-4">
+            <div>
+              <label className="label-field" htmlFor="verify-amount">Paid Amount (NPR)</label>
+              <input
+                id="verify-amount"
+                type="number"
+                min="0"
+                step="any"
+                className="input-field"
+                value={paidAmount}
+                onChange={(e) => setPaidAmount(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="label-field" htmlFor="verify-date">Paid Date</label>
+              <input
+                id="verify-date"
+                type="date"
+                className="input-field"
+                value={paidDate}
+                onChange={(e) => setPaidDate(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="label-field" htmlFor="verify-note">Note (optional)</label>
+              <textarea
+                id="verify-note"
+                rows="2"
+                className="input-field"
+                value={reviewNote}
+                onChange={(e) => setReviewNote(e.target.value)}
+                placeholder="e.g. confirmed against bank statement"
+              />
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label className="label-field" htmlFor="verify-reject-reason">Reason for Rejection *</label>
+            <textarea
+              id="verify-reject-reason"
+              rows="3"
+              className="input-field"
+              value={reviewNote}
+              onChange={(e) => setReviewNote(e.target.value)}
+              placeholder="e.g. slip does not match the claimed amount"
+              required
+            />
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3 mt-6">
+          <button type="button" onClick={onClose} className="btn-secondary text-sm px-4 py-2">Cancel</button>
+          <button type="submit" className={`text-sm px-4 py-2 rounded-sm font-medium ${action === 'approve' ? 'btn-primary' : 'bg-brick text-ivory hover:bg-brick/90'}`} disabled={busy}>
+            {busy ? 'Saving...' : action === 'approve' ? 'Approve & Mark Paid' : 'Reject Request'}
+          </button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+};
+
 // Plan-level: recompute pending due dates monthly from a new start date
 const RescheduleModal = ({ busy, onClose, onSubmit }) => {
   const [startDate, setStartDate] = useState(toDateInput());
@@ -359,7 +515,7 @@ const EmiPlanDetail = () => {
   if (loading) {
     return (
       <div>
-        <Link to="/dashboard/agent/emi-plans" className="text-sm text-brass hover:underline">← EMI Plans</Link>
+        <Link to="/dashboard/admin/emi-plans" className="text-sm text-brass hover:underline">← EMI Plans</Link>
         <p className="text-slate-muted mt-6">Loading EMI plan...</p>
       </div>
     );
@@ -368,7 +524,7 @@ const EmiPlanDetail = () => {
   if (error || !plan) {
     return (
       <div>
-        <Link to="/dashboard/agent/emi-plans" className="text-sm text-brass hover:underline">← EMI Plans</Link>
+        <Link to="/dashboard/admin/emi-plans" className="text-sm text-brass hover:underline">← EMI Plans</Link>
         <div className="bg-brick-light border border-brick/30 text-brick rounded-sm p-6 mt-6 text-sm">
           {error || 'EMI plan not found.'}
         </div>
@@ -450,8 +606,35 @@ const EmiPlanDetail = () => {
     patchInstallment(inst, { status: 'pending' });
   };
 
+  const handleReviewVerification = async (inst, payload) => {
+    setBusy(true);
+    try {
+      const res = await reviewInstallmentVerification(id, inst.installmentNumber, payload);
+      setPlan(res.plan);
+      setEditor(null);
+      showToast(res.message || 'Verification reviewed', 'success');
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to review the verification request', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const rowActions = (inst) => {
     const st = displayStatus(inst);
+    const hasPendingVerification = inst.verification && inst.verification.status === 'pending';
+
+    if (hasPendingVerification) {
+      return (
+        <button
+          type="button"
+          onClick={() => setEditor({ mode: 'reviewVerification', inst })}
+          className="text-xs px-3 py-1.5 rounded-sm bg-navy text-ivory font-medium hover:bg-navy-dark transition-colors"
+        >
+          Review Verification
+        </button>
+      );
+    }
     if (st === 'pending' || st === 'overdue') {
       return (
         <>
@@ -495,7 +678,7 @@ const EmiPlanDetail = () => {
 
   return (
     <div>
-      <Link to="/dashboard/agent/emi-plans" className="text-sm text-brass hover:underline">← EMI Plans</Link>
+      <Link to="/dashboard/admin/emi-plans" className="text-sm text-brass hover:underline">← EMI Plans</Link>
 
       {/* Header */}
       <div className="mt-6 mb-8">
@@ -611,6 +794,7 @@ const EmiPlanDetail = () => {
               <th className="px-5 py-3">Status</th>
               <th className="px-5 py-3">Paid Date</th>
               <th className="px-5 py-3">Paid Amount</th>
+              <th className="px-5 py-3">Verification</th>
               <th className="px-5 py-3">Remarks</th>
               {canManage && <th className="px-5 py-3 text-right">Actions</th>}
             </tr>
@@ -618,8 +802,13 @@ const EmiPlanDetail = () => {
           <tbody>
             {installments.map((inst) => {
               const st = displayStatus(inst);
+              const verification = inst.verification;
+              const isPendingVerification = verification && verification.status === 'pending';
               return (
-                <tr key={inst.installmentNumber} className="border-b border-navy/5 last:border-0">
+                <tr
+                  key={inst.installmentNumber}
+                  className={`border-b border-navy/5 last:border-0 ${isPendingVerification ? 'bg-brass-light/10' : ''}`}
+                >
                   <td className="px-5 py-3 font-medium text-navy">{inst.installmentNumber}</td>
                   <td className="px-5 py-3 text-slate-ink">{new Date(inst.dueDate).toLocaleDateString()}</td>
                   <td className="px-5 py-3 text-slate-ink">{npr(inst.amount)}</td>
@@ -628,6 +817,15 @@ const EmiPlanDetail = () => {
                   </td>
                   <td className="px-5 py-3 text-slate-muted">{inst.paidDate ? new Date(inst.paidDate).toLocaleDateString() : '—'}</td>
                   <td className="px-5 py-3 text-slate-muted">{inst.paidAmount != null ? npr(inst.paidAmount) : '—'}</td>
+                  <td className="px-5 py-3">
+                    {verification && verification.status !== 'none' ? (
+                      <span className={`status-badge ${VERIFICATION_BADGE[verification.status]}`}>
+                        {VERIFICATION_LABEL[verification.status]}
+                      </span>
+                    ) : (
+                      <span className="text-slate-muted">—</span>
+                    )}
+                  </td>
                   <td className="px-5 py-3 text-slate-muted max-w-[220px] break-words">{inst.remarks || '—'}</td>
                   {canManage && (
                     <td className="px-5 py-3">
@@ -645,8 +843,13 @@ const EmiPlanDetail = () => {
       <div className="md:hidden space-y-3">
         {installments.map((inst) => {
           const st = displayStatus(inst);
+          const verification = inst.verification;
+          const isPendingVerification = verification && verification.status === 'pending';
           return (
-            <div key={inst.installmentNumber} className="bg-white border border-navy/10 rounded-sm p-4 shadow-card">
+            <div
+              key={inst.installmentNumber}
+              className={`bg-white border rounded-sm p-4 shadow-card ${isPendingVerification ? 'border-brass' : 'border-navy/10'}`}
+            >
               <div className="flex items-center justify-between gap-2 mb-2">
                 <p className="font-medium text-navy">Installment {inst.installmentNumber}</p>
                 <span className={`status-badge ${INSTALLMENT_BADGE[st]}`}>{INSTALLMENT_LABEL[st]}</span>
@@ -668,6 +871,14 @@ const EmiPlanDetail = () => {
                   <span>Paid amount</span>
                   <span className="text-slate-ink">{inst.paidAmount != null ? npr(inst.paidAmount) : '—'}</span>
                 </div>
+                {verification && verification.status !== 'none' && (
+                  <div className="flex justify-between gap-4">
+                    <span>Verification</span>
+                    <span className={`status-badge ${VERIFICATION_BADGE[verification.status]}`}>
+                      {VERIFICATION_LABEL[verification.status]}
+                    </span>
+                  </div>
+                )}
                 {inst.remarks && (
                   <div className="flex justify-between gap-4">
                     <span>Remarks</span>
@@ -707,6 +918,15 @@ const EmiPlanDetail = () => {
           busy={busy}
           onClose={() => setEditor(null)}
           onSubmit={(payload) => patchInstallment(editor.inst, payload)}
+        />
+      )}
+      {canManage && editor?.mode === 'reviewVerification' && (
+        <ReviewVerificationModal
+          key={`review-verification-${editor.inst.installmentNumber}`}
+          inst={editor.inst}
+          busy={busy}
+          onClose={() => setEditor(null)}
+          onSubmit={(payload) => handleReviewVerification(editor.inst, payload)}
         />
       )}
       {canManage && rescheduleOpen && (

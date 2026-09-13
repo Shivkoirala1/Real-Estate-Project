@@ -14,6 +14,7 @@ import { formatPrice } from "../../utils/format";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { useConfirm } from "../../context/ConfirmContext";
+import {nepaliInputToUTC} from "../../utils/timeConverter";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\d{10}$/;
@@ -254,11 +255,11 @@ const PropertyDetail = () => {
       await createVisit({
         property: property._id,
         visitType: "property",
-        requestedSlot: visitForm.requestedSlot,
+        requestedSlot: nepaliInputToUTC(visitForm.requestedSlot),
         buyerNotes: visitForm.buyerNotes,
         inquiryId: visitForm.inquiryId,
       });
-      showToast("Your visit request has been sent to the agent");
+      showToast("Your visit request has been sent to our team");
       setVisitForm({ requestedSlot: "", buyerNotes: "" });
       setVisitErrors({});
       setVisitRequested(true);
@@ -697,7 +698,7 @@ const PropertyDetail = () => {
                 </div>
               ) : visitRequested ? (
                 <div className="bg-sage/10 border border-sage/30 rounded-sm px-4 py-4 text-sm text-navy">
-                  Your visit request has been sent. The agent will confirm the
+                  Your visit request has been sent. Our team will confirm the
                   slot shortly. You can track it from{" "}
                   <Link
                     to="/my-visits"

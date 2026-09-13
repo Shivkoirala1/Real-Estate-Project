@@ -33,9 +33,9 @@ const register = asyncHandler(async (req, res) => {
   }
 
   const files = req.files || {};
-  const selfiePhoto = files.selfiePhoto ? `/uploads/${files.selfiePhoto[0].filename}` : '';
-  const citizenshipPhotoFront = files.citizenshipPhotoFront ? `/uploads/${files.citizenshipPhotoFront[0].filename}` : '';
-  const citizenshipPhotoBack = files.citizenshipPhotoBack ? `/uploads/${files.citizenshipPhotoBack[0].filename}` : '';
+  const selfiePhoto = files.selfiePhoto ? files.selfiePhoto[0].path : '';
+  const citizenshipPhotoFront = files.citizenshipPhotoFront ? files.citizenshipPhotoFront[0].path : '';
+  const citizenshipPhotoBack = files.citizenshipPhotoBack ? files.citizenshipPhotoBack[0].path : '';
 
   if (!selfiePhoto || !citizenshipPhotoFront || !citizenshipPhotoBack) {
     return res.status(400).json({

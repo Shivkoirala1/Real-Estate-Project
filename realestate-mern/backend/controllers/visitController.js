@@ -1,9 +1,22 @@
 const Visit = require('../models/Visit');
 const Property = require('../models/Property');
 const Lead = require('../models/Lead');
+const ContactForm = require('../models/ContactForm');
 const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const { notify, notifyMany } = require('../utils/notify');
+const { ensureLeadFromVisit } = require('../utils/leadAutoConversion');
+
+// Lead stages that can still absorb new activity (visit linking). Closed/lost
+// leads are never silently resurrected - a returning customer starts fresh.
+const ACTIVE_LEAD_STAGES = ['new', 'contacted', 'site_visit_scheduled', 'negotiation'];
+
+// Lead stages a visit status change must never regress (a sale may already be
+// pending verification, or the lead was deliberately closed/lost by an admin).
+const UNRECOVERABLE_LEAD_STAGES = ['pending_sale_verification', 'closed', 'lost'];
+
+// Statuses accepted by PATCH /api/visits/:id
+const VISIT_STATUSES = ['pending_agent_review', 'confirmed', 'rejected', 'completed', 'cancelled'];
 
 // Map visit status changes onto the linked lead's pipeline stage so the
 // pipeline stays in sync with the visit lifecycle.
@@ -34,7 +47,7 @@ const sanitizeVisitForViewer = (visit, viewerIsAdmin) => {
 // @route   POST /api/visits
 // @access  Private (Buyer)
 const createVisit = asyncHandler(async (req, res) => {
-  const { property, requestedSlot, buyerNotes, leadId, visitType = 'property' } = req.body;
+  const { property, requestedSlot, buyerNotes, leadId, inquiryId, visitType = 'property' } = req.body;
 
   if (!requestedSlot) {
     return res.status(400).json({
@@ -89,25 +102,40 @@ const createVisit = asyncHandler(async (req, res) => {
     status: 'pending_agent_review',
   });
 
-  // Sync with a linked Lead record (created via "Convert to Lead" earlier).
-  // `leadId` may be passed explicitly, otherwise we look for the buyer's most
-  // recent lead tied to the same property.
+  // Link the visit onto the buyer's pipeline lead so the request shows up on
+  // the lead's timeline. Resolution order:
+  //   1. explicit `leadId`
+  //   2. the lead converted from a linked inquiry (`inquiryId` -> ContactForm)
+  //   3. the buyer's most recent ACTIVE lead for the same property
+  // Closed/lost leads are never resurrected, another visit's link is never
+  // stolen, and the lead's stage is NOT changed here - it moves to
+  // `site_visit_scheduled` when the team accepts the visit (see updateVisit).
   let linkedLead = null;
   if (leadId) {
     linkedLead = await Lead.findById(leadId);
-  } else if (property) {
-    linkedLead = await Lead.findOne({ user: req.user._id, property }).sort({ createdAt: -1 });
+  } else if (inquiryId) {
+    const inquiryDoc = await ContactForm.findById(inquiryId).select('convertedLead');
+    if (inquiryDoc && inquiryDoc.convertedLead) {
+      linkedLead = await Lead.findById(inquiryDoc.convertedLead);
+    }
   }
-  if (linkedLead) {
-    linkedLead.visit = visit._id;
-    linkedLead.stage = 'site_visit_scheduled';
+  if (!linkedLead && property) {
+    linkedLead = await Lead.findOne({
+      user: req.user._id,
+      property,
+      stage: { $in: ACTIVE_LEAD_STAGES },
+    }).sort({ lastActivity: -1 });
+  }
+  if (linkedLead && !['closed', 'lost'].includes(linkedLead.stage)) {
+    if (!linkedLead.visit) linkedLead.visit = visit._id;
+    visit.convertedLead = linkedLead._id;
     linkedLead.recordActivity({
-      type: 'stage_changed',
-      message: `${visitType === 'office' ? 'Office visit' : 'Site visit'} scheduled for ${slotDate.toLocaleString()}`,
+      type: 'updated',
+      message: `${visitType === 'office' ? 'Office visit' : 'Site visit'} requested for ${slotDate.toLocaleString()} - awaiting confirmation`,
       by: req.user._id,
       byName: req.user.name,
     });
-    await linkedLead.save();
+    await Promise.all([linkedLead.save(), visit.save()]);
   }
 
   // Notify admins/agents
@@ -148,13 +176,13 @@ const VISIT_STATUS_PRIORITY = {
 // @route   GET /api/visits
 // @access  Private (Admin / Staff)
 const getVisits = asyncHandler(async (req, res) => {
-  const { 
-  status, 
-  assignedAgent, 
-  visitType, 
-  property, 
-  page = 1, 
-  limit = 10 
+  const {
+  status,
+  assignedAgent,
+  visitType,
+  property,
+  page = 1,
+  limit = 10
 } = req.query;
 
 const query = {};
@@ -170,13 +198,18 @@ if (property) query.property = property;
 
   const total = await Visit.countDocuments(query);
 
+  const VISIT_POPULATE = [
+    { path: 'property', select: 'title slug media.coverImage address district' },
+    { path: 'requestedBy', select: 'name email phone' },
+    { path: 'assignedAgent', select: 'name email' },
+    { path: 'convertedLead', select: 'name stage' },
+  ];
+
   let visits;
   if (status) {
     // Single-status view: plain chronological DB pagination is fine.
     visits = await Visit.find(query)
-      .populate('property', 'title slug media.coverImage address district')
-      .populate('requestedBy', 'name email phone')
-      .populate('assignedAgent', 'name email')
+      .populate(VISIT_POPULATE)
       .sort({ requestedSlot: 1 })
       .skip(startIndex)
       .limit(limitNum);
@@ -184,9 +217,7 @@ if (property) query.property = property;
     // Mixed view: prioritize the queue (pending reviews first) before
     // pagination, which requires seeing the full result set.
     const all = await Visit.find(query)
-      .populate('property', 'title slug media.coverImage address district')
-      .populate('requestedBy', 'name email phone')
-      .populate('assignedAgent', 'name email')
+      .populate(VISIT_POPULATE)
       .sort({ requestedSlot: 1 });
 
     all.sort(
@@ -255,7 +286,8 @@ const getVisitById = asyncHandler(async (req, res) => {
   const visit = await Visit.findById(req.params.id)
     .populate('property', 'title slug media.coverImage address listedBy')
     .populate('requestedBy', 'name email phone')
-    .populate('assignedAgent', 'name email phone');
+    .populate('assignedAgent', 'name email phone')
+    .populate('convertedLead', 'name stage');
 
   if (!visit) {
     return res.status(404).json({ success: false, message: 'Visit request not found' });
@@ -288,21 +320,58 @@ const updateVisit = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Visit request not found' });
   }
 
+  if (status && !VISIT_STATUSES.includes(status)) {
+    return res.status(400).json({ success: false, message: `Invalid visit status: ${status}` });
+  }
+
+  let newSlotDate = null;
+  if (requestedSlot) {
+    newSlotDate = new Date(requestedSlot);
+    if (isNaN(newSlotDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid requested slot date' });
+    }
+  }
+
   const previousStatus = visit.status;
+  const previousSlot = visit.requestedSlot;
 
   if (status) visit.status = status;
   if (internalNotes !== undefined) visit.internalNotes = internalNotes;
   if (assignedAgent !== undefined) visit.assignedAgent = assignedAgent;
-  if (requestedSlot) visit.requestedSlot = new Date(requestedSlot);
+  if (requestedSlot) visit.requestedSlot = newSlotDate;
 
   await visit.save();
 
+  const statusChanged = Boolean(status && status !== previousStatus);
+  const slotChanged = Boolean(requestedSlot) && new Date(previousSlot).getTime() !== newSlotDate.getTime();
+
+  // ACCEPTED VISITS BECOME LEADS AUTOMATICALLY. When the team confirms (or
+  // completes) a visit, ensure the buyer is represented in the pipeline:
+  // creates a lead (property_visit / office_visit source, stage
+  // `site_visit_scheduled`) or links onto the buyer's existing active lead,
+  // seeds the unified conversation thread and notifies the assigned agent.
+  // Conversion must never block the status update, so failures are logged and
+  // swallowed here.
+  if (statusChanged && (status === 'confirmed' || status === 'completed')) {
+    try {
+      await ensureLeadFromVisit({ visit, actor: req.user });
+    } catch (err) {
+      console.error(`Auto lead conversion failed for visit ${visit._id}:`, err.message);
+    }
+  }
+
   // Sync stage on the linked Lead if status changes
-  if (status && status !== previousStatus) {
-    const linkedLead = await Lead.findOne({ visit: visit._id });
+  if (statusChanged) {
+    const linkedLead = visit.convertedLead
+      ? await Lead.findById(visit.convertedLead)
+      : await Lead.findOne({ visit: visit._id });
     if (linkedLead) {
       const newStage = stageForVisitStatus(status);
-      if (newStage && newStage !== linkedLead.stage) {
+      if (
+        newStage &&
+        newStage !== linkedLead.stage &&
+        !UNRECOVERABLE_LEAD_STAGES.includes(linkedLead.stage)
+      ) {
         linkedLead.stage = newStage;
         linkedLead.recordActivity({
           type: 'stage_changed',
@@ -317,7 +386,7 @@ const updateVisit = asyncHandler(async (req, res) => {
   }
 
   // Notify buyer on status update
-if (status && status !== previousStatus) {
+if (statusChanged) {
   const isOfficeVisit = visit.visitType === 'office';
 
   const visitLabel = isOfficeVisit
@@ -368,6 +437,25 @@ if (status && status !== previousStatus) {
     link: '/my-visits',
   });
 }
+
+  // Tell the buyer when the team moves the slot - a buyer must never discover
+  // a reschedule by showing up at the wrong time.
+  if (slotChanged && !statusChanged) {
+    const isOfficeVisit = visit.visitType === 'office';
+    const visitLabel = isOfficeVisit ? 'office consultation' : 'site visit';
+    const propertyTitle = visit.property?.title;
+    const targetLabel = propertyTitle ? `"${propertyTitle}"` : 'your office consultation';
+
+    await notify({
+      recipient: visit.requestedBy,
+      type: 'visit_rescheduled',
+      title: isOfficeVisit ? 'Office Consultation Rescheduled' : 'Site Visit Rescheduled',
+      message: `Your ${visitLabel} ${propertyTitle ? `for ${targetLabel} ` : ''}has been rescheduled to ${new Date(visit.requestedSlot).toLocaleString()}.`,
+      visit: visit._id,
+      property: visit.property?._id || null,
+      link: '/my-visits',
+    });
+  }
 
   res.json({
     success: true,
@@ -422,84 +510,46 @@ const cancelMyVisit = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Convert a visit request into a pipeline Lead
+ * @desc    Convert a visit request into a pipeline Lead (manual, one-click)
  * @route   POST /api/visits/:id/convert-to-lead
  * @access  Private (admin only)
  *
- * Creates a Lead with source 'property_visit' / 'office_visit', links the
- * visit and property records, and defaults the stage to
- * 'site_visit_scheduled' since a visit was already booked.
+ * Delegates to the shared ensureLeadFromVisit service - the exact same path
+ * used when a visit is accepted automatically - so manual conversion gets the
+ * same smart de-duplication, unified conversation threading, agent
+ * notification and visit<->lead cross-linking. Accepts the same overrides as
+ * the automatic flow (category / priority / assignedAgent / notes / stage).
  */
 const convertVisitToLead = asyncHandler(async (req, res) => {
   const { category, priority, assignedAgent, notes, stage } = req.body;
 
-  const visit = await Visit.findById(req.params.id)
-    .populate('requestedBy', 'name email phone')
-    .populate('property', 'title');
-
+  const visit = await Visit.findById(req.params.id);
   if (!visit) {
     return res.status(404).json({ success: false, message: 'Visit request not found' });
   }
 
-  const existingLead = await Lead.findOne({ visit: visit._id });
-  if (existingLead) {
-    return res.status(400).json({
-      success: false,
-      message: 'This visit has already been converted to a lead',
-      leadId: existingLead._id,
-    });
-  }
-
-  let agentDoc = null;
+  // Keep the historical 404 contract for unknown agents (the shared service
+  // would otherwise silently drop the reference).
   const agentId = assignedAgent || visit.assignedAgent || null;
   if (agentId) {
-    agentDoc = await User.findById(agentId).select('name email');
+    const agentDoc = await User.findById(agentId).select('_id');
     if (!agentDoc) {
       return res.status(404).json({ success: false, message: 'Assigned agent not found' });
     }
   }
 
-  const source = visit.visitType === 'office' ? 'office_visit' : 'property_visit';
-  const initialStage = stage ? Lead.normalizeStage(stage) || 'site_visit_scheduled' : 'site_visit_scheduled';
-
-  const lead = new Lead({
-    name: visit.requestedBy ? visit.requestedBy.name : 'Unknown visitor',
-    email: visit.requestedBy ? visit.requestedBy.email : 'unknown@visit.local',
-    phone: visit.requestedBy ? visit.requestedBy.phone || '' : '',
-    source,
-    visit: visit._id,
-    property: visit.property ? visit.property._id : null,
-    user: visit.requestedBy ? visit.requestedBy._id : null,
-    assignedAgent: agentId,
-    category: category || 'property',
-    priority: priority || 'high',
-    stage: initialStage,
-    notes: notes
-      ? `Converted from ${visit.visitType === 'office' ? 'office visit' : 'property visit'}: ${notes}`
-      : `Converted from ${visit.visitType === 'office' ? 'office visit' : 'property visit'} scheduled for ${new Date(visit.requestedSlot).toLocaleString()}`,
+  const { lead, created, deduped } = await ensureLeadFromVisit({
+    visit,
+    actor: req.user,
+    overrides: {
+      category,
+      priority,
+      assignedAgent: agentId || undefined,
+      notes,
+      stage,
+      _manual: true,
+    },
   });
-  lead.recordActivity({
-    type: 'converted',
-    message: `Lead created from ${visit.visitType === 'office' ? 'office visit' : 'property visit'} on ${new Date(visit.requestedSlot).toLocaleDateString()}`,
-    by: req.user._id,
-    byName: req.user.name,
-  });
-  await lead.save();
-
-  // Tag the visit with internal notes pointing at the lead for traceability
-  visit.internalNotes = `${visit.internalNotes ? visit.internalNotes + '\n' : ''}Converted to lead ${lead._id} on ${new Date().toISOString()}`;
-  await visit.save();
-
-  if (agentDoc) {
-    await notify({
-      recipient: agentDoc._id,
-      type: 'lead_assigned',
-      title: 'New Lead Assigned to You',
-      message: `Lead "${lead.name}" (from a visit request) has been assigned to you`,
-      lead: lead._id,
-      link: '/dashboard/agent/leads',
-    });
-  }
 
   await lead.populate([
     { path: 'assignedAgent', select: 'name email' },
@@ -508,10 +558,13 @@ const convertVisitToLead = asyncHandler(async (req, res) => {
     { path: 'user', select: 'name email' },
   ]);
 
-  res.status(201).json({
+  res.status(created ? 201 : 200).json({
     success: true,
-    message: 'Visit converted to lead',
+    message: deduped
+      ? 'This visit was already linked to a lead - returning it'
+      : 'Visit converted to lead',
     lead,
+    deduped,
   });
 });
 

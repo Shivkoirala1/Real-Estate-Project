@@ -1,5 +1,5 @@
-import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import React from "react";
+import { Routes, Route } from "react-router-dom";
 
 // Components
 import Navbar from "./components/layout/Navbar";
@@ -31,12 +31,16 @@ import Favorites from "./pages/user/Favorites";
 import Notifications from "./pages/user/Notifications";
 import MyVisits from "./pages/user/MyVisits";
 import MyConversations from "./pages/user/MyConversations";
-import MyLeads from "./pages/user/MyLeads";
-import Wallet from './pages/user/Wallet';
-
+import Wallet from "./pages/user/Wallet";
+import MyEMI from "./pages/user/MyEMI";
 
 // Agent and Admin dashboards
 import AgentDashboard from "./pages/agent/AgentDashboard";
+import MyLeads from "./pages/agent/MyLeads";
+import MySales from "./pages/agent/MySales";
+import MyCommissions from "./pages/agent/MyCommissions";
+import AgentAnalytics from "./pages/agent/AgentAnalytics";
+import EMISales from "./pages/agent/EMISales";
 
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import VerifyUsers from "./pages/admin/VerifyUsers";
@@ -47,23 +51,15 @@ import ManageUsers from "./pages/admin/ManageUsers";
 import ManageCategories from "./pages/admin/ManageCategories";
 import BlogManagement from "./pages/admin/ManageBlogs";
 import Inquiries from "./pages/admin/RevampedInquiries";
-import Visits from "./pages/admin/Visits";
+import Visits from "./pages/admin/ManageVisits";
 import ConversationsInbox from "./pages/admin/ConversationsInbox";
-
-// Spec v2 - sales, commissions, agents, analytics (admin)
+import EmiPlans from "./pages/admin/EmiPlans";
+import EmiPlanDetail from "./pages/admin/EmiPlanDetail";
 import SalesVerification from "./pages/admin/SalesVerification";
 import Commissions from "./pages/admin/Commissions";
+import DataArchives from "./pages/admin/DataArchives";
 import ManageAgents from "./pages/admin/ManageAgents";
 import Analytics from "./pages/admin/Analytics";
-
-// Spec v2 - sales, commissions, EMI, analytics (agent)
-import MySales from "./pages/agent/MySales";
-import MyCommissions from "./pages/agent/MyCommissions";
-import EmiPlans from "./pages/agent/EmiPlans";
-import EmiPlanDetail from "./pages/agent/EmiPlanDetail";
-import AgentAnalytics from "./pages/agent/AgentAnalytics";
-
-// Unified lead management module
 import LeadDashboard from "./pages/admin/LeadManagement/LeadDashboard";
 import LeadDetail from "./pages/admin/LeadManagement/LeadDetail";
 import ContactFormDetail from "./pages/admin/LeadManagement/ContactFormDetail";
@@ -88,14 +84,25 @@ function App() {
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
-
+          
           {/* Any registered user */}
-          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-          <Route path="/wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>} />
-          <Route path="/favorites" element={<ProtectedRoute><Favorites /></ProtectedRoute>} />
-          <Route path="/my-visits" element={<ProtectedRoute><MyVisits /></ProtectedRoute>} />
-          <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
 
+          <Route
+            path="/notifications"
+            element={
+              <ProtectedRoute>
+                <Notifications />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/my-conversations"
             element={
@@ -104,65 +111,97 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           {/* User pages */}
           <Route
-            path="/my-leads"
+            path="/my-properties"
             element={
-              <ProtectedRoute roles={["agent"]}>
-                <DashboardLayout>
-                  <MyLeads />
-                </DashboardLayout>
+              <ProtectedRoute>
+                <MyPropertiesLayout>
+                  <ManageProperties showHeader={false} />
+                </MyPropertiesLayout>
               </ProtectedRoute>
             }
           />
-
           <Route
-            path="/dashboard/agent/leads"
+            path="/my-properties/new"
             element={
-              <ProtectedRoute roles={["agent"]}>
-                <DashboardLayout>
-                  <MyLeads />
-                </DashboardLayout>
+              <ProtectedRoute>
+                <MyPropertiesLayout>
+                  <PostGate>
+                    <AddEditProperty />
+                  </PostGate>
+                </MyPropertiesLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-properties/:id/edit"
+            element={
+              <ProtectedRoute>
+                <MyPropertiesLayout>
+                  <PostGate>
+                    <AddEditProperty />
+                  </PostGate>
+                </MyPropertiesLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-properties/inquiries"
+            element={
+              <ProtectedRoute>
+                <MyPropertiesLayout>
+                  <Inquiries />
+                </MyPropertiesLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-emi"
+            element={
+              <ProtectedRoute roles={["user"]}>
+                <MyEMI />
               </ProtectedRoute>
             }
           />
 
-          {/* My Properties - open to every registered user, posting itself is gated by verification */}
-          <Route path="/my-properties" element={
-            <ProtectedRoute>
-              <MyPropertiesLayout><ManageProperties showHeader={false} /></MyPropertiesLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/my-properties/new" element={
-            <ProtectedRoute>
-              <MyPropertiesLayout><PostGate><AddEditProperty /></PostGate></MyPropertiesLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/my-properties/:id/edit" element={
-            <ProtectedRoute>
-              <MyPropertiesLayout><PostGate><AddEditProperty /></PostGate></MyPropertiesLayout>
-            </ProtectedRoute>
-          } />
-          <Route path="/my-properties/inquiries" element={
-            <ProtectedRoute>
-              <MyPropertiesLayout><Inquiries /></MyPropertiesLayout>
-            </ProtectedRoute>
-          } />
+          {/* User & Agent features */}
+          <Route
+            path="/wallet"
+            element={
+              <ProtectedRoute roles={["user", "agent"]}>
+                <Wallet />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/favorites"
+            element={
+              <ProtectedRoute roles={["user", "agent"]}>
+                <Favorites />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-visits"
+            element={
+              <ProtectedRoute roles={["user", "agent"]}>
+                <MyVisits />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Agent dashboard */}
-
           <Route
             path="/dashboard/agent"
             element={
-              <ProtectedRoute roles={["agent"]}> 
+              <ProtectedRoute roles={["agent"]}>
                 <DashboardLayout>
                   <AgentDashboard />
                 </DashboardLayout>
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/dashboard/agent/properties"
             element={
@@ -183,8 +222,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
-          {/* Spec v2 - agent sales, commissions, EMI plans, analytics */}
           <Route
             path="/dashboard/agent/sales"
             element={
@@ -196,6 +233,17 @@ function App() {
             }
           />
           <Route
+            path="/dashboard/agent/emi-sales"
+            element={
+              <ProtectedRoute roles={["agent"]}>
+                <DashboardLayout>
+                  <EMISales />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
             path="/dashboard/agent/commissions"
             element={
               <ProtectedRoute roles={["agent"]}>
@@ -206,21 +254,21 @@ function App() {
             }
           />
           <Route
-            path="/dashboard/agent/emi-plans"
+            path="/my-leads"
             element={
               <ProtectedRoute roles={["agent"]}>
                 <DashboardLayout>
-                  <EmiPlans />
+                  <MyLeads />
                 </DashboardLayout>
               </ProtectedRoute>
             }
           />
           <Route
-            path="/dashboard/agent/emi-plans/:id"
+            path="/dashboard/agent/leads"
             element={
               <ProtectedRoute roles={["agent"]}>
                 <DashboardLayout>
-                  <EmiPlanDetail />
+                  <MyLeads />
                 </DashboardLayout>
               </ProtectedRoute>
             }
@@ -235,7 +283,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           {/* Admin dashboard */}
           <Route
             path="/dashboard/admin"
@@ -298,11 +345,41 @@ function App() {
             }
           />
           <Route
+            path="/dashboard/admin/emi-plans"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <EmiPlans />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin/emi-plans/:id"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <EmiPlanDetail />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/admin/commissions"
             element={
               <ProtectedRoute roles={["admin"]}>
                 <DashboardLayout>
                   <Commissions />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin/archives"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <DataArchives />
                 </DashboardLayout>
               </ProtectedRoute>
             }
@@ -347,17 +424,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-          // legcy code for inquiries, not used anymore merged with lead management, but kept here for reference
-          {/* <Route
-            path="/dashboard/admin/inquiries"
-            element={
-              <ProtectedRoute roles={["admin"]}>
-                <DashboardLayout>
-                  <Inquiries />
-                </DashboardLayout>
-              </ProtectedRoute>
-            }
-          /> */}
           <Route
             path="/dashboard/admin/blogs"
             element={
@@ -388,7 +454,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-           <Route
+          <Route
             path="/dashboard/admin/visits"
             element={
               <ProtectedRoute roles={["admin", "agent"]}>
@@ -398,7 +464,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/dashboard/admin/conversations"
             element={
@@ -409,7 +474,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           {/* Lead detail - shared by admin and agents (access controlled in-page/API) */}
           <Route
             path="/dashboard/lead-management/leads/:id"
@@ -431,7 +495,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           {/* Contact form deep link */}
           <Route
             path="/dashboard/admin/lead-management/contact-forms/:id"
@@ -443,8 +506,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
-          {/* Unified lead management dashboard (admin) */}
           <Route
             path="/dashboard/admin/lead-management"
             element={
@@ -455,7 +516,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

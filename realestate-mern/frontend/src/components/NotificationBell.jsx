@@ -68,6 +68,86 @@ const typeIcon = {
       <path d="M12 9v4M12 17h.01" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+  emi_plan_created: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="4" width="18" height="16" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 9h18M8 2v4M16 2v4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  emi_plan_pending: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 8v4M12 16h.01" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  emi_installment_updated: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 3v18h18" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7 15l4-4 3 3 5-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  emi_plan_status_changed: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  emi_verification_requested: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 2v6h6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 18v-4M12 11h.01" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  emi_verification_approved: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 2v6h6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 15l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  emi_verification_rejected: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 2v6h6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 12l4 4m0-4l-4 4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  visit_requested: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="4" width="18" height="16" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 9h18M8 2v4M16 2v4M12 13v4M10 15h4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  visit_confirmed: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="4" width="18" height="16" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 9h18M8 2v4M16 2v4M9 15l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  visit_rescheduled: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="4" width="18" height="16" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 9h18M8 2v4M16 2v4M17 1l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  visit_rejected: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="4" width="18" height="16" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 9h18M8 2v4M16 2v4M10 13l4 4M14 13l-4 4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  visit_cancelled: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="4" width="18" height="16" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 9h18M8 2v4M16 2v4M10 13l4 4M14 13l-4 4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  visit_completed: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="4" width="18" height="16" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 9h18M8 2v4M16 2v4M9 15l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   conversation_message: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round" />
@@ -98,6 +178,19 @@ const iconTint = {
   commission_paid: 'bg-sage-light text-sage',
   emi_installment_due: 'bg-navy/10 text-navy',
   emi_installment_overdue: 'bg-brick-light text-brick',
+  emi_plan_created: 'bg-navy/10 text-navy',
+  emi_plan_pending: 'bg-brass-light/25 text-brass-dark',
+  emi_installment_updated: 'bg-navy/10 text-navy',
+  emi_plan_status_changed: 'bg-navy/10 text-navy',
+  emi_verification_requested: 'bg-brass-light/25 text-brass-dark',
+  emi_verification_approved: 'bg-sage-light text-sage',
+  emi_verification_rejected: 'bg-brick-light text-brick',
+  visit_requested: 'bg-brass-light/25 text-brass-dark',
+  visit_confirmed: 'bg-sage-light text-sage',
+  visit_rescheduled: 'bg-navy/10 text-navy',
+  visit_rejected: 'bg-brick-light text-brick',
+  visit_cancelled: 'bg-slate-muted/10 text-slate-muted',
+  visit_completed: 'bg-sage-light text-sage',
   conversation_message: 'bg-sage-light text-sage',
   conversation_followup: 'bg-navy/10 text-navy',
   system: 'bg-parchment text-slate-ink',

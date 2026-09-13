@@ -49,7 +49,11 @@ const ConvertToLeadModal = ({ sourceType, source, onClose, onConverted }) => {
           ? await convertVisitToLead(source._id, payload)
           : await convertContactFormToLead(source._id, payload);
 
-      showToast('Converted to lead');
+      showToast(
+        result.deduped
+          ? 'This visit was already linked to a lead - opening it'
+          : 'Converted to lead',
+      );
       onConverted && onConverted(result.lead);
       onClose();
       navigate(`/dashboard/lead-management/leads/${result.lead._id}`);

@@ -1,9 +1,12 @@
 const EMIPlan = require('../models/EMIPlan');
 const Sale = require('../models/Sale');
+const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
+const { notify, notifyMany } = require('../utils/notify');
 
 const PLAN_STATUSES = EMIPlan.STATUSES;
 const INSTALLMENT_STATUSES = EMIPlan.INSTALLMENT_STATUSES;
+const VERIFICATION_STATUSES = EMIPlan.VERIFICATION_STATUSES;
 
 // ---------- helpers ----------
 
@@ -54,18 +57,58 @@ const DETAIL_POPULATE = [
   { path: 'sale', select: 'agreedPrice paymentType buyer' },
 ];
 
-// Write access: admins and the plan's assigned agent. Works with both an
-// unpopulated ObjectId and a populated document.
-const canManage = (plan, user) => {
-  if (user.role === 'admin') return true;
-  const agentId = plan.agent && plan.agent._id ? plan.agent._id : plan.agent;
-  return Boolean(agentId) && String(agentId) === String(user._id);
+// Write access (create/edit installments, change plan status, reschedule,
+// review verification requests): admin only. The agent manages the
+// relationship but the admin's EMI Plan dashboard is the single place
+// tracking + verification happens - agents get read-only visibility (see
+// sanitizeForAgent below), never write access, even to their own sales.
+const canManage = (plan, user) => user.role === 'admin';
+
+const idOf = (ref) => (ref && ref._id ? ref._id : ref);
+
+// Agents may see the schedule and status of installments for sales they
+// manage, but never the money: no amounts, no paid/outstanding totals.
+// Strips those fields from a plan (or array of plans) before it reaches an
+// agent's response. Works on populated Mongoose docs (via .toObject/.toJSON)
+// or plain objects.
+const AGENT_HIDDEN_PLAN_FIELDS = ['principalAmount', 'installmentAmount', 'totalPaid', 'outstandingBalance'];
+const AGENT_HIDDEN_INSTALLMENT_FIELDS = ['amount', 'paidAmount'];
+
+const sanitizeForAgent = (planLike) => {
+  const plan = typeof planLike.toObject === 'function' ? planLike.toObject({ virtuals: true }) : { ...planLike };
+
+  AGENT_HIDDEN_PLAN_FIELDS.forEach((field) => {
+    delete plan[field];
+  });
+
+  if (plan.sale && typeof plan.sale === 'object') {
+    delete plan.sale.agreedPrice;
+  }
+
+  plan.installments = (plan.installments || []).map((installment) => {
+    const inst = { ...installment };
+    AGENT_HIDDEN_INSTALLMENT_FIELDS.forEach((field) => {
+      delete inst[field];
+    });
+    // The buyer's requested amount is also a money figure - hide it too,
+    // but keep the rest of the verification status visible (an agent should
+    // still see that a verification request is pending).
+    if (inst.verification) {
+      const { requestedAmount, ...restVerification } = inst.verification;
+      inst.verification = restVerification;
+    }
+    return inst;
+  });
+
+  return plan;
 };
+
+const sanitizeManyForAgent = (plans) => (plans || []).map(sanitizeForAgent);
 
 /**
  * @desc    Create an EMI plan for a verified sale with paymentType = emi
  * @route   POST /api/emi-plans
- * @access  Private (admin/agent)
+ * @access  Private (admin)
  */
 const createEmiPlan = asyncHandler(async (req, res) => {
   const { saleId, principalAmount, tenureMonths, installmentAmount, startDate, remarks } = req.body;
@@ -111,11 +154,11 @@ const createEmiPlan = asyncHandler(async (req, res) => {
     });
   }
 
-  // Only the filing agent (or an admin) manages a sale's EMI plan
-  if (String(sale.agent) !== String(req.user._id) && req.user.role !== 'admin') {
+  // Only the admin creates a sale's EMI plan
+  if (req.user.role !== 'admin') {
     return res.status(403).json({
       success: false,
-      message: 'Only the agent who filed the sale (or an admin) can manage its EMI plan.',
+      message: 'Only the admin can create EMI plans.',
     });
   }
 
@@ -189,10 +232,107 @@ const createEmiPlan = asyncHandler(async (req, res) => {
 
   await plan.populate(DETAIL_POPULATE);
 
+  const propertyTitle = plan.property && plan.property.title ? plan.property.title : 'your property';
+  await Promise.all([
+    notify({
+      recipient: idOf(plan.buyer),
+      type: 'emi_plan_created',
+      title: 'Your EMI plan is ready',
+      message: `An EMI schedule of ${tenure} installments of ${npr(perInstallment)} for "${propertyTitle}" starting ${formatDate(start)} has been set up.`,
+      emiPlan: plan._id,
+      property: idOf(plan.property),
+      link: '/my-emi',
+    }),
+    notify({
+      recipient: idOf(plan.agent),
+      type: 'emi_plan_created',
+      title: 'EMI plan initialized',
+      message: `An EMI schedule (${tenure} installments) was set up for "${propertyTitle}".`,
+      emiPlan: plan._id,
+      property: idOf(plan.property),
+      link: '/dashboard/agent/emi-sales',
+    }),
+  ]);
+
   res.status(201).json({
     success: true,
     message: 'EMI plan created',
     plan,
+  });
+});
+
+/**
+ * @desc    Verified EMI sales that do not have an EMI plan yet - the data
+ *          source for the admin's "Initialize EMI Plan" picker. A sale is
+ *          eligible when it is verified, paid via EMI, linked to a registered
+ *          buyer account and has no plan attached.
+ * @route   GET /api/emi-plans/eligible-sales
+ * @access  Private (admin)
+ */
+const getEligibleEmiSales = asyncHandler(async (req, res) => {
+  const { search, limit = 50 } = req.query;
+
+  // Any sale with a plan (even cancelled/defaulted) is excluded - the plan
+  // record still exists and createEmiPlan rejects duplicates with 409.
+  const plannedSaleIds = await EMIPlan.distinct('sale');
+
+  const sales = await Sale.find({
+    status: 'verified',
+    paymentType: 'emi',
+    _id: { $nin: plannedSaleIds },
+    // Plans must attach to a registered buyer platform account
+    'buyer.user': { $ne: null },
+  })
+    .populate({ path: 'property', select: 'title slug' })
+    .populate({ path: 'agent', select: 'name email' })
+    .populate({ path: 'buyer.user', select: 'name email' })
+    .sort({ reviewedAt: -1, createdAt: -1 })
+    .lean();
+
+  const mapped = sales.map((sale) => ({
+    _id: sale._id,
+    property: sale.property ? { _id: sale.property._id, title: sale.property.title } : null,
+    buyer: {
+      name: (sale.buyer && sale.buyer.name) || '',
+      email: (sale.buyer && sale.buyer.email) || '',
+      user: sale.buyer && sale.buyer.user
+        ? {
+            _id: sale.buyer.user._id,
+            name: sale.buyer.user.name,
+            email: sale.buyer.user.email,
+          }
+        : null,
+    },
+    agent: sale.agent ? { _id: sale.agent._id, name: sale.agent.name } : null,
+    agreedPrice: sale.agreedPrice,
+    downPaymentAmount: sale.downPaymentAmount,
+    reviewedAt: sale.reviewedAt,
+  }));
+
+  // Optional search on property title / buyer / agent. The eligible pool is
+  // small, so an in-memory filter keeps the query simple.
+  const term = typeof search === 'string' ? search.trim().toLowerCase() : '';
+  const filtered = term
+    ? mapped.filter((sale) => {
+        const haystack = [
+          sale.property && sale.property.title,
+          sale.buyer && sale.buyer.name,
+          sale.buyer && sale.buyer.email,
+          sale.agent && sale.agent.name,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(term);
+      })
+    : mapped;
+
+  const maxLimit = Math.min(Math.max(1, parseInt(limit, 10) || 50), 100);
+
+  res.json({
+    success: true,
+    count: filtered.length,
+    sales: filtered.slice(0, maxLimit),
   });
 });
 
@@ -202,10 +342,11 @@ const createEmiPlan = asyncHandler(async (req, res) => {
  * @access  Private (admin sees all, agent sees own)
  */
 const getEmiPlans = asyncHandler(async (req, res) => {
-  const { status, overdue, dueThisMonth, agent, buyer, page = 1, limit = 10 } = req.query;
+  const { status, overdue, dueThisMonth, agent, buyer, sale, page = 1, limit = 10 } = req.query;
 
   const query = {};
   const summaryScope = {};
+  const isAgentRequester = req.user.role === 'agent';
 
   if (req.user.role === 'admin') {
     // Admins see everything, with optional agent/buyer narrowing
@@ -217,10 +358,19 @@ const getEmiPlans = asyncHandler(async (req, res) => {
       query.buyer = buyer;
       summaryScope.buyer = buyer;
     }
-  } else {
-    // Agents only ever see plans they manage
+    // Narrow to a single sale - used by the admin UI to check whether a plan
+    // already exists for a sale before opening the initialize form.
+    if (sale) {
+      query.sale = sale;
+    }
+  } else if (isAgentRequester) {
+    // Agents only ever see plans they manage (read-only, amounts stripped below)
     query.agent = req.user._id;
     summaryScope.agent = req.user._id;
+  } else {
+    // Buyers only ever see their own plans
+    query.buyer = req.user._id;
+    summaryScope.buyer = req.user._id;
   }
 
   if (status && !PLAN_STATUSES.includes(status)) {
@@ -289,6 +439,11 @@ const getEmiPlans = asyncHandler(async (req, res) => {
             { $match: { 'installments.status': 'pending', 'installments.dueDate': { $lt: today } } },
             { $count: 'count' },
           ],
+          pendingVerifications: [
+            { $unwind: '$installments' },
+            { $match: { 'installments.verification.status': 'pending' } },
+            { $count: 'count' },
+          ],
           totalOutstanding: [
             { $project: { paid: paidExpression, principal: '$principalAmount' } },
             { $project: { outstanding: { $max: [{ $subtract: ['$principal', '$paid'] }, 0] } } },
@@ -302,6 +457,22 @@ const getEmiPlans = asyncHandler(async (req, res) => {
   const facets = (summaryFacets && summaryFacets[0]) || {};
   const facetCount = (rows) => (rows && rows[0] && rows[0].count) || 0;
 
+  const summary = {
+    activePlans: facetCount(facets.activePlans),
+    dueThisMonth: facetCount(facets.dueThisMonth),
+    overdueInstallments: facetCount(facets.overdueInstallments),
+    totalOutstanding: facets.totalOutstanding && facets.totalOutstanding[0] ? facets.totalOutstanding[0].total : 0,
+  };
+  // Admin-only queue counter - not meaningful to agents/buyers
+  if (req.user.role === 'admin') {
+    summary.pendingVerifications = facetCount(facets.pendingVerifications);
+  }
+
+  // Agents get schedule + status only - never the money
+  if (isAgentRequester) {
+    delete summary.totalOutstanding;
+  }
+
   res.json({
     success: true,
     count: plans.length,
@@ -311,13 +482,8 @@ const getEmiPlans = asyncHandler(async (req, res) => {
       currentPage: pageNum,
       limit: limitNum,
     },
-    summary: {
-      activePlans: facetCount(facets.activePlans),
-      dueThisMonth: facetCount(facets.dueThisMonth),
-      overdueInstallments: facetCount(facets.overdueInstallments),
-      totalOutstanding: facets.totalOutstanding && facets.totalOutstanding[0] ? facets.totalOutstanding[0].total : 0,
-    },
-    plans,
+    summary,
+    plans: isAgentRequester ? sanitizeManyForAgent(plans) : plans,
   });
 });
 
@@ -344,16 +510,18 @@ const getEmiPlanById = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    plan,
-    // Helps the UI hide write controls for read-only buyers
-    canManage: isAdmin || isAgent,
+    plan: isAgent ? sanitizeForAgent(plan) : plan,
+    // Helps the UI hide write controls - only the admin can manage a plan
+    // (agents and buyers get read-only visibility, see sanitizeForAgent for
+    // what's additionally stripped from an agent's view).
+    canManage: isAdmin,
   });
 });
 
 /**
  * @desc    Update a single installment (mark paid/pending/waived, reschedule, notes)
  * @route   PATCH /api/emi-plans/:id/installments/:n
- * @access  Private (assigned agent or admin)
+ * @access  Private (admin only)
  */
 const updateInstallment = asyncHandler(async (req, res) => {
   const { status, paidDate, paidAmount, remarks, dueDate, amount } = req.body;
@@ -375,7 +543,7 @@ const updateInstallment = asyncHandler(async (req, res) => {
   if (!canManage(plan, req.user)) {
     return res.status(403).json({
       success: false,
-      message: 'Only the assigned agent (or an admin) can update this EMI plan.',
+      message: 'Only an admin can update this EMI plan.',
     });
   }
 
@@ -461,11 +629,34 @@ const updateInstallment = asyncHandler(async (req, res) => {
         by: req.user._id,
         byName: req.user.name,
       });
+      // If the buyer had an outstanding verification request on this
+      // installment, marking it paid (whether the admin got there via the
+      // request or independently) resolves that request too.
+      if (installment.verification && installment.verification.status === 'pending') {
+        installment.verification.status = 'approved';
+        installment.verification.reviewedBy = req.user._id;
+        installment.verification.reviewedAt = new Date();
+        if (!installment.verification.reviewNote) {
+          installment.verification.reviewNote = 'Confirmed when the installment was marked paid.';
+        }
+      }
     } else if (status === 'pending') {
       // Reverting to pending clears the recorded payment
       installment.status = 'pending';
       installment.paidDate = null;
       installment.paidAmount = null;
+      // Start the verification slate clean too, so the buyer can submit again
+      if (installment.verification && installment.verification.status !== 'none') {
+        installment.verification.status = 'none';
+        installment.verification.requestedAmount = null;
+        installment.verification.requestedDate = null;
+        installment.verification.paymentSlipUrl = '';
+        installment.verification.note = '';
+        installment.verification.submittedAt = null;
+        installment.verification.reviewedBy = null;
+        installment.verification.reviewedAt = null;
+        installment.verification.reviewNote = '';
+      }
       plan.recordActivity({
         type: 'installment_paid_reverted',
         message: `Installment ${n} reverted to pending`,
@@ -477,6 +668,9 @@ const updateInstallment = asyncHandler(async (req, res) => {
       installment.status = 'waived';
       installment.paidDate = null;
       installment.paidAmount = null;
+      if (installment.verification && installment.verification.status === 'pending') {
+        installment.verification.status = 'none';
+      }
       plan.recordActivity({
         type: 'installment_updated',
         message: `Installment ${n} waived`,
@@ -543,6 +737,81 @@ const updateInstallment = asyncHandler(async (req, res) => {
 
   await plan.populate(DETAIL_POPULATE);
 
+  // ---- notification alerts ----
+  // Buyer sees amounts (it's their money); the agent's copy never includes one.
+  const propertyId = idOf(plan.property);
+  const notifyTasks = [];
+
+  if (statusChanged) {
+    const buyerCopy = {
+      paid: `Installment ${n} of ${npr(installment.paidAmount)} was marked as paid.`,
+      pending: `Installment ${n} was reverted to pending.`,
+      waived: `Installment ${n} was waived.`,
+    };
+    const agentCopy = {
+      paid: `Installment ${n} was marked as paid.`,
+      pending: `Installment ${n} was reverted to pending.`,
+      waived: `Installment ${n} was waived.`,
+    };
+    notifyTasks.push(
+      notify({
+        recipient: idOf(plan.buyer),
+        type: 'emi_installment_updated',
+        title: 'Your EMI installment was updated',
+        message: buyerCopy[status] || `Installment ${n} was updated.`,
+        emiPlan: plan._id,
+        property: propertyId,
+        link: '/my-emi',
+      }),
+      notify({
+        recipient: idOf(plan.agent),
+        type: 'emi_installment_updated',
+        title: 'EMI installment updated',
+        message: agentCopy[status] || `Installment ${n} was updated.`,
+        emiPlan: plan._id,
+        property: propertyId,
+        link: '/dashboard/agent/emi-sales',
+      })
+    );
+  } else if (dueDateChanged) {
+    const dueText = `Installment ${n} due date moved to ${formatDate(installment.dueDate)}.`;
+    notifyTasks.push(
+      notify({
+        recipient: idOf(plan.buyer),
+        type: 'emi_installment_updated',
+        title: 'Your EMI installment was rescheduled',
+        message: dueText,
+        emiPlan: plan._id,
+        property: propertyId,
+        link: '/my-emi',
+      }),
+      notify({
+        recipient: idOf(plan.agent),
+        type: 'emi_installment_updated',
+        title: 'EMI installment rescheduled',
+        message: dueText,
+        emiPlan: plan._id,
+        property: propertyId,
+        link: '/dashboard/agent/emi-sales',
+      })
+    );
+  } else if (amountChanged) {
+    // Amount-only change - buyer only, agents never see amounts
+    notifyTasks.push(
+      notify({
+        recipient: idOf(plan.buyer),
+        type: 'emi_installment_updated',
+        title: 'Your EMI installment amount changed',
+        message: `Installment ${n} amount updated to ${npr(installment.amount)}.`,
+        emiPlan: plan._id,
+        property: propertyId,
+        link: '/my-emi',
+      })
+    );
+  }
+
+  await Promise.all(notifyTasks);
+
   let message = 'Installment updated';
   if (statusChanged && status === 'paid') message = 'Installment marked as paid';
   else if (statusChanged && status === 'pending') message = 'Installment reverted to pending';
@@ -562,7 +831,7 @@ const updateInstallment = asyncHandler(async (req, res) => {
 /**
  * @desc    Update plan-level status / reschedule pending installments / plan note
  * @route   PATCH /api/emi-plans/:id
- * @access  Private (assigned agent or admin)
+ * @access  Private (admin only)
  */
 const updateEmiPlan = asyncHandler(async (req, res) => {
   const { status, reschedule, remarks } = req.body;
@@ -579,7 +848,7 @@ const updateEmiPlan = asyncHandler(async (req, res) => {
   if (!canManage(plan, req.user)) {
     return res.status(403).json({
       success: false,
-      message: 'Only the assigned agent (or an admin) can update this EMI plan.',
+      message: 'Only an admin can update this EMI plan.',
     });
   }
 
@@ -659,8 +928,11 @@ const updateEmiPlan = asyncHandler(async (req, res) => {
     });
   }
 
+  let planStatusChanged = false;
+  let previousStatus = plan.status;
   if (status !== undefined && status !== plan.status) {
-    const previousStatus = plan.status;
+    planStatusChanged = true;
+    previousStatus = plan.status;
     plan.status = status;
     plan.recordActivity({
       type: 'status_changed',
@@ -683,6 +955,59 @@ const updateEmiPlan = asyncHandler(async (req, res) => {
   await plan.save();
   await plan.populate(DETAIL_POPULATE);
 
+  // ---- notification alerts ----
+  const propertyId = idOf(plan.property);
+  const notifyTasks = [];
+
+  if (rescheduleStartDate) {
+    const scheduleText = `Your remaining installments were rescheduled starting ${formatDate(rescheduleStartDate)}.`;
+    notifyTasks.push(
+      notify({
+        recipient: idOf(plan.buyer),
+        type: 'emi_installment_updated',
+        title: 'Your EMI schedule was updated',
+        message: scheduleText,
+        emiPlan: plan._id,
+        property: propertyId,
+        link: '/my-emi',
+      }),
+      notify({
+        recipient: idOf(plan.agent),
+        type: 'emi_installment_updated',
+        title: 'EMI schedule rescheduled',
+        message: `Remaining installments were rescheduled starting ${formatDate(rescheduleStartDate)}.`,
+        emiPlan: plan._id,
+        property: propertyId,
+        link: '/dashboard/agent/emi-sales',
+      })
+    );
+  }
+
+  if (planStatusChanged) {
+    notifyTasks.push(
+      notify({
+        recipient: idOf(plan.buyer),
+        type: 'emi_plan_status_changed',
+        title: 'Your EMI plan status changed',
+        message: `Your EMI plan status changed from ${previousStatus} to ${status}.`,
+        emiPlan: plan._id,
+        property: propertyId,
+        link: '/my-emi',
+      }),
+      notify({
+        recipient: idOf(plan.agent),
+        type: 'emi_plan_status_changed',
+        title: 'EMI plan status changed',
+        message: `EMI plan status changed from ${previousStatus} to ${status}.`,
+        emiPlan: plan._id,
+        property: propertyId,
+        link: '/dashboard/agent/emi-sales',
+      })
+    );
+  }
+
+  await Promise.all(notifyTasks);
+
   res.json({
     success: true,
     message: 'EMI plan updated',
@@ -690,4 +1015,269 @@ const updateEmiPlan = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { createEmiPlan, getEmiPlans, getEmiPlanById, updateEmiPlan, updateInstallment };
+/**
+ * @desc    Buyer submits proof of payment for one of their installments,
+ *          optionally attaching a photo of the payment slip. This only
+ *          raises a request for the admin to review - it never marks the
+ *          installment paid by itself.
+ * @route   POST /api/emi-plans/:id/installments/:n/verification-request
+ * @access  Private (the plan's linked buyer only)
+ */
+const requestInstallmentVerification = asyncHandler(async (req, res) => {
+  const { paidAmount, paidDate, note } = req.body;
+
+  const installmentNumber = parseInt(req.params.n, 10);
+  if (!Number.isInteger(installmentNumber) || installmentNumber < 1) {
+    return res.status(400).json({ success: false, message: 'Invalid installment number' });
+  }
+
+  const plan = await EMIPlan.findById(req.params.id);
+  if (!plan) {
+    return res.status(404).json({ success: false, message: 'EMI plan not found' });
+  }
+
+  const buyerId = idOf(plan.buyer);
+  if (!buyerId || String(buyerId) !== String(req.user._id)) {
+    return res.status(403).json({
+      success: false,
+      message: 'Only the buyer this EMI plan is linked to can request payment verification.',
+    });
+  }
+
+  const installment = plan.installments.find((i) => i.installmentNumber === installmentNumber);
+  if (!installment) {
+    return res.status(404).json({ success: false, message: 'Installment not found' });
+  }
+
+  if (installment.status !== 'pending') {
+    return res.status(400).json({
+      success: false,
+      message: `This installment is already ${installment.status} - nothing to verify.`,
+    });
+  }
+
+  if (installment.verification && installment.verification.status === 'pending') {
+    return res.status(409).json({
+      success: false,
+      message: 'A verification request for this installment is already pending review.',
+    });
+  }
+
+  let requestedAmount = installment.amount;
+  if (paidAmount !== undefined && paidAmount !== null && paidAmount !== '') {
+    const num = Number(paidAmount);
+    if (!Number.isFinite(num) || num < 0) {
+      return res.status(400).json({ success: false, message: 'Paid amount must be a number greater than or equal to 0' });
+    }
+    requestedAmount = num;
+  }
+
+  let requestedDate = new Date();
+  if (paidDate !== undefined && paidDate !== null && paidDate !== '') {
+    if (!isParseableDate(paidDate)) {
+      return res.status(400).json({ success: false, message: 'Paid date is not a valid date' });
+    }
+    requestedDate = new Date(paidDate);
+  }
+
+  const paymentSlipUrl = req.file ? req.file.path : '';
+  const trimmedNote = typeof note === 'string' ? note.trim() : '';
+
+  installment.verification = {
+    status: 'pending',
+    requestedAmount,
+    requestedDate,
+    paymentSlipUrl,
+    note: trimmedNote,
+    submittedAt: new Date(),
+    reviewedBy: null,
+    reviewedAt: null,
+    reviewNote: '',
+  };
+
+  plan.recordActivity({
+    type: 'verification_requested',
+    message: `Buyer submitted payment verification for installment ${installmentNumber} (${npr(requestedAmount)}, ${formatDate(requestedDate)})${paymentSlipUrl ? ' with a payment slip' : ''}`,
+    by: req.user._id,
+    byName: req.user.name,
+  });
+
+  await plan.save();
+  await plan.populate(DETAIL_POPULATE);
+
+  const propertyTitle = plan.property && plan.property.title ? plan.property.title : 'your property';
+  const propertyId = idOf(plan.property);
+
+  // Alert every admin - this is the verification queue they work from - plus
+  // the managing agent (schedule/status only, no amount in their copy).
+  const admins = await User.find({ role: 'admin' }).select('_id');
+  await Promise.all([
+    notifyMany(
+      admins.map((a) => a._id),
+      {
+        type: 'emi_verification_requested',
+        title: 'EMI payment verification requested',
+        message: `${req.user.name} submitted payment proof for installment ${installmentNumber} of "${propertyTitle}" (${npr(requestedAmount)}).`,
+        emiPlan: plan._id,
+        property: propertyId,
+        link: `/dashboard/admin/emi-plans/${plan._id}`,
+      }
+    ),
+    notify({
+      recipient: idOf(plan.agent),
+      type: 'emi_verification_requested',
+      title: 'Buyer submitted payment verification',
+      message: `The buyer submitted payment verification for installment ${installmentNumber} of "${propertyTitle}", pending admin review.`,
+      emiPlan: plan._id,
+      property: propertyId,
+      link: '/dashboard/agent/emi-sales',
+    }),
+  ]);
+
+  res.status(201).json({
+    success: true,
+    message: 'Payment verification request submitted. You will be notified once it is reviewed.',
+    plan,
+  });
+});
+
+/**
+ * @desc    Admin approves or rejects a buyer's payment verification request.
+ *          Approving marks the installment paid using the buyer's submitted
+ *          (or admin-overridden) amount/date; rejecting leaves it pending
+ *          with a reason the buyer can see.
+ * @route   PATCH /api/emi-plans/:id/installments/:n/verification-request
+ * @access  Private (admin)
+ */
+const reviewInstallmentVerification = asyncHandler(async (req, res) => {
+  const { action, reviewNote, paidAmount, paidDate } = req.body;
+
+  const installmentNumber = parseInt(req.params.n, 10);
+  if (!Number.isInteger(installmentNumber) || installmentNumber < 1) {
+    return res.status(400).json({ success: false, message: 'Invalid installment number' });
+  }
+
+  if (!['approve', 'reject'].includes(action)) {
+    return res.status(400).json({ success: false, message: "Action must be 'approve' or 'reject'" });
+  }
+
+  const plan = await EMIPlan.findById(req.params.id);
+  if (!plan) {
+    return res.status(404).json({ success: false, message: 'EMI plan not found' });
+  }
+
+  const installment = plan.installments.find((i) => i.installmentNumber === installmentNumber);
+  if (!installment) {
+    return res.status(404).json({ success: false, message: 'Installment not found' });
+  }
+
+  if (!installment.verification || installment.verification.status !== 'pending') {
+    return res.status(400).json({
+      success: false,
+      message: 'This installment has no pending verification request to review.',
+    });
+  }
+
+  const trimmedReviewNote = typeof reviewNote === 'string' ? reviewNote.trim() : '';
+
+  if (action === 'reject') {
+    if (!trimmedReviewNote) {
+      return res.status(400).json({ success: false, message: 'A reason is required to reject a verification request.' });
+    }
+    installment.verification.status = 'rejected';
+    installment.verification.reviewedBy = req.user._id;
+    installment.verification.reviewedAt = new Date();
+    installment.verification.reviewNote = trimmedReviewNote;
+
+    plan.recordActivity({
+      type: 'verification_rejected',
+      message: `Payment verification for installment ${installmentNumber} rejected: ${trimmedReviewNote}`,
+      by: req.user._id,
+      byName: req.user.name,
+    });
+  } else {
+    // approve - admin may override the buyer's submitted figures
+    let finalAmount = installment.verification.requestedAmount != null ? installment.verification.requestedAmount : installment.amount;
+    if (paidAmount !== undefined && paidAmount !== null && paidAmount !== '') {
+      const num = Number(paidAmount);
+      if (!Number.isFinite(num) || num < 0) {
+        return res.status(400).json({ success: false, message: 'Paid amount must be a number greater than or equal to 0' });
+      }
+      finalAmount = num;
+    }
+
+    let finalDate = installment.verification.requestedDate || new Date();
+    if (paidDate !== undefined && paidDate !== null && paidDate !== '') {
+      if (!isParseableDate(paidDate)) {
+        return res.status(400).json({ success: false, message: 'Paid date is not a valid date' });
+      }
+      finalDate = new Date(paidDate);
+    }
+
+    installment.status = 'paid';
+    installment.paidAmount = finalAmount;
+    installment.paidDate = finalDate;
+
+    installment.verification.status = 'approved';
+    installment.verification.reviewedBy = req.user._id;
+    installment.verification.reviewedAt = new Date();
+    installment.verification.reviewNote = trimmedReviewNote;
+
+    plan.recordActivity({
+      type: 'verification_approved',
+      message: `Payment verification for installment ${installmentNumber} approved - marked paid (${npr(finalAmount)})`,
+      by: req.user._id,
+      byName: req.user.name,
+    });
+  }
+
+  await plan.save();
+  await plan.populate(DETAIL_POPULATE);
+
+  const propertyId = idOf(plan.property);
+  const propertyTitle = plan.property && plan.property.title ? plan.property.title : 'your property';
+
+  await Promise.all([
+    notify({
+      recipient: idOf(plan.buyer),
+      type: action === 'approve' ? 'emi_verification_approved' : 'emi_verification_rejected',
+      title: action === 'approve' ? 'Payment verified' : 'Payment verification rejected',
+      message:
+        action === 'approve'
+          ? `Your payment for installment ${installmentNumber} of "${propertyTitle}" was verified and marked paid.`
+          : `Your payment verification for installment ${installmentNumber} of "${propertyTitle}" was rejected: ${trimmedReviewNote}`,
+      emiPlan: plan._id,
+      property: propertyId,
+      link: '/my-emi',
+    }),
+    notify({
+      recipient: idOf(plan.agent),
+      type: action === 'approve' ? 'emi_verification_approved' : 'emi_verification_rejected',
+      title: action === 'approve' ? 'EMI payment verified' : 'EMI payment verification rejected',
+      message:
+        action === 'approve'
+          ? `Installment ${installmentNumber} of "${propertyTitle}" was verified and marked paid.`
+          : `Installment ${installmentNumber} of "${propertyTitle}" payment verification was rejected.`,
+      emiPlan: plan._id,
+      property: propertyId,
+      link: '/dashboard/agent/emi-sales',
+    }),
+  ]);
+
+  res.json({
+    success: true,
+    message: action === 'approve' ? 'Payment verified and installment marked paid' : 'Verification request rejected',
+    plan,
+  });
+});
+
+module.exports = {
+  createEmiPlan,
+  getEligibleEmiSales,
+  getEmiPlans,
+  getEmiPlanById,
+  updateEmiPlan,
+  updateInstallment,
+  requestInstallmentVerification,
+  reviewInstallmentVerification,
+};

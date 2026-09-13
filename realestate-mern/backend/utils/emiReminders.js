@@ -59,19 +59,34 @@ const runEmiReminders = async () => {
     const remind = async ({ plan, installment, kind }) => {
       const isDue = kind === 'due';
       const propertyTitle = plan.property && plan.property.title ? plan.property.title : 'your property';
-      const message = isDue
+      // Buyer's copy includes the amount (it's their money); the agent's
+      // copy never does - agents get schedule/status only, never amounts.
+      const buyerMessage = isDue
         ? `Installment ${installment.installmentNumber} of NPR ${Number(installment.amount).toLocaleString()} for "${propertyTitle}" is due on ${formatDate(installment.dueDate)}.`
         : `Installment ${installment.installmentNumber} of NPR ${Number(installment.amount).toLocaleString()} for "${propertyTitle}" was due on ${formatDate(installment.dueDate)}.`;
+      const agentMessage = isDue
+        ? `Installment ${installment.installmentNumber} for "${propertyTitle}" is due on ${formatDate(installment.dueDate)}.`
+        : `Installment ${installment.installmentNumber} for "${propertyTitle}" was due on ${formatDate(installment.dueDate)}.`;
       const type = isDue ? 'emi_installment_due' : 'emi_installment_overdue';
       const propertyId = plan.property && plan.property._id ? plan.property._id : plan.property;
 
       const recipients = [
-        // Buyer is a normal user - no agent dashboard link; bell opens nothing special
-        { recipient: plan.buyer, title: isDue ? 'Your EMI installment is due soon' : 'Your EMI installment is overdue', link: '' },
-        { recipient: plan.agent, title: isDue ? 'EMI installment due soon' : 'EMI installment overdue', link: '/dashboard/agent/emi-plans' },
+        // Buyer is a normal user - no agent dashboard link; bell opens the buyer's own EMI page
+        {
+          recipient: plan.buyer,
+          title: isDue ? 'Your EMI installment is due soon' : 'Your EMI installment is overdue',
+          message: buyerMessage,
+          link: '/my-emi',
+        },
+        {
+          recipient: plan.agent,
+          title: isDue ? 'EMI installment due soon' : 'EMI installment overdue',
+          message: agentMessage,
+          link: '/dashboard/agent/emi-sales',
+        },
       ];
 
-      for (const { recipient, title, link } of recipients) {
+      for (const { recipient, title, message, link } of recipients) {
         if (!recipient) continue; // eslint-disable-line no-continue
         if (await alreadySentToday(recipient, type, plan._id)) continue; // eslint-disable-line no-continue
         const doc = await notify({

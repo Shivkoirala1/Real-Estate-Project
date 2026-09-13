@@ -1,18 +1,14 @@
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
-import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useAuth } from "../../../context/AuthContext";
+import { useConfirm } from "../../../context/ConfirmContext";
+import { useConversations } from "../../../context/ConversationContext";
 
-import { useAuth } from '../../../context/AuthContext';
-import { useConfirm } from '../../../context/ConfirmContext';
-import { useConversations } from '../../../context/ConversationContext';
-
-import {
-  isAdmin,
-  isAgent,
-} from '../../../utils/permissions';
+import { isAdmin, isAgent } from "../../../utils/permissions";
 
 const menuLinkClass =
-  'block px-4 py-2 text-sm transition-colors hover:bg-parchment';
+  "block px-4 py-2 text-sm transition-colors hover:bg-parchment";
 
 const UserMenu = ({ unreadCount = 0 }) => {
   const { user, logout } = useAuth();
@@ -27,8 +23,7 @@ const UserMenu = ({ unreadCount = 0 }) => {
   const admin = isAdmin(user);
   const agent = isAgent(user);
 
-  const avatarInitial =
-    user?.name?.trim()?.charAt(0)?.toUpperCase() || '?';
+  const avatarInitial = user?.name?.trim()?.charAt(0)?.toUpperCase() || "?";
 
   const closeMenu = () => {
     setOpen(false);
@@ -50,13 +45,10 @@ const UserMenu = ({ unreadCount = 0 }) => {
       }
     };
 
-    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener("mousedown", handleOutsideClick);
 
     return () => {
-      document.removeEventListener(
-        'mousedown',
-        handleOutsideClick
-      );
+      document.removeEventListener("mousedown", handleOutsideClick);
     };
   }, [open]);
 
@@ -67,19 +59,16 @@ const UserMenu = ({ unreadCount = 0 }) => {
     if (!open) return;
 
     const handleKeyDown = (event) => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== "Escape") return;
 
       closeMenu();
       triggerRef.current?.focus();
     };
 
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.removeEventListener(
-        'keydown',
-        handleKeyDown
-      );
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open]);
 
@@ -87,11 +76,10 @@ const UserMenu = ({ unreadCount = 0 }) => {
     closeMenu();
 
     const confirmed = await confirm({
-      title: 'Sign out?',
-      message:
-        "You'll need to sign in again to access your account.",
-      confirmLabel: 'Yes, sign out',
-      cancelLabel: 'No, stay signed in',
+      title: "Sign out?",
+      message: "You'll need to sign in again to access your account.",
+      confirmLabel: "Yes, sign out",
+      cancelLabel: "No, stay signed in",
     });
 
     if (!confirmed) return;
@@ -99,7 +87,7 @@ const UserMenu = ({ unreadCount = 0 }) => {
     try {
       await logout();
     } catch (error) {
-      console.error('Logout failed:', error);
+      console.error("Logout failed:", error);
     }
   };
 
@@ -108,10 +96,7 @@ const UserMenu = ({ unreadCount = 0 }) => {
   }
 
   return (
-    <div
-      ref={menuRef}
-      className="relative"
-    >
+    <div ref={menuRef} className="relative">
       {/* Trigger */}
       <button
         ref={triggerRef}
@@ -134,7 +119,7 @@ const UserMenu = ({ unreadCount = 0 }) => {
         </span>
 
         <span className="max-w-32 truncate">
-          {user.name?.split(' ')[0] || 'Account'}
+          {user.name?.split(" ")[0] || "Account"}
         </span>
 
         {/* Chevron */}
@@ -145,16 +130,10 @@ const UserMenu = ({ unreadCount = 0 }) => {
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
-          className={`transition-transform ${
-            open ? 'rotate-180' : ''
-          }`}
+          className={`transition-transform ${open ? "rotate-180" : ""}`}
           aria-hidden="true"
         >
-          <path
-            d="m6 9 6 6 6-6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
 
@@ -165,7 +144,7 @@ const UserMenu = ({ unreadCount = 0 }) => {
           aria-label="Account menu"
           className="absolute right-0 mt-3 w-56 rounded-sm border border-navy/10 bg-white py-2 text-navy shadow-lifted"
         >
-          {/* Admin */}
+          {/* Admin / Agent dashboard */}
           {admin && (
             <Link
               to="/dashboard/admin"
@@ -177,7 +156,6 @@ const UserMenu = ({ unreadCount = 0 }) => {
             </Link>
           )}
 
-          {/* Agent */}
           {agent && (
             <Link
               to="/dashboard/agent"
@@ -189,16 +167,26 @@ const UserMenu = ({ unreadCount = 0 }) => {
             </Link>
           )}
 
-          {/* Non-admin account links */}
+          {/* Account */}
+          <Link
+            to="/profile"
+            onClick={closeMenu}
+            className={menuLinkClass}
+            role="menuitem"
+          >
+            My Profile
+          </Link>
+
+          {/* User activity */}
           {!admin && (
             <>
               <Link
-                to="/my-properties"
+                to="/wallet"
                 onClick={closeMenu}
                 className={menuLinkClass}
                 role="menuitem"
               >
-                My Properties
+                My Wallet
               </Link>
 
               <Link
@@ -209,29 +197,10 @@ const UserMenu = ({ unreadCount = 0 }) => {
               >
                 My Visits
               </Link>
-
-              
-              <Link
-                to="/wallet"
-                onClick={closeMenu}
-                className={menuLinkClass}
-                role="menuitem"
-              >
-                My Wallet
-              </Link>
             </>
           )}
 
-          {/* Common links */}
-          <Link
-            to="/profile"
-            onClick={closeMenu}
-            className={menuLinkClass}
-            role="menuitem"
-          >
-            My Profile
-          </Link>
-
+          {/* Communication */}
           <Link
             to="/my-conversations"
             onClick={closeMenu}
@@ -242,9 +211,7 @@ const UserMenu = ({ unreadCount = 0 }) => {
 
             {conversationUnreadCount > 0 && (
               <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brass px-1 text-[10px] font-bold leading-none text-navy">
-                {conversationUnreadCount > 99
-                  ? '99+'
-                  : conversationUnreadCount}
+                {conversationUnreadCount > 99 ? "99+" : conversationUnreadCount}
               </span>
             )}
           </Link>
@@ -259,14 +226,32 @@ const UserMenu = ({ unreadCount = 0 }) => {
 
             {unreadCount > 0 && (
               <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brick px-1 text-[10px] font-bold leading-none text-ivory">
-                {unreadCount > 99
-                  ? '99+'
-                  : unreadCount}
+                {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
           </Link>
 
-          <Link
+          {/* Property / financial features */}
+          {!admin && !agent && (
+            <>
+              <Link
+                to="/my-properties"
+                onClick={closeMenu}
+                className={menuLinkClass}
+                role="menuitem"
+              >
+                My Properties
+              </Link>
+
+              <Link
+                to="/my-emi"
+                onClick={closeMenu}
+                className={menuLinkClass}
+                role="menuitem"
+              >
+                My EMI
+              </Link>
+                  <Link
             to="/favorites"
             onClick={closeMenu}
             className={menuLinkClass}
@@ -274,14 +259,13 @@ const UserMenu = ({ unreadCount = 0 }) => {
           >
             Saved Properties
           </Link>
+            </>
+            
+          )}
 
-          {/* Divider */}
-          <div
-            className="my-1 border-t border-navy/10"
-            aria-hidden="true"
-          />
 
-          {/* Logout */}
+          <div className="my-1 border-t border-navy/10" aria-hidden="true" />
+
           <button
             type="button"
             onClick={handleLogout}
