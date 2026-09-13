@@ -30,13 +30,14 @@ import Profile from "./pages/user/Profile";
 import Favorites from "./pages/user/Favorites";
 import Notifications from "./pages/user/Notifications";
 import MyVisits from "./pages/user/MyVisits";
-import MyConversations from "./pages/user/MyConversations";
+import Conversations from "./pages/user/Conversations";
 import Wallet from "./pages/user/Wallet";
 import MyEMI from "./pages/user/MyEMI";
 
 // Agent and Admin dashboards
 import AgentDashboard from "./pages/agent/AgentDashboard";
 import MyLeads from "./pages/agent/MyLeads";
+import VisitManagement from "./pages/agent/VisitManagement";
 import MySales from "./pages/agent/MySales";
 import MyCommissions from "./pages/agent/MyCommissions";
 import AgentAnalytics from "./pages/agent/AgentAnalytics";
@@ -51,8 +52,7 @@ import ManageUsers from "./pages/admin/ManageUsers";
 import ManageCategories from "./pages/admin/ManageCategories";
 import BlogManagement from "./pages/admin/ManageBlogs";
 import Inquiries from "./pages/admin/RevampedInquiries";
-import Visits from "./pages/admin/ManageVisits";
-import ConversationsInbox from "./pages/admin/ConversationsInbox";
+import Visits from "./pages/admin/Visits";
 import EmiPlans from "./pages/admin/EmiPlans";
 import EmiPlanDetail from "./pages/admin/EmiPlanDetail";
 import SalesVerification from "./pages/admin/SalesVerification";
@@ -100,14 +100,6 @@ function App() {
             element={
               <ProtectedRoute>
                 <Notifications />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/my-conversations"
-            element={
-              <ProtectedRoute>
-                <MyConversations />
               </ProtectedRoute>
             }
           />
@@ -164,6 +156,22 @@ function App() {
               </ProtectedRoute>
             }
           />
+                <Route
+            path="/my-visits"
+            element={
+              <ProtectedRoute roles={["user"]}>
+                <MyVisits />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-conversations"
+            element={
+              <ProtectedRoute roles={["user"]}>
+                <Conversations />
+              </ProtectedRoute>
+            }
+          />
 
           {/* User & Agent features */}
           <Route
@@ -179,14 +187,6 @@ function App() {
             element={
               <ProtectedRoute roles={["user", "agent"]}>
                 <Favorites />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/my-visits"
-            element={
-              <ProtectedRoute roles={["user", "agent"]}>
-                <MyVisits />
               </ProtectedRoute>
             }
           />
@@ -218,6 +218,16 @@ function App() {
               <ProtectedRoute roles={["agent"]}>
                 <DashboardLayout>
                   <AddEditProperty />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/agent/my-conversations"
+            element={
+              <ProtectedRoute roles={["agent"]}>
+                <DashboardLayout>
+                  <Conversations />
                 </DashboardLayout>
               </ProtectedRoute>
             }
@@ -269,6 +279,16 @@ function App() {
               <ProtectedRoute roles={["agent"]}>
                 <DashboardLayout>
                   <MyLeads />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/agent/visits"
+            element={
+              <ProtectedRoute roles={["agent"]}>
+                <DashboardLayout>
+                  <VisitManagement />
                 </DashboardLayout>
               </ProtectedRoute>
             }
@@ -457,7 +477,7 @@ function App() {
           <Route
             path="/dashboard/admin/visits"
             element={
-              <ProtectedRoute roles={["admin", "agent"]}>
+              <ProtectedRoute roles={["admin"]}>
                 <DashboardLayout>
                   <Visits />
                 </DashboardLayout>
@@ -469,7 +489,7 @@ function App() {
             element={
               <ProtectedRoute roles={["admin"]}>
                 <DashboardLayout>
-                  <ConversationsInbox />
+                  <Conversations />
                 </DashboardLayout>
               </ProtectedRoute>
             }

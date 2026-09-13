@@ -18,6 +18,10 @@ const UNRECOVERABLE_LEAD_STAGES = ['pending_sale_verification', 'closed', 'lost'
 // Statuses accepted by PATCH /api/visits/:id
 const VISIT_STATUSES = ['pending_agent_review', 'confirmed', 'rejected', 'completed', 'cancelled'];
 
+// Statuses an AGENT may set on their own assigned visits. Approving,
+// rejecting, agent assignment and rescheduling remain admin decisions.
+const AGENT_ALLOWED_STATUSES = ['completed', 'cancelled'];
+
 // Map visit status changes onto the linked lead's pipeline stage so the
 // pipeline stays in sync with the visit lifecycle.
 const stageForVisitStatus = (status) => {
@@ -34,8 +38,34 @@ const stageForVisitStatus = (status) => {
   }
 };
 
-// Helper: Strips sensitive admin fields (like internal seller coordination notes)
-// when the response is viewed by a non-admin/agent.
+// Buyer notification for a confirmed visit. Shared by the admin status-update
+// path (updateVisit) and the unified approve+convert handler
+// (convertVisitToLead) so both send the exact same copy.
+const notifyBuyerVisitConfirmed = async (visit) => {
+  const isOfficeVisit = visit.visitType === 'office';
+  const targetLabel = visit.property?.title
+    ? `"${visit.property.title}"`
+    : 'your office consultation';
+
+  await notify({
+    recipient: visit.requestedBy,
+    type: 'visit_confirmed',
+    title: isOfficeVisit ? 'Office Consultation Confirmed!' : 'Site Visit Confirmed!',
+    message: isOfficeVisit
+      ? `Your office consultation on ${new Date(
+          visit.requestedSlot
+        ).toLocaleString()} has been confirmed.`
+      : `Your site visit for ${targetLabel} on ${new Date(
+          visit.requestedSlot
+        ).toLocaleString()} has been confirmed.`,
+    visit: visit._id,
+    property: visit.property?._id || null,
+    link: '/my-visits',
+  });
+};
+
+// Helper: Strips sensitive coordination notes when the response is viewed by
+// a buyer. Admins and agents (staff) always see the full record.
 const sanitizeVisitForViewer = (visit, viewerIsAdmin) => {
   if (viewerIsAdmin) return visit;
   const plain = visit.toObject ? visit.toObject() : visit;
@@ -172,9 +202,10 @@ const VISIT_STATUS_PRIORITY = {
   cancelled: 3,
 };
 
-// @desc    Get central visit moderation queue (Paginated)
+// @desc    Get the visit queue (Paginated). Admins see every visit; agents
+//          are scoped to the visits assigned to them.
 // @route   GET /api/visits
-// @access  Private (Admin / Staff)
+// @access  Private (Admin / Agent)
 const getVisits = asyncHandler(async (req, res) => {
   const {
   status,
@@ -191,6 +222,10 @@ if (status) query.status = status;
 if (assignedAgent) query.assignedAgent = assignedAgent;
 if (visitType) query.visitType = visitType;
 if (property) query.property = property;
+
+// The central queue is an admin view. Agents only ever see the visits
+// assigned to them, regardless of any filter they pass.
+if (req.user.role === 'agent') query.assignedAgent = req.user._id;
 
   const pageNum = Math.max(1, parseInt(page, 10));
   const limitNum = Math.max(1, parseInt(limit, 10));
@@ -281,7 +316,7 @@ const getMyVisits = asyncHandler(async (req, res) => {
 
 // @desc    Get single visit details
 // @route   GET /api/visits/:id
-// @access  Private (Requester or Admin)
+// @access  Private (Requester, Assigned Agent or Admin)
 const getVisitById = asyncHandler(async (req, res) => {
   const visit = await Visit.findById(req.params.id)
     .populate('property', 'title slug media.coverImage address listedBy')
@@ -295,8 +330,11 @@ const getVisitById = asyncHandler(async (req, res) => {
 
   const isRequester = String(visit.requestedBy._id) === String(req.user._id);
   const isAdmin = req.user.role === 'admin';
+  const isAssignedAgent =
+    visit.assignedAgent &&
+    String(visit.assignedAgent._id || visit.assignedAgent) === String(req.user._id);
 
-  if (!isRequester && !isAdmin) {
+  if (!isRequester && !isAdmin && !isAssignedAgent) {
     return res.status(403).json({
       success: false,
       message: 'Not authorized to view this visit request',
@@ -305,13 +343,17 @@ const getVisitById = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    visit: sanitizeVisitForViewer(visit, isAdmin),
+    visit: sanitizeVisitForViewer(visit, isAdmin || isAssignedAgent),
   });
 });
 
-// @desc    Update visit status / assign agent (Middleman coordination)
+// @desc    Update visit status / notes / assign agent (Middleman coordination)
 // @route   PATCH /api/visits/:id
-// @access  Private (Admin)
+// @access  Private (Admin full access | Assigned Agent limited access)
+//
+// Admins manage the whole lifecycle. Agents may only manage the visits
+// assigned to them: mark them completed/cancelled and keep coordination
+// notes - approval, rejection, assignment and rescheduling stay with admins.
 const updateVisit = asyncHandler(async (req, res) => {
   const { status, internalNotes, assignedAgent, requestedSlot } = req.body;
 
@@ -322,6 +364,31 @@ const updateVisit = asyncHandler(async (req, res) => {
 
   if (status && !VISIT_STATUSES.includes(status)) {
     return res.status(400).json({ success: false, message: `Invalid visit status: ${status}` });
+  }
+
+  // AGENT scope: only their own visits, only completion/cancellation/notes.
+  if (req.user.role === 'agent') {
+    if (!visit.assignedAgent || String(visit.assignedAgent) !== String(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the assigned agent (or an admin) can update this visit',
+      });
+    }
+
+    if (status && !AGENT_ALLOWED_STATUSES.includes(status)) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Agents can only mark visits as completed or cancelled - approval and rejection are handled by admins',
+      });
+    }
+
+    if (assignedAgent !== undefined || requestedSlot) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can assign agents or reschedule visits',
+      });
+    }
   }
 
   let newSlotDate = null;
@@ -385,8 +452,12 @@ const updateVisit = asyncHandler(async (req, res) => {
     }
   }
 
-  // Notify buyer on status update
+  // Notify buyer on status update. Confirmations share their copy with the
+  // unified approve+convert handler (notifyBuyerVisitConfirmed).
 if (statusChanged) {
+  if (status === 'confirmed') {
+    await notifyBuyerVisitConfirmed(visit);
+  } else {
   const isOfficeVisit = visit.visitType === 'office';
 
   const visitLabel = isOfficeVisit
@@ -405,19 +476,7 @@ if (statusChanged) {
     `Your ${visitLabel} ${propertyTitle ? `for ${targetLabel} ` : ''}` +
     `status is now: ${status.replace('_', ' ')}.`;
 
-  if (status === 'confirmed') {
-    notificationTitle = isOfficeVisit
-      ? 'Office Consultation Confirmed!'
-      : 'Site Visit Confirmed!';
-
-    notificationMessage = isOfficeVisit
-      ? `Your office consultation on ${new Date(
-          visit.requestedSlot
-        ).toLocaleString()} has been confirmed.`
-      : `Your site visit for ${targetLabel} on ${new Date(
-          visit.requestedSlot
-        ).toLocaleString()} has been confirmed.`;
-  } else if (status === 'rejected') {
+  if (status === 'rejected') {
     notificationTitle = isOfficeVisit
       ? 'Office Consultation Request Declined'
       : 'Site Visit Request Declined';
@@ -436,6 +495,7 @@ if (statusChanged) {
     property: visit.property?._id || null,
     link: '/my-visits',
   });
+}
 }
 
   // Tell the buyer when the team moves the slot - a buyer must never discover
@@ -510,20 +570,27 @@ const cancelMyVisit = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Convert a visit request into a pipeline Lead (manual, one-click)
+ * @desc    Unified visit acceptance: approve the visit (when still pending
+ *          review) AND convert it into a pipeline Lead - one event
  * @route   POST /api/visits/:id/convert-to-lead
  * @access  Private (admin only)
  *
- * Delegates to the shared ensureLeadFromVisit service - the exact same path
- * used when a visit is accepted automatically - so manual conversion gets the
- * same smart de-duplication, unified conversation threading, agent
- * notification and visit<->lead cross-linking. Accepts the same overrides as
- * the automatic flow (category / priority / assignedAgent / notes / stage).
+ * THE "Convert to Lead" BUTTON IS THE SINGLE ACCEPTANCE HANDLER:
+ *   1. APPROVE - a visit still awaiting review is confirmed first, and the
+ *      buyer receives the exact same confirmation notification as the
+ *      status-update endpoint (shared notifyBuyerVisitConfirmed helper).
+ *   2. CONVERT - the shared ensureLeadFromVisit service then guarantees the
+ *      pipeline lead exists (the same path automatic acceptance uses), with
+ *      smart de-duplication, unified conversation threading, agent
+ *      notification and visit<->lead cross-linking.
+ * Already-confirmed/completed visits skip straight to step 2. Accepts the
+ * same lead overrides as the automatic flow (category / priority /
+ * assignedAgent / notes / stage).
  */
 const convertVisitToLead = asyncHandler(async (req, res) => {
   const { category, priority, assignedAgent, notes, stage } = req.body;
 
-  const visit = await Visit.findById(req.params.id);
+  const visit = await Visit.findById(req.params.id).populate('property', 'title');
   if (!visit) {
     return res.status(404).json({ success: false, message: 'Visit request not found' });
   }
@@ -538,6 +605,23 @@ const convertVisitToLead = asyncHandler(async (req, res) => {
     }
   }
 
+  // STEP 1 - APPROVE. A pending request is confirmed as part of the same
+  // event, so there is no separate "accept" step to remember. Notification
+  // failures must never block the conversion.
+  let approved = false;
+  if (visit.status === 'pending_agent_review') {
+    visit.status = 'confirmed';
+    await visit.save();
+    approved = true;
+
+    try {
+      await notifyBuyerVisitConfirmed(visit);
+    } catch (err) {
+      console.error(`Buyer confirmation notice failed for visit ${visit._id}:`, err.message);
+    }
+  }
+
+  // STEP 2 - CONVERT. Same engine as automatic acceptance.
   const { lead, created, deduped } = await ensureLeadFromVisit({
     visit,
     actor: req.user,
@@ -561,10 +645,15 @@ const convertVisitToLead = asyncHandler(async (req, res) => {
   res.status(created ? 201 : 200).json({
     success: true,
     message: deduped
-      ? 'This visit was already linked to a lead - returning it'
-      : 'Visit converted to lead',
+      ? approved
+        ? 'Visit approved - it was already linked to a lead, returning it'
+        : 'This visit was already linked to a lead - returning it'
+      : approved
+        ? 'Visit approved and converted to a pipeline lead'
+        : 'Visit converted to lead',
     lead,
     deduped,
+    approved,
   });
 });
 

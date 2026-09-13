@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import api from '../../utils/axios';
 import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmContext';
-import { reviewInstallmentVerification } from '../../services/emiService';
+import {
+  getEmiPlanById,
+  updateEmiPlan,
+  updateInstallment,
+  reviewInstallmentVerification,
+} from '../../services/emiService';
 
 const PLAN_BADGE = {
   active: 'bg-brass/15 text-brass-dark',
@@ -497,10 +501,10 @@ const EmiPlanDetail = () => {
     setError('');
     (async () => {
       try {
-        const res = await api.get(`/emi-plans/${id}`);
+        const data = await getEmiPlanById(id);
         if (cancelled) return;
-        setPlan(res.data.plan || null);
-        setCanManage(Boolean(res.data.canManage));
+        setPlan(data.plan || null);
+        setCanManage(Boolean(data.canManage));
       } catch (err) {
         if (!cancelled) setError(err.response?.data?.message || 'Failed to load EMI plan');
       } finally {
@@ -554,9 +558,9 @@ const EmiPlanDetail = () => {
     }
     setStatusBusy(true);
     try {
-      const res = await api.patch(`/emi-plans/${id}`, { status: nextStatus });
-      setPlan(res.data.plan);
-      showToast(res.data.message || 'Plan status updated', 'success');
+      const data = await updateEmiPlan(id, { status: nextStatus });
+      setPlan(data.plan);
+      showToast(data.message || 'Plan status updated', 'success');
     } catch (err) {
       // the select is bound to plan.status, so it snaps back to the stored value
       showToast(err.response?.data?.message || 'Failed to update plan status', 'error');
@@ -570,10 +574,10 @@ const EmiPlanDetail = () => {
   const applyReschedule = async (payload) => {
     setBusy(true);
     try {
-      const res = await api.patch(`/emi-plans/${id}`, { reschedule: payload });
-      setPlan(res.data.plan);
+      const data = await updateEmiPlan(id, { reschedule: payload });
+      setPlan(data.plan);
       setRescheduleOpen(false);
-      showToast(res.data.message || 'Remaining installments rescheduled', 'success');
+      showToast(data.message || 'Remaining installments rescheduled', 'success');
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to reschedule the plan', 'error');
     } finally {
@@ -584,10 +588,10 @@ const EmiPlanDetail = () => {
   const patchInstallment = async (inst, payload) => {
     setBusy(true);
     try {
-      const res = await api.patch(`/emi-plans/${id}/installments/${inst.installmentNumber}`, payload);
-      setPlan(res.data.plan);
+      const data = await updateInstallment(id, inst.installmentNumber, payload);
+      setPlan(data.plan);
       setEditor(null);
-      showToast(res.data.message || 'Installment updated', 'success');
+      showToast(data.message || 'Installment updated', 'success');
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to update the installment', 'error');
     } finally {

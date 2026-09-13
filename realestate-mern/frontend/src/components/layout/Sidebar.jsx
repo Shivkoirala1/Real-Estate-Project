@@ -137,7 +137,7 @@ const agentNavGroups = [
       },
       {
         label: 'My Conversations',
-        to: '/my-conversations',
+        to: '/dashboard/agent/my-conversations',
         conversationLink: true,
       },
       {

@@ -29,13 +29,15 @@ export const convertContactFormToLead = async (contactFormId, leadData = {}) => 
 };
 
 /**
- * Convert a visit request into a lead.
+ * Unified visit acceptance: convert a visit request into a lead. If the visit
+ * is still pending review it is confirmed (approved) first - the buyer is
+ * notified - and the lead is created in the same request.
  * POST /api/visits/:id/convert-to-lead
  * payload: { category, priority, assignedAgent, notes, stage }
  */
 export const convertVisitToLead = async (visitId, leadData = {}) => {
   const { data } = await api.post(`/visits/${visitId}/convert-to-lead`, leadData);
-  return data; // { success, message, lead }
+  return data; // { success, message, lead, approved }
 };
 
 // ---------- READ ----------

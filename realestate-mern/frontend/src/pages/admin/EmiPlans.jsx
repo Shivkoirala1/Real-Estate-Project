@@ -582,7 +582,7 @@ const EmiPlans = () => {
 
       try {
         const res = await getSaleById(saleId);
-        console.log("Fetched sale for EMI plan init:", res);
+
         if (!cancelled) {
           setSale(res.sale || null);
         }

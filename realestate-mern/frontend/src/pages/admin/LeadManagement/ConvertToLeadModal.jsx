@@ -52,7 +52,9 @@ const ConvertToLeadModal = ({ sourceType, source, onClose, onConverted }) => {
       showToast(
         result.deduped
           ? 'This visit was already linked to a lead - opening it'
-          : 'Converted to lead',
+          : result.approved
+            ? 'Visit approved and converted to a pipeline lead'
+            : 'Converted to lead',
       );
       onConverted && onConverted(result.lead);
       onClose();
@@ -91,6 +93,14 @@ const ConvertToLeadModal = ({ sourceType, source, onClose, onConverted }) => {
             {sourceType === 'contact_form' && ' Contact details are pulled from the submission.'}
             {sourceType === 'visit' && ' The visit stays linked and the lead starts at Site Visit.'}
           </p>
+          {sourceType === 'visit' && source?.status === 'pending_agent_review' && (
+            <div className="mt-3 bg-brass/10 border border-brass/20 rounded-sm px-3 py-2">
+              <p className="text-xs text-brass">
+                This visit is still pending review. Confirming will approve the
+                visit, notify the buyer, and convert it to a lead in one step.
+              </p>
+            </div>
+          )}
         </div>
 
         <form onSubmit={submit} className="p-6 space-y-4">
@@ -162,7 +172,11 @@ const ConvertToLeadModal = ({ sourceType, source, onClose, onConverted }) => {
               Cancel
             </button>
             <button type="submit" disabled={saving} className="btn-gold text-sm disabled:opacity-50">
-              {saving ? 'Converting...' : 'Convert to Lead'}
+              {saving
+                ? 'Converting...'
+                : sourceType === 'visit' && source?.status === 'pending_agent_review'
+                  ? 'Approve & Convert'
+                  : 'Convert to Lead'}
             </button>
           </div>
         </form>

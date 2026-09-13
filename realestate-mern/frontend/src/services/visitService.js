@@ -1,13 +1,16 @@
 import api from "../utils/axios";
 
 /**
- * Get admin/staff visit queue
+ * Get the visit queue
  *
  * GET /api/visits
  *
+ * Admins see every visit; agents are scoped by the API to the visits
+ * assigned to them (any assignedAgent filter they pass is ignored).
+ *
  * Supported filters:
  * - status
- * - assignedAgent
+ * - assignedAgent (admins only)
  * - visitType
  * - property
  * - page
@@ -99,11 +102,15 @@ export const createVisit = async ({
  *
  * PATCH /api/visits/:id
  *
- * Can be used for:
+ * Admins manage the full lifecycle:
  * - Approving
  * - Rejecting
  * - Assigning an agent
  * - Rescheduling
+ * - Updating internal notes
+ *
+ * Assigned agents are limited by the API to:
+ * - Marking the visit completed or cancelled
  * - Updating internal notes
  */
 export const updateVisit = async (id, payload) => {
@@ -132,4 +139,4 @@ export const cancelVisit = async (id) => {
 export const getAgents = async () => {
   const { data } = await api.get("/users/agents");
   return data;
-}
+}
