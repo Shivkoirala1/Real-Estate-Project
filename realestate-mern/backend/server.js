@@ -53,7 +53,29 @@ try {
 
 const app = express();
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || process.env.CLIENT_URL }));
+// Allow-list based CORS. Always includes the standard local Vite dev port as
+// a safety net, plus whatever CLIENT_ORIGIN/CLIENT_URL is set to in .env
+// (comma-separate multiple origins if you ever need more than one, e.g. a
+// deployed frontend AND a local one).
+const envOrigins = [process.env.CLIENT_ORIGIN, process.env.CLIENT_URL]
+  .filter(Boolean)
+  .flatMap((v) => v.split(','))
+  .map((o) => o.trim().replace(/\/$/, ''));
+
+const allowedOrigins = Array.from(new Set([...envOrigins, 'http://localhost:5173']));
+console.log('CORS allowed origins:', allowedOrigins);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // No Origin header at all = same-origin or a non-browser client
+    // (curl/Postman/server-to-server) - always allow those.
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin.replace(/\/$/, ''))) return callback(null, true);
+    console.warn(`CORS blocked a request from origin: ${origin}`);
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
