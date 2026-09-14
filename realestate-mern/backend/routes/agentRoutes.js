@@ -1,19 +1,26 @@
 const express = require('express');
 const router = express.Router();
-const agentController = require('../controllers/agentController');
+const {getAgent, createAgent, getAgents, getAgentSummary, toggleAgentStatus, deleteAgent, updateAgent} = require('../controllers/agentController');
 const { protect, authorize } = require('../middleware/auth');
 
 // ---------- Phase 4: agent roster management (admin only) ----------
-router.use(protect, authorize('admin'));
+router.all('*', protect)
+router.get(
+  '/',
+  authorize('admin', 'agent'),
+  getAgents
+);
 
-router.get('/', agentController.getAgents);
-router.post('/', agentController.createAgent);
+router.post(
+  '/',
+  authorize('admin'),
+  createAgent
+);
 // Drill-down summary stays above '/:id' for clarity (distinct Express paths)
-router.get('/:id/summary', agentController.getAgentSummary);
-router.get('/:id', agentController.getAgent);
-router.put('/:id', agentController.updateAgent);
-router.patch('/:id', agentController.updateAgent);
-router.patch('/:id/status', agentController.toggleAgentStatus);
-router.delete('/:id', agentController.deleteAgent);
+router.get('/:id/summary', authorize('admin'), getAgentSummary);
+router.get('/:id',authorize('admin'), getAgent);
+router.put('/:id',authorize('admin'), updateAgent);
+router.patch('/:id/status',authorize('admin'), toggleAgentStatus);
+router.delete('/:id',authorize('admin'), deleteAgent);
 
 module.exports = router;

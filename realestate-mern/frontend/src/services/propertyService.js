@@ -96,6 +96,18 @@ export const updatePropertyStatus = async (id, status) => {
 };
 
 /**
+ * Share a property with a friend
+ * POST /api/properties/:id/share
+ *
+ * @param {*} propertyId 
+ * @returns 
+ */
+export const shareProperty = async (propertyId) => {
+  const { data } = await api.post(`/properties/${propertyId}/share`);
+  return data; // { message }
+}
+
+/**
  * Delete a property listing
  * DELETE /api/properties/:id
  */

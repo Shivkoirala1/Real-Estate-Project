@@ -44,7 +44,7 @@ const ACTIONS = {
   PROPERTY_SAVE: { label: 'Property Save गर्ने', labelEn: 'Property saved', yc: 10 },
   PROPERTY_SHARE: { label: 'Property Share गर्ने', labelEn: 'Property shared', yc: 20 },
   PROPERTY_VISIT_BOOK: { label: 'Property Visit Book गर्ने', labelEn: 'Site visit booked', yc: 100 },
-  SITE_VISIT_COMPLETE: { label: 'Site Visit पूरा गर्ने', labelEn: 'Site visit completed', yc: 300 },
+  PROPERTY_VISIT_COMPLETE: { label: 'Property Visit पूरा गर्ने', labelEn: 'Property visit completed', yc: 300 },
   PROPERTY_BUY: { label: 'Property खरिद गर्ने', labelEn: 'Property purchased', yc: 10000 },
   PROPERTY_SELL: { label: 'Property बेच्ने', labelEn: 'Property sold', yc: 8000 },
   REFERRAL_ACCOUNT: { label: 'साथीलाई Refer गर्ने (Account)', labelEn: 'Referred friend joined', yc: 200 },

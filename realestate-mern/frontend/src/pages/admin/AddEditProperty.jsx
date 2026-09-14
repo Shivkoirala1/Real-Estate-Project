@@ -597,12 +597,13 @@ const AddEditProperty = () => {
               <input type="checkbox" id="negotiable" checked={form.negotiable} onChange={(e) => updateField('negotiable', e.target.checked)} />
               <label htmlFor="negotiable" className="text-sm text-slate-ink">Price is negotiable</label>
             </div>
-            <div>
-              <label className="label-field">Commission Override %</label>
-              <input
-                type="number"
-                min="0"
-                max="100"
+            {user.role === 'admin' && (
+              <div >
+                <label className="label-field">Commission Override %</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
                 step="0.1"
                 className={`input-field ${errorInputClass(fieldErrors.commissionPercentage)}`}
                 placeholder={form.propertyType ? String(inheritedCommission) : 'e.g. 2.5'}
@@ -621,6 +622,7 @@ const AddEditProperty = () => {
                 </p>
               )}
             </div>
+          )}
           </div>
         </section>
 

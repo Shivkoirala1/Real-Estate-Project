@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { convertContactFormToLead, convertVisitToLead } from '../../../services/leadService';
-import { getUsers } from '../../../services/userService';
+import { getAgents } from "../../../services/agentService";
 import { useToast } from '../../../context/ToastContext';
 import { CATEGORIES, PRIORITIES } from '../../../utils/leadConstants';
 
@@ -28,8 +28,8 @@ const ConvertToLeadModal = ({ sourceType, source, onClose, onConverted }) => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    getUsers({ role: 'admin' })
-      .then((data) => setAgents(data.users || []))
+    getAgents()
+      .then((data) => setAgents(data.agents || []))
       .catch(() => setAgents([]));
   }, []);
 

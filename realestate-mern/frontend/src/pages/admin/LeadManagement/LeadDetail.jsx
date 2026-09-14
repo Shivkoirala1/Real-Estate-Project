@@ -274,7 +274,7 @@ const LeadDetail = () => {
               <label className="label-field">Assigned agent</label>
               <select
                 value={lead.assignedAgent?._id || ''}
-                disabled={saving}
+                disabled={saving || user?.role !== 'admin'}
                 onChange={(e) =>
                   runUpdate(
                     () => assignLeadToAgent(lead._id, e.target.value),

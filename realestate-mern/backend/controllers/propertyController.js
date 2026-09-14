@@ -5,6 +5,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { validatePropertyInput } = require('../utils/validateProperty');
 const { notifyMany } = require('../utils/notify');
 const { effectiveCommissionPercentage, estimatedCommissionAmount } = require('../utils/commission');
+const { awardReward } = require('../utils/rewards');
 
 // Empty-string values for ObjectId-ref fields (e.g. a poster leaving the
 // district/city dropdown unselected) previously crashed property creation

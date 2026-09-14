@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { getVisits, updateVisit } from "../../services/visitService";
-import {utcToNepaliInput, nepaliInputToUTC} from "../../utils/timeConverter";
+import { utcToNepaliInput, nepaliInputToUTC } from "../../utils/timeConverter";
 import { getAgents } from "../../services/agentService";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -118,7 +118,7 @@ const Visits = () => {
     }));
   };
 
-  const handleUpdate = async (id, payload, successMessage) => {
+  const handleUpdate = async (id, payload, successMessage, options = {}) => {
     setUpdatingId(id);
 
     try {
@@ -128,14 +128,47 @@ const Visits = () => {
       await fetchVisits();
     } catch (err) {
       console.error("Failed to update visit:", err);
-      showToast(
-        err.response?.data?.message ||
-          "Failed to update the visit. Please try again.",
-        "error",
-      );
+      const data = err.response?.data;
+
+      if (data?.requiresAgent) {
+        const targetVisit = options.visit || visits.find((v) => v._id === id);
+        showToast(
+          data.message || "Please assign an agent to approve this visit.",
+          "error",
+        );
+        if (targetVisit) openModal("approve", targetVisit);
+      } else {
+        showToast(
+          data?.message || "Failed to update the visit. Please try again.",
+          "error",
+        );
+      }
     } finally {
       setUpdatingId(null);
     }
+  };
+
+  const handleApproveVisit = (visit) => {
+    if (visit.assignedAgent) {
+      handleUpdate(
+        visit._id,
+        { status: "confirmed" },
+        "Visit approved and confirmed - the buyer has been notified",
+        { visit },
+      );
+    } else {
+      openModal("approve", visit);
+    }
+  };
+
+  const handleApproveWithAgent = async (agentId) => {
+    if (!activeVisit) return;
+
+    await handleUpdate(
+      activeVisit._id,
+      { assignedAgent: agentId, status: "confirmed" },
+      "Agent assigned and visit approved - the buyer has been notified",
+    );
   };
 
   const handleReject = async (visit) => {
@@ -158,28 +191,28 @@ const Visits = () => {
     );
   };
 
-  const handleAssign = async (agentId) => {
-    if (!activeVisit) return;
-
-    await handleUpdate(activeVisit._id, {
-      assignedAgent: agentId,
-    }, "Agent assigned to the visit");
-  };
-
   const handleReschedule = async (requestedSlot) => {
     if (!activeVisit) return;
 
-    await handleUpdate(activeVisit._id, {
-      requestedSlot,
-    }, "Visit rescheduled - the buyer has been notified of the new slot");
+    await handleUpdate(
+      activeVisit._id,
+      {
+        requestedSlot,
+      },
+      "Visit rescheduled - the buyer has been notified of the new slot",
+    );
   };
 
   const handleNotes = async (internalNotes) => {
     if (!activeVisit) return;
 
-    await handleUpdate(activeVisit._id, {
-      internalNotes,
-    }, "Internal notes saved");
+    await handleUpdate(
+      activeVisit._id,
+      {
+        internalNotes,
+      },
+      "Internal notes saved",
+    );
   };
 
   const openModal = (type, visit) => {
@@ -209,9 +242,9 @@ const Visits = () => {
           <h1 className="text-3xl">Visit Queue</h1>
 
           <p className="text-sm text-slate-muted mt-1">
-            Review, assign and coordinate buyer visits. Approving is one
-            click: the buyer is notified, the visit is confirmed and the
-            pipeline lead is created (or updated) with a conversation thread.
+            Review, assign and coordinate buyer visits. Approving is one click:
+            the buyer is notified, the visit is confirmed and the pipeline lead
+            is created (or updated) with a conversation thread.
           </p>
         </div>
 
@@ -408,17 +441,21 @@ const Visits = () => {
                           </button>
                         )}
 
-                        <button
-                          disabled={
-                            isBusy(visit) ||
-                            visit.status === "completed" ||
-                            visit.status === "cancelled"
+                        {visit.convertedLead && visit.status === "pending_agent_review" && (
+                              <button
+                                disabled={isBusy(visit)}
+                                onClick={() => handleApproveVisit(visit)}
+                                className="text-white bg-sage hover:opacity-90 disabled:opacity-50 px-3 py-1.5 rounded-sm text-xs transition-opacity"
+                                title={
+                                  visit.assignedAgent
+                                    ? "Approve this visit and confirm it with the lead's assigned agent"
+                                    : "Approve this visit - you'll be asked to assign an agent first"
+                                }
+                              >
+                                Approve Visit
+                              </button>
+                            )
                           }
-                          onClick={() => openModal("assign", visit)}
-                          className="disabled:opacity-40 disabled:cursor-not-allowed text-navy border border-navy/10 hover:border-brass hover:text-brass px-3 py-1.5 rounded-sm text-xs transition-colors"
-                        >
-                          Assign Agent
-                        </button>
 
                         <button
                           disabled={
@@ -515,15 +552,15 @@ const Visits = () => {
         </>
       )}
 
-      {/* Assign Agent Modal */}
-      {modal === "assign" && (
-        <AssignAgentModal
-          visit={activeVisit}
-          agents={agents}
-          onClose={closeModal}
-          onAssign={handleAssign}
-        />
-      )}
+      {/* Approve with Agent Modal */}
+      {modal === "approve" && (
+  <ApproveWithAgentModal
+    visit={activeVisit}
+    agents={agents}
+    onClose={closeModal}
+    onAssign={handleApproveWithAgent}
+  />
+)}
 
       {/* Reschedule Modal */}
       {modal === "reschedule" && (
@@ -561,13 +598,14 @@ const Visits = () => {
 /* Assign Agent Modal                                                         */
 /* -------------------------------------------------------------------------- */
 
-const AssignAgentModal = ({ visit, agents, onClose, onAssign }) => {
-  const [agentId, setAgentId] = useState(visit?.assignedAgent?._id || "");
+const ApproveWithAgentModal = ({ visit, agents, onClose, onAssign }) => {
+  const [agentId, setAgentId] = useState("");
 
   return (
-    <Modal title="Assign Agent" onClose={onClose}>
+    <Modal title="Assign Agent & Approve" onClose={onClose}>
       <p className="text-sm text-slate-muted mb-4">
-        Select an agent to handle this visit.
+        This visit isn't linked to an agent yet. Select one to assign and
+        approve the visit — the buyer will be notified immediately.
       </p>
 
       <select
@@ -576,7 +614,6 @@ const AssignAgentModal = ({ visit, agents, onClose, onAssign }) => {
         className="input-field w-full"
       >
         <option value="">Select an agent</option>
-
         {agents.map((agent) => (
           <option key={agent._id} value={agent._id}>
             {agent.name}
@@ -587,7 +624,7 @@ const AssignAgentModal = ({ visit, agents, onClose, onAssign }) => {
       <ModalActions
         onClose={onClose}
         onSubmit={() => onAssign(agentId)}
-        submitText="Assign Agent"
+        submitText="Assign & Approve"
         disabled={!agentId}
       />
     </Modal>
@@ -617,10 +654,8 @@ const RescheduleModal = ({ visit, onClose, onReschedule }) => {
     <Modal title="Reschedule Visit" onClose={onClose}>
       <p className="mb-4 text-sm text-slate-muted">
         Choose a new date and time for this
-        {visit?.visitType === "office"
-          ? " consultation."
-          : " site visit."}{" "}
-        The buyer will be notified of the new slot.
+        {visit?.visitType === "office" ? " consultation." : " site visit."} The
+        buyer will be notified of the new slot.
       </p>
 
       <form onSubmit={handleSubmit}>
@@ -637,18 +672,11 @@ const RescheduleModal = ({ visit, onClose, onReschedule }) => {
         />
 
         <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn-secondary"
-          >
+          <button type="button" onClick={onClose} className="btn-secondary">
             Cancel
           </button>
 
-          <button
-            type="submit"
-            className="btn-primary"
-          >
+          <button type="submit" className="btn-primary">
             Reschedule
           </button>
         </div>

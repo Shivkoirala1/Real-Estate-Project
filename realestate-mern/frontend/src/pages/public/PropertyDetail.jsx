@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   getPropertyById,
+  shareProperty,
   toggleFavorite,
 } from "../../services/propertyService";
 import { createContactForm } from "../../services/contactFormService";
@@ -279,7 +280,7 @@ const PropertyDetail = () => {
     showToast("Link copied to clipboard");
     if (user) {
       try {
-        await api.post(`/properties/${property._id}/share`);
+        await shareProperty(property._id);
       } catch (err) {
         // Non-critical - the link was still copied either way
       }

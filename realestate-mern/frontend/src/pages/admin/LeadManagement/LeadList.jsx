@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getLeads, updateLeadStage, assignLeadToAgent } from '../../../services/leadService';
-import { getUsers } from '../../../services/userService';
+import { getAgents} from '../../../services/agentService';
 import { useToast } from '../../../context/ToastContext';
 import LeadSourceIcon from '../../../components/LeadManagement/LeadSourceIcon';
 import LeadStatusBadge from '../../../components/LeadManagement/LeadStatusBadge';
@@ -22,8 +22,8 @@ const LeadList = ({ filters = {}, reloadKey = 0, onConverted }) => {
   const [updatingId, setUpdatingId] = useState(null);
 
   useEffect(() => {
-    getUsers({ role: 'admin' })
-      .then((data) => setAgents(data.users || []))
+    getAgents()
+      .then((data) => setAgents(data.agents || []))
       .catch(() => setAgents([]));
   }, []);
 

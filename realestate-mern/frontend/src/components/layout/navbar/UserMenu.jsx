@@ -180,14 +180,6 @@ const UserMenu = ({ unreadCount = 0 }) => {
           {/* User activity */}
           {!admin && (
             <>
-              <Link
-                to="/wallet"
-                onClick={closeMenu}
-                className={menuLinkClass}
-                role="menuitem"
-              >
-                My Wallet
-              </Link>
 
               <Link
                 to="/my-visits"
@@ -241,6 +233,14 @@ const UserMenu = ({ unreadCount = 0 }) => {
                 role="menuitem"
               >
                 My Properties
+              </Link>
+              <Link
+                to="/wallet"
+                onClick={closeMenu}
+                className={menuLinkClass}
+                role="menuitem"
+              >
+                My Wallet
               </Link>
 
               <Link

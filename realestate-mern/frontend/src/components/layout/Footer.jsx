@@ -32,9 +32,8 @@ const Footer = () => {
         <div>
           <p className="eyebrow mb-4">Follow</p>
           <ul className="space-y-2 text-sm text-ivory/70">
-            <li><a href="#" className="hover:text-brass">Facebook</a></li>
-            <li><a href="#" className="hover:text-brass">Instagram</a></li>
-            <li><a href="#" className="hover:text-brass">Tiktok</a></li>
+            <li><a href="https://www.facebook.com/share/1Er4dykkTo/" className="hover:text-brass">Facebook</a></li>
+            <li><a href="https://www.tiktok.com/@youth_real_estate_5?_r=1&_t=ZS-99gxZruylGi" className="hover:text-brass">Tiktok</a></li>
           </ul>
         </div>
       </div>
