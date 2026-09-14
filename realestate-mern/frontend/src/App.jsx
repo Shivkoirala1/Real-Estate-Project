@@ -177,7 +177,7 @@ function App() {
           <Route
             path="/wallet"
             element={
-              <ProtectedRoute roles={["user", "agent"]}>
+              <ProtectedRoute roles={["user"]}>
                 <Wallet />
               </ProtectedRoute>
             }

@@ -178,7 +178,7 @@ const UserMenu = ({ unreadCount = 0 }) => {
           </Link>
 
           {/* User activity */}
-          {!admin && (
+          {!admin && !agent && (
             <>
 
               <Link
@@ -251,7 +251,10 @@ const UserMenu = ({ unreadCount = 0 }) => {
               >
                 My EMI
               </Link>
-                  <Link
+            </>
+            
+          )}
+          <Link
             to="/favorites"
             onClick={closeMenu}
             className={menuLinkClass}
@@ -259,9 +262,6 @@ const UserMenu = ({ unreadCount = 0 }) => {
           >
             Saved Properties
           </Link>
-            </>
-            
-          )}
 
 
           <div className="my-1 border-t border-navy/10" aria-hidden="true" />

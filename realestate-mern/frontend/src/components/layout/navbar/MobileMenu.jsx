@@ -138,7 +138,7 @@ const MobileMenu = ({
           )}
 
           {/* Regular user links */}
-          {!admin && (
+          {!admin && !agent && (
             <>
               <Link
                 to="/my-properties"

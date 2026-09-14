@@ -149,8 +149,8 @@ const PropertyDetail = () => {
   const handleFavorite = async () => {
     if (!user) return showToast("Please sign in to save properties", "error");
     try {
-      await toggleFavorite(property._id);
-      showToast("Saved to your favorites");
+      var data = await toggleFavorite(property._id);
+      (data.favorited == true) ? showToast("Saved to your favorites") : showToast("Removed from your favorites");
     } catch (err) {
       showToast("Something went wrong", "error");
     }
