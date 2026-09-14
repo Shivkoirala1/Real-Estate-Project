@@ -1,135 +1,50 @@
-import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { useAuth } from "../../../context/AuthContext";
-import { useConfirm } from "../../../context/ConfirmContext";
-import { useConversations } from "../../../context/ConversationContext";
-
-import { isAdmin, isAgent } from "../../../utils/permissions";
+import { useAuth } from "../../context/AuthContext";
+import { useConversations } from "../../context/ConversationContext";
+import { useDismissableMenu } from "../../hooks/useDismissableMenu";
+import { useLogoutHandler } from "../../hooks/useLogoutHandler";
+import { getAccountNavItems } from "../../utils/accountNav";
+import CountBadge from "../../CountBadge";
 
 const menuLinkClass =
-  "block px-4 py-2 text-sm transition-colors hover:bg-parchment";
+  "flex items-center justify-between px-4 py-2 text-sm transition-colors hover:bg-parchment";
 
 const UserMenu = ({ unreadCount = 0 }) => {
-  const { user, logout } = useAuth();
-  const confirm = useConfirm();
+  const { user } = useAuth();
   const { unreadCount: conversationUnreadCount } = useConversations();
+  const { open, menuRef, triggerRef, close, toggle } = useDismissableMenu();
+  const handleLogout = useLogoutHandler(close);
 
-  const [open, setOpen] = useState(false);
+  if (!user) return null;
 
-  const menuRef = useRef(null);
-  const triggerRef = useRef(null);
-
-  const admin = isAdmin(user);
-  const agent = isAgent(user);
-
-  const avatarInitial = user?.name?.trim()?.charAt(0)?.toUpperCase() || "?";
-
-  const closeMenu = () => {
-    setOpen(false);
-  };
-
-  const toggleMenu = () => {
-    setOpen((current) => !current);
-  };
-
-  /*
-   * Close when clicking outside the menu.
-   */
-  useEffect(() => {
-    if (!open) return;
-
-    const handleOutsideClick = (event) => {
-      if (!menuRef.current?.contains(event.target)) {
-        closeMenu();
-      }
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-    };
-  }, [open]);
-
-  /*
-   * Close menu when Escape is pressed.
-   */
-  useEffect(() => {
-    if (!open) return;
-
-    const handleKeyDown = (event) => {
-      if (event.key !== "Escape") return;
-
-      closeMenu();
-      triggerRef.current?.focus();
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
-
-  const handleLogout = async () => {
-    closeMenu();
-
-    const confirmed = await confirm({
-      title: "Sign out?",
-      message: "You'll need to sign in again to access your account.",
-      confirmLabel: "Yes, sign out",
-      cancelLabel: "No, stay signed in",
-    });
-
-    if (!confirmed) return;
-
-    try {
-      await logout();
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
-  };
-
-  if (!user) {
-    return null;
-  }
+  const avatarInitial = user.name?.trim()?.charAt(0)?.toUpperCase() || "?";
+  const navItems = getAccountNavItems(user, {
+    conversations: conversationUnreadCount,
+    notifications: unreadCount,
+  });
 
   return (
     <div ref={menuRef} className="relative">
-      {/* Trigger */}
       <button
         ref={triggerRef}
         type="button"
-        onClick={toggleMenu}
+        onClick={toggle}
         aria-expanded={open}
         aria-haspopup="menu"
         className="flex items-center gap-2 text-sm text-ivory/90 transition-colors hover:text-brass"
       >
         <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-brass font-semibold text-navy">
           {user.selfiePhoto ? (
-            <img
-              src={user.selfiePhoto}
-              alt=""
-              className="h-full w-full object-cover"
-            />
+            <img src={user.selfiePhoto} alt="" className="h-full w-full object-cover" />
           ) : (
             avatarInitial
           )}
         </span>
-
-        <span className="max-w-32 truncate">
-          {user.name?.split(" ")[0] || "Account"}
-        </span>
-
-        {/* Chevron */}
+        <span className="max-w-32 truncate">{user.name?.split(" ")[0] || "Account"}</span>
         <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
+          width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2"
           className={`transition-transform ${open ? "rotate-180" : ""}`}
           aria-hidden="true"
         >
@@ -137,132 +52,18 @@ const UserMenu = ({ unreadCount = 0 }) => {
         </svg>
       </button>
 
-      {/* Dropdown */}
       {open && (
         <div
           role="menu"
           aria-label="Account menu"
           className="absolute right-0 mt-3 w-56 rounded-sm border border-navy/10 bg-white py-2 text-navy shadow-lifted"
         >
-          {/* Admin / Agent dashboard */}
-          {admin && (
-            <Link
-              to="/dashboard/admin"
-              onClick={closeMenu}
-              className={menuLinkClass}
-              role="menuitem"
-            >
-              Admin Dashboard
+          {navItems.map(({ id, to, label, badgeCount, badgeVariant }) => (
+            <Link key={id} to={to} onClick={close} className={menuLinkClass} role="menuitem">
+              <span>{label}</span>
+              <CountBadge count={badgeCount} variant={badgeVariant} />
             </Link>
-          )}
-
-          {agent && (
-            <Link
-              to="/dashboard/agent"
-              onClick={closeMenu}
-              className={menuLinkClass}
-              role="menuitem"
-            >
-              Agent Dashboard
-            </Link>
-          )}
-
-          {/* Account */}
-          <Link
-            to="/profile"
-            onClick={closeMenu}
-            className={menuLinkClass}
-            role="menuitem"
-          >
-            My Profile
-          </Link>
-
-          {/* User activity */}
-          {!admin && !agent && (
-            <>
-
-              <Link
-                to="/my-visits"
-                onClick={closeMenu}
-                className={menuLinkClass}
-                role="menuitem"
-              >
-                My Visits
-              </Link>
-            </>
-          )}
-
-          {/* Communication */}
-          <Link
-            to="/my-conversations"
-            onClick={closeMenu}
-            className="flex items-center justify-between px-4 py-2 text-sm transition-colors hover:bg-parchment"
-            role="menuitem"
-          >
-            <span>My Conversations</span>
-
-            {conversationUnreadCount > 0 && (
-              <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brass px-1 text-[10px] font-bold leading-none text-navy">
-                {conversationUnreadCount > 99 ? "99+" : conversationUnreadCount}
-              </span>
-            )}
-          </Link>
-
-          <Link
-            to="/notifications"
-            onClick={closeMenu}
-            className="flex items-center justify-between px-4 py-2 text-sm transition-colors hover:bg-parchment"
-            role="menuitem"
-          >
-            <span>Notifications</span>
-
-            {unreadCount > 0 && (
-              <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brick px-1 text-[10px] font-bold leading-none text-ivory">
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </span>
-            )}
-          </Link>
-
-          {/* Property / financial features */}
-          {!admin && !agent && (
-            <>
-              <Link
-                to="/my-properties"
-                onClick={closeMenu}
-                className={menuLinkClass}
-                role="menuitem"
-              >
-                My Properties
-              </Link>
-              <Link
-                to="/wallet"
-                onClick={closeMenu}
-                className={menuLinkClass}
-                role="menuitem"
-              >
-                My Wallet
-              </Link>
-
-              <Link
-                to="/my-emi"
-                onClick={closeMenu}
-                className={menuLinkClass}
-                role="menuitem"
-              >
-                My EMI
-              </Link>
-            </>
-            
-          )}
-          <Link
-            to="/favorites"
-            onClick={closeMenu}
-            className={menuLinkClass}
-            role="menuitem"
-          >
-            Saved Properties
-          </Link>
-
+          ))}
 
           <div className="my-1 border-t border-navy/10" aria-hidden="true" />
 
