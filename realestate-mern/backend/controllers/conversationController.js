@@ -185,7 +185,10 @@ const createConversation = asyncHandler(async (req, res) => {
  * @access  Private (admin only)
  */
 const getConversations = asyncHandler(async (req, res) => {
-  const { isActive = true, page = 1, limit = 10, search } = req.query;
+  // Note: query values arrive as strings, so the default is the string
+  // 'true' - a boolean true here would never === 'true' below and the
+  // endpoint would silently default to listing inactive threads.
+  const { isActive = 'true', page = 1, limit = 10, search } = req.query;
 
   const query = {};
   if (isActive !== 'all') {
@@ -233,7 +236,8 @@ const getConversations = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const getMyConversations = asyncHandler(async (req, res) => {
-  const { isActive = true, page = 1, limit = 10 } = req.query;
+  // Same string-default note as getConversations above.
+  const { isActive = 'true', page = 1, limit = 10 } = req.query;
 
   const query = {
     $or: [{ inquirer: req.user._id }, { owner: req.user._id }],
@@ -503,6 +507,16 @@ const closeConversation = asyncHandler(async (req, res) => {
     });
   }
 
+  // Legacy rows predate the required-inquirer rule and are read-only: a
+  // plain save() below would fail schema validation with a raw
+  // ValidationError, so fail with the same clear 409 used elsewhere here.
+  if (!conversation.inquirer) {
+    return res.status(409).json({
+      success: false,
+      message: 'This is a legacy conversation without an inquirer and can no longer be modified.',
+    });
+  }
+
   conversation.isActive = false;
   await conversation.save();
 
@@ -525,6 +539,14 @@ const reopenConversation = asyncHandler(async (req, res) => {
     return res.status(404).json({
       success: false,
       message: 'Conversation not found',
+    });
+  }
+
+  // Same legacy read-only rule as closeConversation above.
+  if (!conversation.inquirer) {
+    return res.status(409).json({
+      success: false,
+      message: 'This is a legacy conversation without an inquirer and can no longer be modified.',
     });
   }
 
