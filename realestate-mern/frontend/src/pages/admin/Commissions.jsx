@@ -234,7 +234,7 @@ const Commissions = () => {
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-muted border-b border-navy/10">
                   <th className="px-5 py-3">Property</th>
                   <th className="px-5 py-3">Agent</th>
-                  <th className="px-5 py-3">Sale Amount</th>
+                  <th className="px-5 py-3">Transaction Amount</th>
                   <th className="px-5 py-3">%</th>
                   <th className="px-5 py-3">Commission Amount</th>
                   <th className="px-5 py-3">Status</th>
@@ -268,7 +268,7 @@ const Commissions = () => {
                       <p className="text-slate-ink">{c.agent?.name || '—'}</p>
                       {c.agent?.email && <p className="text-xs text-slate-muted">{c.agent.email}</p>}
                     </td>
-                    <td className="px-5 py-3 text-slate-ink">{npr(c.saleAmount)}</td>
+                    <td className="px-5 py-3 text-slate-ink">{npr(c.transactionAmount)}</td>
                     <td className="px-5 py-3 text-slate-ink">{Number(c.commissionPercentage ?? 0)}%</td>
                     <td className="px-5 py-3 font-medium text-navy">{npr(c.commissionAmount)}</td>
                     <td className="px-5 py-3">
