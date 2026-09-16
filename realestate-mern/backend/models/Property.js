@@ -81,7 +81,6 @@ status: {
   type: String,
   enum: ['available', 'reserved', 'sold', 'rented'],
   default: 'available',
-  index: true,
 },
 
     isApproved: { type: Boolean, default: true },
