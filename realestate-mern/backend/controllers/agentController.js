@@ -9,6 +9,7 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Sale = require('../models/Sale');
+const Rental = require('../models/Rental');
 const CommissionRecord = require('../models/CommissionRecord');
 const EMIPlan = require('../models/EMIPlan');
 const asyncHandler = require('../utils/asyncHandler');
@@ -17,17 +18,18 @@ const asyncHandler = require('../utils/asyncHandler');
 
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
-const EMPTY_PERF = { salesCount: 0, salesValue: 0, commissionEarned: 0, commissionPaid: 0 };
+const EMPTY_PERF = { salesCount: 0, salesValue: 0, rentalCount: 0, rentalValue: 0, dealsClosed: 0, commissionEarned: 0, commissionPaid: 0 };
 
 // One aggregate per source for the whole batch - grouped by agent, then merged
 // in JS. CommissionRecord: commissionEarned (all) + paidSum (settled only).
 // Sale: verified only -> salesCount + salesValue (agreedPrice).
+// Rental: verified only -> rentalCount + rentalValue (monthlyRent x durationInMonths).
 const buildPerformanceForAgents = async (agentIds) => {
   const ids = (agentIds || []).map((id) => new mongoose.Types.ObjectId(String(id)));
   const map = new Map();
   if (ids.length === 0) return map;
 
-  const [commissionAgg, saleAgg] = await Promise.all([
+  const [commissionAgg, saleAgg, rentalAgg] = await Promise.all([
     CommissionRecord.aggregate([
       { $match: { agent: { $in: ids } } },
       {
@@ -42,22 +44,41 @@ const buildPerformanceForAgents = async (agentIds) => {
       { $match: { agent: { $in: ids }, status: 'verified' } },
       { $group: { _id: '$agent', salesCount: { $sum: 1 }, salesValue: { $sum: '$agreedPrice' } } },
     ]),
+    Rental.aggregate([
+      { $match: { agent: { $in: ids }, status: 'verified' } },
+      {
+        $group: {
+          _id: '$agent',
+          rentalCount: { $sum: 1 },
+          rentalValue: { $sum: { $multiply: ['$monthlyRent', '$durationInMonths'] } },
+        },
+      },
+    ]),
   ]);
 
   commissionAgg.forEach((row) => {
     const key = String(row._id);
-    const existing = map.get(key) || EMPTY_PERF;
+    const existing = map.get(key) || { ...EMPTY_PERF };
     map.set(key, { ...existing, commissionEarned: round2(row.commissionEarned), commissionPaid: round2(row.paidSum) });
   });
   saleAgg.forEach((row) => {
     const key = String(row._id);
-    const existing = map.get(key) || EMPTY_PERF;
+    const existing = map.get(key) || { ...EMPTY_PERF };
     map.set(key, { ...existing, salesCount: row.salesCount, salesValue: round2(row.salesValue) });
+  });
+  rentalAgg.forEach((row) => {
+    const key = String(row._id);
+    const existing = map.get(key) || { ...EMPTY_PERF };
+    map.set(key, { ...existing, rentalCount: row.rentalCount, rentalValue: round2(row.rentalValue) });
   });
   return map;
 };
 
-const performanceFor = (map, id) => ({ ...EMPTY_PERF, ...(map.get(String(id)) || {}) });
+const performanceFor = (map, id) => {
+  const perf = { ...EMPTY_PERF, ...(map.get(String(id)) || {}) };
+  perf.dealsClosed = (perf.salesCount || 0) + (perf.rentalCount || 0);
+  return perf;
+};
 
 // 404 for both "no such user" and "user exists but is not an agent" so the
 // endpoint never leaks non-agent accounts.

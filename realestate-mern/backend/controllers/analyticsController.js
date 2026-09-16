@@ -14,6 +14,7 @@
 
 const mongoose = require('mongoose');
 const Sale = require('../models/Sale');
+const Rental = require('../models/Rental');
 const CommissionRecord = require('../models/CommissionRecord');
 const EMIPlan = require('../models/EMIPlan');
 const Lead = require('../models/Lead');
@@ -92,6 +93,28 @@ const toMonthlyCommissionSeries = (monthKeys, earnedRows, paidRows) => {
   }));
 };
 
+// Rental monthly aggregate: same {count, value} shape as sales, but value is
+// the lease value (monthlyRent x durationInMonths) instead of agreedPrice.
+const monthlyRentalGroupStages = (dateField, extraMatch, windowStart) => [
+  { $match: { ...extraMatch, [dateField]: { $ne: null, $gte: windowStart } } },
+  {
+    $group: {
+      _id: { y: { $year: `$${dateField}` }, m: { $month: `$${dateField}` } },
+      count: { $sum: 1 },
+      value: { $sum: { $multiply: ['$monthlyRent', '$durationInMonths'] } },
+    },
+  },
+  { $sort: { '_id.y': 1, '_id.m': 1 } },
+];
+
+// Element-wise sum of the sales + rentals monthly series for the combined chart.
+const toMonthlyDealsSeries = (salesSeries, rentalsSeries) =>
+  salesSeries.map((s, i) => ({
+    month: s.month,
+    count: s.count + ((rentalsSeries[i] && rentalsSeries[i].count) || 0),
+    value: round2(s.value + ((rentalsSeries[i] && rentalsSeries[i].value) || 0)),
+  }));
+
 // EMI portfolio (optionally scoped) - mirrors the emiPlanController summary:
 // outstanding = principal - sum(paidAmount ?? amount of PAID installments),
 // floored at 0, summed over ACTIVE plans only.
@@ -152,17 +175,22 @@ const buildAdminAnalytics = async () => {
 
   const [
     salesOverTimeAgg,
+    rentalsOverTimeAgg,
     commissionTotalsAgg,
     earnedOverTimeAgg,
     paidOverTimeAgg,
     emiPortfolio,
     salesByAgentAgg,
+    rentalsByAgentAgg,
     commissionByAgentAgg,
     leadStageAgg,
     pendingSaleVerifications,
+    pendingRentalVerifications,
   ] = await Promise.all([
     // Verified sales per month (reviewedAt = verification date)
     Sale.aggregate(monthlyGroupStages('reviewedAt', { status: 'verified' }, windowStart)),
+    // Verified rentals per month (lease value = monthlyRent x durationInMonths)
+    Rental.aggregate(monthlyRentalGroupStages('reviewedAt', { status: 'verified' }, windowStart)),
     // Lifetime commission totals
     CommissionRecord.aggregate([
       {
@@ -183,40 +211,74 @@ const buildAdminAnalytics = async () => {
       monthlyGroupStages('paidAt', { isPaid: true }, windowStart)
     ),
     buildEmiPortfolio(),
-    // Leaderboard: top agents by verified sales value
+    // Per-agent verified sales (no $limit here - the final leaderboard slice
+    // happens after the union + commission sort below)
     Sale.aggregate([
       { $match: { status: 'verified' } },
       { $group: { _id: '$agent', salesCount: { $sum: 1 }, salesValue: { $sum: '$agreedPrice' } } },
       { $sort: { salesValue: -1 } },
-      { $limit: 10 },
+    ]),
+    // Per-agent verified rentals (lease value = monthlyRent x durationInMonths)
+    Rental.aggregate([
+      { $match: { status: 'verified' } },
+      {
+        $group: {
+          _id: '$agent',
+          rentalCount: { $sum: 1 },
+          rentalValue: { $sum: { $multiply: ['$monthlyRent', '$durationInMonths'] } },
+        },
+      },
+      { $sort: { rentalValue: -1 } },
     ]),
     CommissionRecord.aggregate([
       { $group: { _id: '$agent', commissionEarned: { $sum: '$commissionAmount' } } },
     ]),
     Lead.aggregate([{ $group: { _id: '$stage', count: { $sum: 1 } } }]),
     Sale.countDocuments({ status: 'pending_review' }),
+    Rental.countDocuments({ status: 'pending_review' }),
   ]);
 
-  // Leaderboard enrichment: names/emails from User + commission totals merged in JS
+  // Leaderboard: union of agent IDs across sales, rentals and commissions so a
+  // rental-only agent (zero sales) is still visible. Ranked by commissionEarned.
+  const salesMap = new Map(
+    salesByAgentAgg.map((row) => [String(row._id), row])
+  );
+  const rentalsMap = new Map(
+    rentalsByAgentAgg.map((row) => [String(row._id), row])
+  );
   const commissionMap = new Map(
     commissionByAgentAgg.map((row) => [String(row._id), row.commissionEarned])
   );
-  const agentUsers = await User.find({ _id: { $in: salesByAgentAgg.map((row) => row._id) } }).select('name email');
+  const leaderboardIds = [
+    ...new Set([
+      ...salesByAgentAgg.map((row) => String(row._id)),
+      ...rentalsByAgentAgg.map((row) => String(row._id)),
+      ...commissionByAgentAgg.map((row) => String(row._id)),
+    ]),
+  ];
+  const agentUsers = await User.find({ _id: { $in: leaderboardIds } }).select('name email');
   const userMap = new Map(agentUsers.map((u) => [String(u._id), u]));
 
-  const agentLeaderboard = salesByAgentAgg
-    .map((row) => {
-      const user = userMap.get(String(row._id));
+  const agentLeaderboard = leaderboardIds
+    .map((agentId) => {
+      const user = userMap.get(agentId);
+      const saleRow = salesMap.get(agentId);
+      const rentalRow = rentalsMap.get(agentId);
+      const salesCount = (saleRow && saleRow.salesCount) || 0;
+      const rentalCount = (rentalRow && rentalRow.rentalCount) || 0;
       return {
-        agentId: String(row._id),
+        agentId,
         name: (user && user.name) || 'Unknown agent',
         email: (user && user.email) || '',
-        salesCount: row.salesCount,
-        salesValue: round2(row.salesValue),
-        commissionEarned: round2(commissionMap.get(String(row._id)) || 0),
+        salesCount,
+        salesValue: round2(saleRow && saleRow.salesValue),
+        rentalCount,
+        rentalValue: round2(rentalRow && rentalRow.rentalValue),
+        dealsClosed: salesCount + rentalCount,
+        commissionEarned: round2(commissionMap.get(agentId) || 0),
       };
     })
-    .sort((a, b) => b.salesValue - a.salesValue)
+    .sort((a, b) => b.commissionEarned - a.commissionEarned)
     .slice(0, 10);
 
   // Pipeline snapshot: zero-initialized over every known stage
@@ -228,8 +290,14 @@ const buildAdminAnalytics = async () => {
     if (_id) countsByStage[_id] = count;
   });
 
+  const salesOverTime = toMonthlySalesSeries(monthKeys, salesOverTimeAgg);
+  const rentalsOverTime = toMonthlySalesSeries(monthKeys, rentalsOverTimeAgg);
+  const dealsOverTime = toMonthlyDealsSeries(salesOverTime, rentalsOverTime);
+
   return {
-    salesOverTime: toMonthlySalesSeries(monthKeys, salesOverTimeAgg),
+    salesOverTime,
+    rentalsOverTime,
+    dealsOverTime,
     commissions: {
       earnedTotal: round2(commissionTotalsAgg[0] && commissionTotalsAgg[0].earnedTotal),
       paidAmount: round2(commissionTotalsAgg[0] && commissionTotalsAgg[0].paidAmount),
@@ -243,6 +311,7 @@ const buildAdminAnalytics = async () => {
     pipeline: {
       countsByStage,
       pendingSaleVerifications,
+      pendingRentalVerifications,
     },
   };
 };
@@ -259,12 +328,15 @@ const buildAgentAnalytics = async (agentId) => {
   const [
     thisMonthAgg,
     previousMonthAgg,
+    rentalThisMonthAgg,
+    rentalPreviousMonthAgg,
     earnedThisMonthAgg,
     paidThisMonthAgg,
     pendingAgg,
     lifetimePaidAgg,
     emiPortfolio,
     salesOverTimeAgg,
+    rentalsOverTimeAgg,
   ] = await Promise.all([
     // Performance: verified sales reviewed this calendar month
     Sale.aggregate([
@@ -281,6 +353,21 @@ const buildAgentAnalytics = async (agentId) => {
         },
       },
       { $group: { _id: null, salesCount: { $sum: 1 }, salesValue: { $sum: '$agreedPrice' } } },
+    ]),
+    // Rental equivalents (lease value = monthlyRent x durationInMonths)
+    Rental.aggregate([
+      { $match: { agent: agentOid, status: 'verified', reviewedAt: { $ne: null, $gte: thisMonthStart } } },
+      { $group: { _id: null, rentalCount: { $sum: 1 }, rentalValue: { $sum: { $multiply: ['$monthlyRent', '$durationInMonths'] } } } },
+    ]),
+    Rental.aggregate([
+      {
+        $match: {
+          agent: agentOid,
+          status: 'verified',
+          reviewedAt: { $ne: null, $gte: previousMonthStart, $lt: thisMonthStart },
+        },
+      },
+      { $group: { _id: null, rentalCount: { $sum: 1 }, rentalValue: { $sum: { $multiply: ['$monthlyRent', '$durationInMonths'] } } } },
     ]),
     // Commission buckets (mirror commissionController.getCommissionSummary)
     CommissionRecord.aggregate([
@@ -302,6 +389,8 @@ const buildAgentAnalytics = async (agentId) => {
     buildEmiPortfolio({ agent: agentOid }),
     // Agent's own verified sales over the last 12 months
     Sale.aggregate(monthlyGroupStages('reviewedAt', { agent: agentOid, status: 'verified' }, windowStart)),
+    // Agent's own verified rentals over the last 12 months (lease value)
+    Rental.aggregate(monthlyRentalGroupStages('reviewedAt', { agent: agentOid, status: 'verified' }, windowStart)),
   ]);
 
   const thisMonth = {
@@ -312,6 +401,16 @@ const buildAgentAnalytics = async (agentId) => {
     salesCount: (previousMonthAgg[0] && previousMonthAgg[0].salesCount) || 0,
     salesValue: round2(previousMonthAgg[0] && previousMonthAgg[0].salesValue),
   };
+  const rentalsThisMonth = {
+    rentalCount: (rentalThisMonthAgg[0] && rentalThisMonthAgg[0].rentalCount) || 0,
+    rentalValue: round2(rentalThisMonthAgg[0] && rentalThisMonthAgg[0].rentalValue),
+  };
+  const rentalsPreviousMonth = {
+    rentalCount: (rentalPreviousMonthAgg[0] && rentalPreviousMonthAgg[0].rentalCount) || 0,
+    rentalValue: round2(rentalPreviousMonthAgg[0] && rentalPreviousMonthAgg[0].rentalValue),
+  };
+  const salesOverTime = toMonthlySalesSeries(monthKeys, salesOverTimeAgg);
+  const rentalsOverTime = toMonthlySalesSeries(monthKeys, rentalsOverTimeAgg);
 
   return {
     performance: {
@@ -321,6 +420,14 @@ const buildAgentAnalytics = async (agentId) => {
         salesCount: thisMonth.salesCount - previousMonth.salesCount,
         salesValue: round2(thisMonth.salesValue - previousMonth.salesValue),
       },
+      rentalsThisMonth,
+      rentalsPreviousMonth,
+      rentalsDelta: {
+        rentalCount: rentalsThisMonth.rentalCount - rentalsPreviousMonth.rentalCount,
+        rentalValue: round2(rentalsThisMonth.rentalValue - rentalsPreviousMonth.rentalValue),
+      },
+      dealsClosedThisMonth: thisMonth.salesCount + rentalsThisMonth.rentalCount,
+      dealsClosedPreviousMonth: previousMonth.salesCount + rentalsPreviousMonth.rentalCount,
     },
     commissions: {
       thisMonthEarned: round2(earnedThisMonthAgg[0] && earnedThisMonthAgg[0].total),
@@ -331,7 +438,9 @@ const buildAgentAnalytics = async (agentId) => {
       lifetimePaidCount: (lifetimePaidAgg[0] && lifetimePaidAgg[0].count) || 0,
     },
     emiPortfolio,
-    salesOverTime: toMonthlySalesSeries(monthKeys, salesOverTimeAgg),
+    salesOverTime,
+    rentalsOverTime,
+    dealsOverTime: toMonthlyDealsSeries(salesOverTime, rentalsOverTime),
   };
 };
 
@@ -352,12 +461,30 @@ const EMI_COLUMNS = [
 ];
 
 const buildAdminSections = (analytics) => {
-  const { salesOverTime, commissions, commissionOverTime, emiPortfolio, agentLeaderboard, pipeline } = analytics;
+  const { salesOverTime, rentalsOverTime, dealsOverTime, commissions, commissionOverTime, emiPortfolio, agentLeaderboard, pipeline } = analytics;
   return [
     {
       title: 'Verified sales - last 12 months',
       columns: MONTHLY_SALES_COLUMNS,
       rows: salesOverTime,
+    },
+    {
+      title: 'Verified rentals - last 12 months',
+      columns: [
+        { key: 'month', label: 'Month', width: 1 },
+        { key: 'count', label: 'Rentals closed', width: 1, align: 'right' },
+        { key: 'value', label: 'Lease value (NPR)', width: 2, align: 'right' },
+      ],
+      rows: rentalsOverTime || [],
+    },
+    {
+      title: 'Deals closed - last 12 months (sales + rentals)',
+      columns: [
+        { key: 'month', label: 'Month', width: 1 },
+        { key: 'count', label: 'Deals closed', width: 1, align: 'right' },
+        { key: 'value', label: 'Deal value (NPR)', width: 2, align: 'right' },
+      ],
+      rows: dealsOverTime || [],
     },
     {
       title: 'Commissions',
@@ -385,12 +512,15 @@ const buildAdminSections = (analytics) => {
       rows: [emiPortfolio],
     },
     {
-      title: 'Agent leaderboard - verified sales',
+      title: 'Agent leaderboard - verified deals (ranked by commission earned)',
       columns: [
         { key: 'name', label: 'Agent', width: 2 },
         { key: 'email', label: 'Email', width: 2 },
         { key: 'salesCount', label: 'Sales', width: 1, align: 'right' },
         { key: 'salesValue', label: 'Sales value (NPR)', width: 2, align: 'right' },
+        { key: 'rentalCount', label: 'Rentals', width: 1, align: 'right' },
+        { key: 'rentalValue', label: 'Lease value (NPR)', width: 2, align: 'right' },
+        { key: 'dealsClosed', label: 'Deals closed', width: 1, align: 'right' },
         { key: 'commissionEarned', label: 'Commission earned (NPR)', width: 2, align: 'right' },
       ],
       rows: agentLeaderboard,
@@ -408,11 +538,16 @@ const buildAdminSections = (analytics) => {
       columns: [{ key: 'pendingSaleVerifications', label: 'Pending sale verifications', width: 1, align: 'right' }],
       rows: [{ pendingSaleVerifications: pipeline.pendingSaleVerifications }],
     },
+    {
+      title: 'Rental verification queue',
+      columns: [{ key: 'pendingRentalVerifications', label: 'Pending rental verifications', width: 1, align: 'right' }],
+      rows: [{ pendingRentalVerifications: pipeline.pendingRentalVerifications || 0 }],
+    },
   ];
 };
 
 const buildAgentSections = (analytics) => {
-  const { performance, commissions, emiPortfolio, salesOverTime } = analytics;
+  const { performance, commissions, emiPortfolio, salesOverTime, rentalsOverTime, dealsOverTime } = analytics;
   return [
     {
       title: 'Performance - verified sales',
@@ -435,6 +570,24 @@ const buildAgentSections = (analytics) => {
           previousMonth: performance.previousMonth.salesValue,
           delta: performance.delta.salesValue,
         },
+        {
+          metric: 'Rentals closed',
+          thisMonth: (performance.rentalsThisMonth && performance.rentalsThisMonth.rentalCount) || 0,
+          previousMonth: (performance.rentalsPreviousMonth && performance.rentalsPreviousMonth.rentalCount) || 0,
+          delta: (performance.rentalsDelta && performance.rentalsDelta.rentalCount) || 0,
+        },
+        {
+          metric: 'Lease value (NPR)',
+          thisMonth: (performance.rentalsThisMonth && performance.rentalsThisMonth.rentalValue) || 0,
+          previousMonth: (performance.rentalsPreviousMonth && performance.rentalsPreviousMonth.rentalValue) || 0,
+          delta: (performance.rentalsDelta && performance.rentalsDelta.rentalValue) || 0,
+        },
+        {
+          metric: 'Deals closed',
+          thisMonth: performance.dealsClosedThisMonth || 0,
+          previousMonth: performance.dealsClosedPreviousMonth || 0,
+          delta: (performance.dealsClosedThisMonth || 0) - (performance.dealsClosedPreviousMonth || 0),
+        },
       ],
     },
     {
@@ -456,6 +609,24 @@ const buildAgentSections = (analytics) => {
       title: 'Verified sales - last 12 months',
       columns: MONTHLY_SALES_COLUMNS,
       rows: salesOverTime,
+    },
+    {
+      title: 'Verified rentals - last 12 months',
+      columns: [
+        { key: 'month', label: 'Month', width: 1 },
+        { key: 'count', label: 'Rentals closed', width: 1, align: 'right' },
+        { key: 'value', label: 'Lease value (NPR)', width: 2, align: 'right' },
+      ],
+      rows: rentalsOverTime || [],
+    },
+    {
+      title: 'Deals closed - last 12 months (sales + rentals)',
+      columns: [
+        { key: 'month', label: 'Month', width: 1 },
+        { key: 'count', label: 'Deals closed', width: 1, align: 'right' },
+        { key: 'value', label: 'Deal value (NPR)', width: 2, align: 'right' },
+      ],
+      rows: dealsOverTime || [],
     },
   ];
 };
