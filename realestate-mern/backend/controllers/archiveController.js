@@ -86,6 +86,7 @@ const jobHistory = asyncHandler(async (req, res) => {
 const ARCHIVAL_JOBS = {
   archive_emi_plans: archival.archiveEmiPlans,
   archive_sales: archival.archiveSales,
+  archive_rentals: archival.archiveRentals,
   archive_properties: archival.archiveProperties,
 };
 const RETENTION_JOBS = {

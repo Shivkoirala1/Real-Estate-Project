@@ -2,28 +2,32 @@ const mongoose = require('mongoose');
 const Archive = require('../models/Archive');
 const Property = require('../models/Property');
 const Sale = require('../models/Sale');
+const Rental = require('../models/Rental');
 const EMIPlan = require('../models/EMIPlan');
 const DataOpsLog = require('../models/DataOpsLog');
 
 /**
- * Cold-storage archival for Property / Sale / EMIPlan.
+ * Cold-storage archival for Property / Sale / Rental / EMIPlan.
  *
- * These three are chained (EMIPlan -> Sale -> Property), so a record is
- * only eligible once nothing "downstream" still needs it live:
+ * These four are chained (EMIPlan -> Sale -> Property, and Rental ->
+ * Property in parallel with Sale), so a record is only eligible once
+ * nothing "downstream" still needs it live:
  *
  *   EMIPlan  archives when its own status is terminal and old enough.
  *            (leaf node - nothing else references an EMIPlan by id)
  *   Sale     archives when verified/rejected, old enough, AND no
  *            still-live EMIPlan points at it.
+ *   Rental   archives when verified/rejected and old enough (same shape
+ *            as Sale; nothing references a Rental by id).
  *   Property archives (moves out of the hot collection) only once it has
  *            been soft-archived (isArchived=true - already a field on the
  *            model, just previously unused for this) for long enough AND
- *            no still-live Sale points at it.
+ *            no still-live Sale NOR Rental points at it.
  *
- * Running the three jobs in this order (EMIPlan, then Sale, then Property)
- * in the same pass means a fully-settled chain (old EMI plan -> old sale
- * -> long-archived listing) can clear all three stages in one run, oldest
- * dependency first.
+ * Running the jobs in this order (EMIPlan, then Sale, then Rental, then
+ * Property) in the same pass means a fully-settled chain (old EMI plan ->
+ * old sale -> long-archived listing) can clear all its stages in one run,
+ * oldest dependency first.
  *
  * A record is "still-live" simply by still existing in its hot collection
  * - once archived, it's deleted from there, so the referential check is a
@@ -46,11 +50,12 @@ const envInt = (name, fallback) => {
   return Number.isFinite(v) && v > 0 ? v : fallback;
 };
 
-// Financial/legal records (sales, EMI schedules) are kept far longer than
-// marketing/listing data before they're moved to cold storage.
+// Financial/legal records (sales, rentals, EMI schedules) are kept far
+// longer than marketing/listing data before they're moved to cold storage.
 const THRESHOLDS = {
   property: () => envInt('PROPERTY_COLD_STORAGE_AFTER_DAYS', 90), // days *since being soft-archived*
   sale: () => envInt('SALE_ARCHIVE_AFTER_DAYS', 365),
+  rental: () => envInt('RENTAL_ARCHIVE_AFTER_DAYS', 365),
   emiPlan: () => envInt('EMI_PLAN_ARCHIVE_AFTER_DAYS', 365),
 };
 
@@ -138,10 +143,43 @@ const archiveSales = async ({ dryRun = false, actorId = null } = {}) => {
 };
 
 /**
+ * Rental: archives on status + age, same shape as Sale. Leaf node for
+ * archival purposes - nothing references a Rental by id.
+ */
+const archiveRentals = async ({ dryRun = false, actorId = null } = {}) => {
+  const cutoff = daysAgo(THRESHOLDS.rental());
+  const candidates = await Rental.find({
+    status: { $in: ['verified', 'rejected'] },
+    updatedAt: { $lt: cutoff },
+  });
+
+  let affected = 0;
+  let skipped = 0;
+  const errors = [];
+  for (const rental of candidates) {
+    try {
+      if (!dryRun) {
+        await archiveOne({
+          entityType: 'rental',
+          doc: rental,
+          summary: { title: `Rental (${rental.status})`, relatedIds: { tenant: rental.tenant, agent: rental.agent, property: rental.property, lead: rental.lead } },
+          reason: `status=${rental.status}, inactive since ${rental.updatedAt.toISOString()}`,
+          actorId,
+        });
+      }
+      affected += 1;
+    } catch (err) {
+      errors.push(`Rental ${rental._id}: ${err.message}`);
+    }
+  }
+  return { processed: candidates.length, affected, skipped, errors };
+};
+
+/**
  * Property: only ever considered once it's been soft-archived
  * (isArchived=true - an admin action or a future "auto soft-archive sold
  * listings" job, not implemented here) for PROPERTY_COLD_STORAGE_AFTER_DAYS,
- * and guarded by "no live Sale still points here".
+ * and guarded by "no live Sale NOR Rental still points here".
  */
 const archiveProperties = async ({ dryRun = false, actorId = null } = {}) => {
   const cutoff = daysAgo(THRESHOLDS.property());
@@ -157,6 +195,11 @@ const archiveProperties = async ({ dryRun = false, actorId = null } = {}) => {
     try {
       const hasLiveSale = await Sale.exists({ property: property._id });
       if (hasLiveSale) {
+        skipped += 1;
+        continue; // eslint-disable-line no-continue
+      }
+      const hasLiveRental = await Rental.exists({ property: property._id });
+      if (hasLiveRental) {
         skipped += 1;
         continue; // eslint-disable-line no-continue
       }
@@ -180,6 +223,7 @@ const archiveProperties = async ({ dryRun = false, actorId = null } = {}) => {
 const JOBS = {
   archive_emi_plans: archiveEmiPlans,
   archive_sales: archiveSales,
+  archive_rentals: archiveRentals,
   archive_properties: archiveProperties,
 };
 
@@ -203,12 +247,13 @@ const runJob = async (jobName, opts = {}) => {
 
 /**
  * Full nightly/weekly pass, innermost dependency first so a fully-settled
- * chain can clear all three stages in one run.
+ * chain can clear all its stages in one run.
  */
 const runArchivalPass = async (opts = {}) => {
   const results = {};
   results.archive_emi_plans = await runJob('archive_emi_plans', opts);
   results.archive_sales = await runJob('archive_sales', opts);
+  results.archive_rentals = await runJob('archive_rentals', opts);
   results.archive_properties = await runJob('archive_properties', opts);
   return results;
 };
@@ -218,7 +263,7 @@ const runArchivalPass = async (opts = {}) => {
  * a record with that id already exists there (shouldn't happen under
  * normal operation, but restoring must never silently overwrite).
  */
-const MODEL_BY_TYPE = { property: Property, sale: Sale, emiPlan: EMIPlan };
+const MODEL_BY_TYPE = { property: Property, sale: Sale, rental: Rental, emiPlan: EMIPlan };
 
 const restoreArchived = async (archiveId, actorId) => {
   const archived = await Archive.findById(archiveId);
@@ -245,6 +290,7 @@ const restoreArchived = async (archiveId, actorId) => {
 module.exports = {
   archiveEmiPlans,
   archiveSales,
+  archiveRentals,
   archiveProperties,
   runArchivalPass,
   restoreArchived,
