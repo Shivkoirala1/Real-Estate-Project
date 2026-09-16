@@ -4,6 +4,7 @@ const ContactForm = require('../models/ContactForm');
 const Lead = require('../models/Lead');
 // Spec v2 (Feature 1): pending sale verification queue size on the admin card
 const Sale = require('../models/Sale');
+const Rental = require('../models/Rental');
 const asyncHandler = require('../utils/asyncHandler');
 
 // @desc    Get admin dashboard statistics
@@ -14,6 +15,7 @@ const getAdminStats = asyncHandler(async (req, res) => {
     totalProperties,
     availableProperties,
     soldProperties,
+    rentedProperties,
     reservedProperties,
     totalUsers,
     pendingVerifications,
@@ -23,10 +25,12 @@ const getAdminStats = asyncHandler(async (req, res) => {
     activeLeads,
     agentCount,
     pendingSaleVerifications,
+    pendingRentalVerifications,
   ] = await Promise.all([
     Property.countDocuments({ isArchived: false }),
     Property.countDocuments({ status: 'available', isArchived: false }),
     Property.countDocuments({ status: 'sold' }),
+    Property.countDocuments({ status: 'rented' }),
     Property.countDocuments({ status: 'reserved', isArchived: false }),
     User.countDocuments({ role: 'user' }),
     User.countDocuments({ verificationStatus: 'pending' }),
@@ -36,6 +40,7 @@ const getAdminStats = asyncHandler(async (req, res) => {
     Lead.countDocuments({ stage: { $nin: ['closed', 'lost'] } }),
     User.countDocuments({ role: 'agent' }),
     Sale.countDocuments({ status: 'pending_review' }),
+    Rental.countDocuments({ status: 'pending_review' }),
   ]);
 
   res.json({
@@ -44,6 +49,7 @@ const getAdminStats = asyncHandler(async (req, res) => {
       totalProperties,
       availableProperties,
       soldProperties,
+      rentedProperties,
       reservedProperties,
       totalUsers,
       pendingVerifications,
@@ -53,6 +59,7 @@ const getAdminStats = asyncHandler(async (req, res) => {
       activeLeads,
       agentCount,
       pendingSaleVerifications,
+      pendingRentalVerifications,
     },
     recentListings,
   });
