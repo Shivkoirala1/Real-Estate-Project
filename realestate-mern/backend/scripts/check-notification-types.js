@@ -79,6 +79,17 @@ const main = () => {
     }
   }
   for (const { type, filename } of dynamic) {
+    // MANUAL CHECK (verified 2026-09-16 — visitController.js updateVisit,
+    // `type: \`visit_${status}\``): this call site runs only when statusChanged
+    // is true and status is neither 'confirmed' nor 'completed' (those two use
+    // literal 'visit_confirmed' / 'visit_completed' above). VISIT_STATUSES then
+    // leaves 'rejected' -> 'visit_rejected' (in Notification.type enum) and
+    // 'cancelled' -> 'visit_cancelled' (in enum). A revert to
+    // 'pending_agent_review' would resolve to 'visit_pending_agent_review'
+    // (NOT in the enum, so notify() would drop it silently), but no workflow
+    // ever transitions a visit back to pending — status only moves forward.
+    // Per the plan's "prefer simple solutions": keep this documented manual
+    // check, do NOT teach this script to resolve template literals.
     console.warn(`NOTE: dynamic notification type \`${type}\` in ${filename} cannot be checked statically - verify manually.`);
   }
 
