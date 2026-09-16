@@ -17,7 +17,7 @@ const conversationSchema = new mongoose.Schema({
   inquirer: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'User', 
-    default: null 
+    required: [true, 'An inquirer is required to start a conversation'],
   },
   owner: { 
     type: mongoose.Schema.Types.ObjectId, 
