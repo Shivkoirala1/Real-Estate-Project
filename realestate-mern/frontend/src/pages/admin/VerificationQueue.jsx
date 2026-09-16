@@ -146,6 +146,11 @@ const VerificationQueue = () => {
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectError, setRejectError] = useState('');
+  // Rental-only commission entry (mirrors the reject-reason trio above).
+  // Sale verification stays a single confirm click - see handleVerify.
+  const [verifyRentalTarget, setVerifyRentalTarget] = useState(null);
+  const [commissionInput, setCommissionInput] = useState('');
+  const [commissionError, setCommissionError] = useState('');
 
   const activeType = DEAL_TYPES[type];
 
@@ -199,11 +204,13 @@ const VerificationQueue = () => {
   const handleTypeChange = (value) => {
     setParam('type', value === 'sale' ? null : value); // sale is the default, no param needed
     setRejectTarget(null);
+    setVerifyRentalTarget(null);
   };
   const handleStatusChange = (value) => {
     setParam('status', value);
     setPage(1);
     setRejectTarget(null);
+    setVerifyRentalTarget(null);
   };
   const handleSortChange = (value) => {
     setSort(value);
@@ -227,13 +234,19 @@ const VerificationQueue = () => {
   };
 
   const handleVerify = async (deal) => {
-    const isRental = type === 'rental';
+    // Rentals require an admin-entered commission amount (backend returns
+    // 400 without one) - collect it first via the inline form below.
+    // Sales stay a single confirmation click, unchanged.
+    if (type === 'rental') {
+      setVerifyRentalTarget(deal);
+      setCommissionInput('');
+      setCommissionError('');
+      return;
+    }
     const ok = await confirm({
-      title: isRental ? 'Verify this rental?' : 'Verify this sale?',
-      message: isRental
-        ? `"${deal.property?.title || 'This property'}" will be marked rented, lead "${deal.person?.name || 'the lead'}" will be closed and the agent's commission recorded. This cannot be undone.`
-        : `"${deal.property?.title || 'This property'}" will be marked sold, lead "${deal.person?.name || 'the lead'}" will be closed and the agent's commission recorded. This cannot be undone.`,
-      confirmLabel: isRental ? 'Verify rental' : 'Verify sale',
+      title: 'Verify this sale?',
+      message: `"${deal.property?.title || 'This property'}" will be marked sold, lead "${deal.person?.name || 'the lead'}" will be closed and the agent's commission recorded. This cannot be undone.`,
+      confirmLabel: 'Verify sale',
       cancelLabel: 'Cancel',
     });
     if (!ok) return;
@@ -241,11 +254,7 @@ const VerificationQueue = () => {
     setBusyId(deal._id);
     try {
       const data = await activeType.service.verify(deal._id);
-      showToast(
-        isRental
-          ? 'Rental verified — property marked rented, lead closed, commission recorded'
-          : 'Sale verified — property marked sold, lead closed, commission recorded',
-      );
+      showToast('Sale verified — property marked sold, lead closed, commission recorded');
       closeReject();
       load();
 
@@ -283,6 +292,47 @@ const VerificationQueue = () => {
       load();
     } catch (err) {
       showToast(err.response?.data?.message || `Failed to reject ${type}`, 'error');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const closeVerifyRental = () => {
+    setVerifyRentalTarget(null);
+    setCommissionInput('');
+    setCommissionError('');
+  };
+
+  // Rental-only: validate the entered amount, confirm once more with the
+  // exact figure, then verify. The backend has no fallback - a blank input
+  // is rejected here, never silently substituted. 0 is a valid amount.
+  const handleVerifyRentalSubmit = async () => {
+    if (commissionInput.trim() === '') {
+      setCommissionError('Enter a commission amount of 0 or more');
+      return;
+    }
+    const amount = Number(commissionInput);
+    if (!Number.isFinite(amount) || amount < 0) {
+      setCommissionError('Commission must be a non-negative number');
+      return;
+    }
+    const ok = await confirm({
+      title: 'Verify this rental?',
+      message: `"${verifyRentalTarget.property?.title || 'This property'}" will be marked rented, lead "${verifyRentalTarget.tenant?.name || 'the lead'}" will be closed and a commission of NPR ${amount.toLocaleString()} recorded. This cannot be undone.`,
+      confirmLabel: 'Verify rental',
+      cancelLabel: 'Cancel',
+    });
+    if (!ok) return;
+
+    setBusyId(verifyRentalTarget._id);
+    try {
+      await verifyRental(verifyRentalTarget._id, amount);
+      showToast('Rental verified — property marked rented, lead closed, commission recorded');
+      closeVerifyRental();
+      closeReject();
+      load();
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to verify rental', 'error');
     } finally {
       setBusyId(null);
     }
@@ -542,6 +592,42 @@ const VerificationQueue = () => {
                             className="bg-brick text-white text-sm font-medium px-4 py-2 rounded-sm hover:bg-brick/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                           >
                             {busyId === deal._id ? 'Rejecting...' : `Reject ${type}`}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {/* Inline commission form (rentals only) */}
+                    {isPending && type === 'rental' && verifyRentalTarget?._id === deal._id && (
+                      <div className="border-t border-navy/10 mt-4 pt-4">
+                        <label className="label-field">Commission amount (NPR) *</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          autoFocus
+                          placeholder="e.g. 60000"
+                          className={`input-field ${commissionError ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
+                          value={commissionInput}
+                          onChange={(e) => {
+                            setCommissionInput(e.target.value);
+                            if (commissionError) setCommissionError('');
+                          }}
+                        />
+                        <p className="mt-1 text-xs text-slate-muted">
+                          Lease value NPR {Number((raw.monthlyRent || 0) * (raw.durationInMonths || 0)).toLocaleString()} ({raw.durationInMonths || '—'} months) — enter the agreed commission for this lease.
+                        </p>
+                        {commissionError && <p className="text-xs text-brick mt-1">{commissionError}</p>}
+                        <div className="flex justify-end gap-3 mt-3">
+                          <button type="button" onClick={closeVerifyRental} className="btn-secondary text-sm px-4 py-2">
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleVerifyRentalSubmit}
+                            disabled={busyId === deal._id}
+                            className="bg-sage text-white text-sm font-medium px-4 py-2 rounded-sm hover:bg-sage/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {busyId === deal._id ? 'Verifying...' : 'Verify rental'}
                           </button>
                         </div>
                       </div>
