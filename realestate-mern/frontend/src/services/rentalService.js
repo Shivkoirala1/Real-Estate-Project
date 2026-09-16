@@ -14,6 +14,7 @@ import api from '../utils/axios';
  *   tenant: { name, phone?, email? },   // required (name)
  *   monthlyRent,                 // required, number > 0
  *   durationInMonths,            // required, integer >= 1
+ *   startDate,                   // required, lease start date
  *   securityDeposit?,            // optional, number >= 0
  *   remarks?,                    // optional free text
  * }
@@ -29,7 +30,6 @@ export const createRental = async (payload) => {
  * GET /api/rentals
  * params: {
  *   status?,             // 'pending_review' | 'verified' | 'rejected'
- *   paymentFrequency?,   // reserved for future use
  *   from?, to?,          // date range on submittedAt (YYYY-MM-DD)
  *   search?,             // tenant name (case-insensitive)
  *   agent?,              // admin only: filter by agent id
@@ -60,15 +60,16 @@ export const getRental = async (id) => {
 
 /**
  * Admin verifies a pending rental -> property marked 'rented',
- * lead closed, commission recorded on the lease value.
+ * lead closed, commission recorded from the admin-entered amount.
  * PATCH /api/rentals/:id/verify
+ * payload: { commissionAmount }  // required, non-negative number (0 allowed)
  * response: {
  *   success, message, rental,
  *   commission: { percentage, amount, leaseValue },
  * }
  */
-export const verifyRental = async (id) => {
-  const { data } = await api.patch(`/rentals/${id}/verify`);
+export const verifyRental = async (id, commissionAmount) => {
+  const { data } = await api.patch(`/rentals/${id}/verify`, { commissionAmount });
   return data;
 };
 

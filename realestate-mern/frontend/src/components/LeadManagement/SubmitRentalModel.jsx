@@ -2,12 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { createRental } from '../../services/rentalService';
 import { useToast } from '../../context/ToastContext';
 
-const PAYMENT_FREQUENCIES = [
-  { value: 'monthly', label: 'Monthly' },
-  { value: 'quarterly', label: 'Quarterly' },
-  { value: 'yearly', label: 'Yearly' },
-];
-
 const EMPTY_FORM = {
   tenantName: '',
   tenantPhone: '',
@@ -16,8 +10,6 @@ const EMPTY_FORM = {
   durationInMonths: '12',
   startDate: '',
   securityDeposit: '',
-  advanceMonths: '1',
-  paymentFrequency: 'monthly',
   remarks: '',
 };
 
@@ -73,6 +65,7 @@ const SubmitRentalModal = ({ lead, property, open, onClose, onSuccess }) => {
     setSubmitting(true);
     try {
       const payload = {
+        leadId: lead._id,
         tenant: {
           name: form.tenantName.trim(),
           phone: form.tenantPhone.trim(),
@@ -81,13 +74,11 @@ const SubmitRentalModal = ({ lead, property, open, onClose, onSuccess }) => {
         monthlyRent: rent,
         durationInMonths: months,
         startDate: form.startDate,
-        paymentFrequency: form.paymentFrequency,
       };
       if (form.securityDeposit !== '') payload.securityDeposit = Number(form.securityDeposit);
-      if (form.advanceMonths !== '') payload.advanceMonths = Number(form.advanceMonths);
       if (form.remarks.trim()) payload.remarks = form.remarks.trim();
 
-      await createRental(lead._id, payload);
+      await createRental(payload);
       showToast('Rental submitted for verification', 'success');
       onSuccess && onSuccess();
     } catch (err) {
@@ -168,7 +159,7 @@ const SubmitRentalModal = ({ lead, property, open, onClose, onSuccess }) => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="label-field">Start date *</label>
               <input type="date" className="input-field text-sm" value={form.startDate}
@@ -181,27 +172,12 @@ const SubmitRentalModal = ({ lead, property, open, onClose, onSuccess }) => {
                 value={form.securityDeposit} onChange={(e) => setField('securityDeposit', e.target.value)}
                 placeholder="e.g. 50000" />
             </div>
-            <div>
-              <label className="label-field">Advance (months)</label>
-              <input type="number" min="0" max="24" className="input-field text-sm"
-                value={form.advanceMonths} onChange={(e) => setField('advanceMonths', e.target.value)} />
-            </div>
-          </div>
-
-          <div>
-            <label className="label-field">Payment frequency</label>
-            <select className="input-field text-sm" value={form.paymentFrequency}
-              onChange={(e) => setField('paymentFrequency', e.target.value)}>
-              {PAYMENT_FREQUENCIES.map((f) => (
-                <option key={f.value} value={f.value}>{f.label}</option>
-              ))}
-            </select>
           </div>
 
           {leaseValue > 0 && (
             <p className="text-xs text-slate-ink bg-parchment/60 border border-navy/10 rounded-sm px-3 py-2">
               Total lease value: <span className="font-semibold">NPR {leaseValue.toLocaleString()}</span>{' '}
-              (commission is calculated on this amount)
+              — the admin will set the commission when verifying this filing.
             </p>
           )}
 
