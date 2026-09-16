@@ -12,6 +12,9 @@ const typeMeta = {
   sale_submitted: { label: 'Sale submitted', tint: 'bg-brass-light/25 text-brass-dark' },
   sale_verified: { label: 'Sale verified', tint: 'bg-sage-light text-sage' },
   sale_rejected: { label: 'Sale rejected', tint: 'bg-brick-light text-brick' },
+  rental_submitted: { label: 'Rental submitted', tint: 'bg-brass-light/25 text-brass-dark' },
+  rental_verified: { label: 'Rental verified', tint: 'bg-sage-light text-sage' },
+  rental_rejected: { label: 'Rental rejected', tint: 'bg-brick-light text-brick' },
   commission_paid: { label: 'Commission', tint: 'bg-sage-light text-sage' },
   emi_installment_due: { label: 'EMI due soon', tint: 'bg-navy/10 text-navy' },
   emi_installment_overdue: { label: 'EMI overdue', tint: 'bg-brick-light text-brick' },
@@ -24,6 +27,13 @@ const typeMeta = {
   emi_verification_rejected: { label: 'Verification rejected', tint: 'bg-brick-light text-brick' },
   conversation_message: { label: 'Message', tint: 'bg-sage-light text-sage' },
   conversation_followup: { label: 'Follow-up', tint: 'bg-navy/10 text-navy' },
+  management_request_submitted: { label: 'Management request', tint: 'bg-brass-light/25 text-brass-dark' },
+  management_request_approved: { label: 'Request approved', tint: 'bg-sage-light text-sage' },
+  management_request_rejected: { label: 'Request rejected', tint: 'bg-brick-light text-brick' },
+  management_agent_assigned: { label: 'Agent assigned', tint: 'bg-navy/10 text-navy' },
+  management_status_changed: { label: 'Status changed', tint: 'bg-navy/10 text-navy' },
+  management_terminated: { label: 'Terminated', tint: 'bg-brick-light text-brick' },
+  management_termination_requested: { label: 'Termination requested', tint: 'bg-brass-light/25 text-brass-dark' },
   system: { label: 'System', tint: 'bg-parchment text-slate-ink' },
 };
 

@@ -49,6 +49,24 @@ const typeIcon = {
       <path d="M15 9l-6 6M9 9l6 6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+  rental_submitted: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 22V12h6v10" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  rental_verified: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 13l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  rental_rejected: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 12l4 4m0-4l-4 4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   commission_paid: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <rect x="2" y="6" width="20" height="12" rx="2" />
@@ -158,6 +176,49 @@ const typeIcon = {
       <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+  management_request_submitted: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 2v6h6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  management_request_approved: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 2v6h6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 15l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  management_request_rejected: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 2v6h6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 12l4 4m0-4l-4 4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  management_agent_assigned: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  ),
+  management_status_changed: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  management_terminated: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 8l8 8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  management_termination_requested: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 8v4M12 16h.01" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   system: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="12" cy="12" r="10" />
@@ -175,6 +236,9 @@ const iconTint = {
   sale_submitted: 'bg-brass-light/25 text-brass-dark',
   sale_verified: 'bg-sage-light text-sage',
   sale_rejected: 'bg-brick-light text-brick',
+  rental_submitted: 'bg-brass-light/25 text-brass-dark',
+  rental_verified: 'bg-sage-light text-sage',
+  rental_rejected: 'bg-brick-light text-brick',
   commission_paid: 'bg-sage-light text-sage',
   emi_installment_due: 'bg-navy/10 text-navy',
   emi_installment_overdue: 'bg-brick-light text-brick',
@@ -193,6 +257,13 @@ const iconTint = {
   visit_completed: 'bg-sage-light text-sage',
   conversation_message: 'bg-sage-light text-sage',
   conversation_followup: 'bg-navy/10 text-navy',
+  management_request_submitted: 'bg-brass-light/25 text-brass-dark',
+  management_request_approved: 'bg-sage-light text-sage',
+  management_request_rejected: 'bg-brick-light text-brick',
+  management_agent_assigned: 'bg-navy/10 text-navy',
+  management_status_changed: 'bg-navy/10 text-navy',
+  management_terminated: 'bg-brick-light text-brick',
+  management_termination_requested: 'bg-brass-light/25 text-brass-dark',
   system: 'bg-parchment text-slate-ink',
 };
 
