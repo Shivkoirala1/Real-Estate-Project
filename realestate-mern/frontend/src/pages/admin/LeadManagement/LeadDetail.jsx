@@ -40,8 +40,10 @@ const LeadDetail = () => {
   const [notes, setNotes] = useState('');
   const [followUpLocal, setFollowUpLocal] = useState('');
   const [suggestion, setSuggestion] = useState(null);
-  const [showSubmitSale, setShowSubmitSale] = useState(false);
   const [saleModalOpen, setSaleModalOpen] = useState(false);
+  // The lead's linked property (populated object) drives the sale/rental
+  // modal switch - a bare id string carries no saleType.
+  const property = lead?.property && typeof lead.property === 'object' ? lead.property : null;
   const isRentalProperty = property?.saleType === 'rent';
 
 
@@ -152,14 +154,14 @@ const LeadDetail = () => {
           </Link>
           <div className="flex items-center gap-3 mt-2">
             <h1 className="text-2xl">{lead.name}</h1>
-            <LeadStatusBadge stage={lead.stage} />
+            <LeadStatusBadge stage={lead.stage} dealType={lead.dealType} />
             <LeadSourceIcon source={lead.source} showLabel />
           </div>
         </div>
         <div className="flex items-center gap-3">
           {lead.stage === 'negotiation' && lead.property && (
             <button
-              onClick={() => setShowSubmitSale(true)}
+              onClick={() => setSaleModalOpen(true)}
               className="btn-gold text-sm"
               title="File a sale for admin verification"
             >
@@ -178,10 +180,12 @@ const LeadDetail = () => {
         </div>
       </div>
 
-      {lead.stage === 'pending_sale_verification' && (
+      {lead.stage === 'pending_verification' && (
         <div className="bg-brass/10 border border-brass/30 rounded-sm px-5 py-3 mb-6 text-sm">
           <span className="font-semibold text-brass-dark">
-            Sale submitted — awaiting admin verification.
+            {lead.dealType === 'rental'
+              ? 'Rental submitted — awaiting admin verification.'
+              : 'Sale submitted — awaiting admin verification.'}
           </span>{' '}
           <span className="text-slate-ink">
             The property is reserved until an admin reviews it.
@@ -393,13 +397,13 @@ const LeadDetail = () => {
   <SubmitRentalModal
     lead={lead} property={property}
     open={saleModalOpen} onClose={() => setSaleModalOpen(false)}
-    onSuccess={() => { setSaleModalOpen(false); /* refetch lead */ }}
+    onSuccess={async () => { setSaleModalOpen(false); await loadLead(); }}
   />
 ) : (
   <SubmitSaleModal
     lead={lead} property={property}
     open={saleModalOpen} onClose={() => setSaleModalOpen(false)}
-    onSuccess={() => { setSaleModalOpen(false); /* refetch lead */ }}
+    onSuccess={async () => { setSaleModalOpen(false); await loadLead(); }}
   />
 )}
     </div>

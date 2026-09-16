@@ -7,7 +7,7 @@ export const STAGES = [
   'contacted',
   'site_visit_scheduled',
   'negotiation',
-  'pending_sale_verification',
+  'pending_verification',
   'closed',
   'lost',
 ];
@@ -41,12 +41,12 @@ export const STAGE_META = {
     text: 'text-sage',
     description: 'Active deal discussion',
   },
-  pending_sale_verification: {
-    label: 'Sale Verification',
+  pending_verification: {
+    label: 'Pending Verification',
     color: '#8E6526',
     bg: 'bg-brass/15',
     text: 'text-brass-dark',
-    description: 'Sale submitted - awaiting admin verification',
+    description: 'Deal submitted - awaiting admin verification',
   },
   closed: {
     label: 'Closed',
@@ -89,6 +89,7 @@ export const stageMeta = (stage) => {
   if (STAGE_META[normalized]) return STAGE_META[normalized];
   // Legacy aliases
   if (normalized === 'office_visit_scheduled') return STAGE_META.site_visit_scheduled;
+  if (normalized === 'pending_sale_verification') return STAGE_META.pending_verification;
   return STAGE_META.new;
 };
 

@@ -47,7 +47,7 @@ const LeadCard = ({ lead, draggable = false, onDragStart, compact = false }) => 
       )}
 
       <div className="mt-2.5 flex items-center justify-between gap-2">
-        <LeadStatusBadge stage={lead.stage} size="xs" />
+        <LeadStatusBadge stage={lead.stage} dealType={lead.dealType} size="xs" />
         <span className="inline-flex items-center gap-1 text-[11px] text-slate-muted">
           <span className={`w-1.5 h-1.5 rounded-full ${priority.dot}`} />
           {priority.label}

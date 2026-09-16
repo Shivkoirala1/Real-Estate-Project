@@ -152,7 +152,7 @@ const AgentDashboard = () => {
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-medium text-navy">{lead.name}</p>
-                  <LeadStatusBadge stage={lead.stage} size="xs" />
+                  <LeadStatusBadge stage={lead.stage} dealType={lead.dealType} size="xs" />
                   <LeadSourceIcon source={lead.source} />
                 </div>
                 <p className="text-xs text-slate-muted mt-0.5">

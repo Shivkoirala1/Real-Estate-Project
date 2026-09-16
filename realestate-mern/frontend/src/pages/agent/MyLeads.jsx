@@ -134,7 +134,7 @@ const MyLeads = () => {
                       <p className="font-medium text-navy group-hover:text-brass transition-colors">
                         {lead.name}
                       </p>
-                      <LeadStatusBadge stage={lead.stage} size="xs" />
+                      <LeadStatusBadge stage={lead.stage} dealType={lead.dealType} size="xs" />
                       <LeadSourceIcon source={lead.source} />
                     </div>
                     <p className="text-xs text-slate-muted mt-0.5">
