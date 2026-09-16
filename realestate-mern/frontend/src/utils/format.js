@@ -7,6 +7,7 @@ export const statusStyles = {
   available: { bg: '#3C6E52', label: 'Available' },
   reserved: { bg: '#B8863B', label: 'Reserved' },
   sold: { bg: '#A6472F', label: 'Sold' },
+  rented: { bg: '#4C6FA0', label: 'Rented' },
 };
 
 export const saleTypeStyles = {

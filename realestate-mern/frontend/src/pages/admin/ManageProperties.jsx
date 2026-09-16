@@ -4,6 +4,7 @@ import {
   getProperties,
   getMyListings,
   updatePropertyStatus,
+  endTenancy,
   deleteProperty,
 } from "../../services/propertyService";
 import { useAuth } from "../../context/AuthContext";
@@ -215,6 +216,27 @@ const ManageProperties = ({ showHeader = true }) => {
     }
   };
 
+  const handleEndTenancy = async (property) => {
+    const confirmed = await confirm({
+      title: "End tenancy?",
+      message: `"${property.title}" will return to available and its current-occupancy details will be cleared. The verified rental record itself is kept as history.`,
+      confirmLabel: "Yes, end tenancy",
+      cancelLabel: "No, keep as is",
+    });
+    if (!confirmed) return;
+
+    try {
+      await endTenancy(property._id);
+      showToast("Tenancy ended — property is available again");
+      load();
+    } catch (err) {
+      showToast(
+        err.response?.data?.message || "Failed to end tenancy",
+        "error",
+      );
+    }
+  };
+
   const handleDelete = async (property) => {
     const confirmed = await confirm({
       title: "Delete this property?",
@@ -352,16 +374,26 @@ const ManageProperties = ({ showHeader = true }) => {
                             {statusLabels[p.status]}
                           </span>
                         )}
+                        {p.status === "rented" && (
+                          <span
+                            className="status-badge whitespace-nowrap bg-navy/10 text-navy"
+                            title="Rented — tenancy active. Only End Tenancy returns it to available."
+                          >
+                            Rented
+                          </span>
+                        )}
                         <select
                           value={p.status}
                           onChange={(e) => handleStatusChange(p, e.target.value)}
-                          disabled={p.status === "sold" || (user?.role === "agent" && p.listedBy._id !== user._id)}
+                          disabled={p.status === "sold" || p.status === "rented" || (user?.role === "agent" && p.listedBy._id !== user._id)}
                           title={
                             p.status === "sold"
                               ? "Sold is final and cannot be changed"
-                              : p.status === "reserved"
-                                ? "Reserved — sale pending verification"
-                                : "Update status"
+                              : p.status === "rented"
+                                ? "Rented — use End Tenancy to return it to available"
+                                : p.status === "reserved"
+                                  ? "Reserved — sale pending verification"
+                                  : "Update status"
                           }
                           className="text-xs border border-navy/15 rounded-sm px-2 py-1.5 bg-white disabled:opacity-60 disabled:cursor-not-allowed font-medium"
                           style={{ color: statusStyles[p.status]?.bg }}
@@ -414,15 +446,27 @@ const ManageProperties = ({ showHeader = true }) => {
                             (user?.role === "agent" && p.listedBy._id !== user._id)
                           }
                           onClick={() => handleDelete(p)}
-className={`text-white px-3 py-1.5 rounded-sm text-sm ${
+                          className={`text-white px-3 py-1.5 rounded-sm text-sm ${
                             p.status === "sold" ||
                             (user?.role === "agent" && p.listedBy._id !== user._id)
                               ? "bg-red-300 cursor-not-allowed"
                               : "bg-red-600 hover:underline"
                           }`}
-                        >                        
+                        >
                           Delete
                         </button>
+                        {p.status === "rented" &&
+                          (isAdmin ||
+                            String(p.listedBy?._id || p.listedBy) === String(user?._id)) && (
+                            <button
+                              type="button"
+                              onClick={() => handleEndTenancy(p)}
+                              className="btn-gold text-sm px-3 py-1.5 whitespace-nowrap"
+                              title="Return this property to available and clear its occupancy details"
+                            >
+                              End Tenancy
+                            </button>
+                          )}
                       </div>
                     </td>
                   </tr>

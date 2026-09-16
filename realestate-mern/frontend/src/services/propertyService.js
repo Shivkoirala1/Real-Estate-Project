@@ -96,6 +96,16 @@ export const updatePropertyStatus = async (id, status) => {
 };
 
 /**
+ * End the current tenancy: rented -> available (the ONLY way back).
+ * PATCH /api/properties/:id/end-tenancy (no body)
+ * response: { success, property }
+ */
+export const endTenancy = async (id) => {
+  const { data } = await api.patch(`/properties/${id}/end-tenancy`);
+  return data;
+};
+
+/**
  * Share a property with a friend
  * POST /api/properties/:id/share
  *
