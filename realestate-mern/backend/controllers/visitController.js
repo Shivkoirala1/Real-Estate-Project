@@ -20,7 +20,7 @@ const ACTIVE_LEAD_STAGES = [
 // Lead stages a visit status change must never regress (a sale may already be
 // pending verification, or the lead was deliberately closed/lost by an admin).
 const UNRECOVERABLE_LEAD_STAGES = [
-  "pending_sale_verification",
+  "pending_verification",
   "closed",
   "lost",
 ];
@@ -543,23 +543,41 @@ const updateVisit = asyncHandler(async (req, res) => {
   if (statusChanged) {
     if (status === "confirmed") {
       await notifyBuyerVisitConfirmed(visit);
-      await awardReward(
-        visit.requestedBy,
-        "PROPERTY_VISIT_BOOK",
-        {
-          refId: visit.property._id,
-          refModel: "Property",
-        },
-      );
+      // Office visits have no property by design - the reward is still earned,
+      // just without a property reference (ref-less rewards already exist for
+      // other action types; refId/refModel stay null). Reward failures must
+      // never fail the status update itself.
+      try {
+        await awardReward(
+          visit.requestedBy,
+          "PROPERTY_VISIT_BOOK",
+          {
+            refId: visit.property?._id ?? null,
+            refModel: visit.property ? "Property" : undefined,
+          },
+        );
+      } catch (err) {
+        console.error(
+          `Visit-book reward failed for visit ${visit._id}:`,
+          err.message,
+        );
+      }
     } else if (status === "completed") {
-      await awardReward(
-        visit.requestedBy,
-        "PROPERTY_VISIT_COMPLETE",
-        {
-          refId: visit.property._id,
-          refModel: "Property",
-        },
-      );
+      try {
+        await awardReward(
+          visit.requestedBy,
+          "PROPERTY_VISIT_COMPLETE",
+          {
+            refId: visit.property?._id ?? null,
+            refModel: visit.property ? "Property" : undefined,
+          },
+        );
+      } catch (err) {
+        console.error(
+          `Visit-complete reward failed for visit ${visit._id}:`,
+          err.message,
+        );
+      }
       await notify({
         recipient: visit.requestedBy,
         type: "visit_completed",
@@ -754,8 +772,8 @@ const convertVisitToLead = asyncHandler(async (req, res) => {
         visit.requestedBy,
         "PROPERTY_VISIT_BOOK",
         {
-          refId: visit.property._id,
-          refModel: "Property",
+          refId: visit.property?._id ?? null,
+          refModel: visit.property ? "Property" : undefined,
         },
       );
 

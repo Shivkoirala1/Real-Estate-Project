@@ -373,12 +373,13 @@ const convertContactFormToLead = asyncHandler(async (req, res) => {
   }
 
   const propertyId = property || contactForm.property || null;
+  let propertyDoc = null;
   if (propertyId) {
-    const propertyDoc = await Property.findById(propertyId).select("title");
+    propertyDoc = await Property.findById(propertyId).select('title saleType');
     if (!propertyDoc) {
       return res
         .status(404)
-        .json({ success: false, message: "Property not found" });
+        .json({ success: false, message: 'Property not found' });
     }
   }
 
@@ -391,6 +392,9 @@ const convertContactFormToLead = asyncHandler(async (req, res) => {
     contactForm: contactForm._id,
     user: contactForm.user ? contactForm.user._id : null,
     property: propertyId,
+    // Lock the deal type up front when the property's saleType is known;
+    // otherwise it stays null until the first Sale/Rental filing locks it.
+    dealType: propertyDoc ? Lead.dealTypeForSaleType(propertyDoc.saleType) : null,
     assignedAgent: assignedAgent || null,
     category: category || "property",
     priority: priority || "medium",

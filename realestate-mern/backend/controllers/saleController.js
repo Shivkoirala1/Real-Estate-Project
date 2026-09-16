@@ -60,10 +60,19 @@ const createSale = asyncHandler(async (req, res) => {
     });
   }
 
+  // A lead is locked to one deal type the first time a deal is filed - a lead
+  // already locked to 'rental' needs a new Lead for a sale.
+  if (!lead.lockDealType('sale')) {
+    return res.status(400).json({
+      success: false,
+      message: 'This lead is locked to rental deals. Create a new lead to file a sale.',
+    });
+  }
+
   // Stage guards: 'negotiation' is the canonical filing stage (rejected sales
   // revert there, so resubmission works), a lead already awaiting verification
   // cannot be double-filed, and closed/lost leads are dead ends.
-  if (lead.stage === 'pending_sale_verification') {
+  if (lead.stage === 'pending_verification') {
     return res.status(409).json({
       success: false,
       message: 'A sale has already been submitted for this lead and is awaiting verification.',
@@ -156,21 +165,24 @@ const createSale = asyncHandler(async (req, res) => {
       },
     ],
   });
-  await sale.save();
 
   // Reserve the property and freeze the lead in the verification stage while
-  // an admin reviews the filing.
-  property.status = 'reserved';
-  await property.save();
+  // an admin reviews the filing - all three writes commit or none do.
+  await runWithTransaction(async (session) => {
+    await sale.save(opts(session));
 
-  lead.stage = 'pending_sale_verification';
-  lead.recordActivity({
-    type: 'sale_submitted',
-    message: `Sale submitted for verification (NPR ${agreedPrice}, ${paymentType.replace(/_/g, ' ')})`,
-    by: req.user._id,
-    byName: req.user.name,
+    property.status = 'reserved';
+    await property.save(opts(session));
+
+    lead.stage = 'pending_verification';
+    lead.recordActivity({
+      type: 'sale_submitted',
+      message: `Sale submitted for verification (NPR ${agreedPrice}, ${paymentType.replace(/_/g, ' ')})`,
+      by: req.user._id,
+      byName: req.user.name,
+    });
+    await lead.save(opts(session));
   });
-  await lead.save();
 
   // Alert every admin - the verification queue is their inbox
   const admins = await User.find({ role: 'admin' }).select('_id');
@@ -409,7 +421,7 @@ const verifySale = asyncHandler(async (req, res) => {
           sale: sale._id,
           property: property._id,
           agent: sale.agent,
-          saleAmount: sale.agreedPrice,
+          transactionAmount: sale.agreedPrice,
           commissionPercentage: pct,
           commissionAmount,
           isPaid: false,

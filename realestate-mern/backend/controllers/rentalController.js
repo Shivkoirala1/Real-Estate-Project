@@ -7,7 +7,6 @@ const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const { notify, notifyMany } = require('../utils/notify');
 const { runWithTransaction, opts } = require('../utils/withTransaction');
-const { effectiveCommissionPercentage } = require('../utils/commission');
 
 // ---------- helpers ----------
 const rentalSortMap = {
@@ -35,8 +34,6 @@ const createRental = asyncHandler(async (req, res) => {
     durationInMonths,
     startDate,
     securityDeposit,
-    paymentFrequency,
-    advanceMonths,
     remarks,
   } = req.body;
   const tenant = req.body.tenant || {};
@@ -67,8 +64,17 @@ const createRental = asyncHandler(async (req, res) => {
     });
   }
 
-  // Lead stage guards — same pattern as Sale, dedicated stage name
-  if (lead.stage === 'pending_rental_verification') {
+  // A lead is locked to one deal type the first time a deal is filed - a lead
+  // already locked to 'sale' needs a new Lead for a rental.
+  if (!lead.lockDealType('rental')) {
+    return res.status(400).json({
+      success: false,
+      message: 'This lead is locked to sale deals. Create a new lead to file a rental.',
+    });
+  }
+
+  // Lead stage guards — same pattern as Sale, one shared verification stage
+  if (lead.stage === 'pending_verification') {
     return res.status(409).json({
       success: false,
       message: 'A rental has already been submitted for this lead and is awaiting verification.',
@@ -93,6 +99,13 @@ const createRental = asyncHandler(async (req, res) => {
     return res
       .status(400)
       .json({ success: false, message: 'Lease duration must be a whole number of months (min 1)' });
+  }
+  if (!startDate) {
+    return res.status(400).json({ success: false, message: 'Lease start date is required' });
+  }
+  const parsedStartDate = new Date(startDate);
+  if (Number.isNaN(parsedStartDate.getTime())) {
+    return res.status(400).json({ success: false, message: 'Invalid lease start date' });
   }
 
   // Auto-link tenant account by email (kept for parity with Sale — useful
@@ -145,10 +158,8 @@ const createRental = asyncHandler(async (req, res) => {
     },
     monthlyRent,
     durationInMonths,
-    startDate: start,
+    startDate: parsedStartDate,
     securityDeposit: securityDeposit ?? 0,
-    paymentFrequency,
-    advanceMonths: advanceMonths ?? 1,
     remarks: remarks || '',
     status: 'pending_review',
     submittedBy: req.user._id,
@@ -162,19 +173,24 @@ const createRental = asyncHandler(async (req, res) => {
       },
     ],
   });
-  await rental.save();
 
-  property.status = 'reserved';
-  await property.save();
+  // Reserve the property and freeze the lead in the verification stage while
+  // an admin reviews the filing - all three writes commit or none do.
+  await runWithTransaction(async (session) => {
+    await rental.save(opts(session));
 
-  lead.stage = 'pending_rental_verification';
-  lead.recordActivity({
-    type: 'rental_submitted',
-    message: `Rental submitted for verification (NPR ${monthlyRent.toLocaleString()}/month × ${durationInMonths} months)`,
-    by: req.user._id,
-    byName: req.user.name,
+    property.status = 'reserved';
+    await property.save(opts(session));
+
+    lead.stage = 'pending_verification';
+    lead.recordActivity({
+      type: 'rental_submitted',
+      message: `Rental submitted for verification (NPR ${monthlyRent.toLocaleString()}/month × ${durationInMonths} months)`,
+      by: req.user._id,
+      byName: req.user.name,
+    });
+    await lead.save(opts(session));
   });
-  await lead.save();
 
   const admins = await User.find({ role: 'admin' }).select('_id');
   await notifyMany(
@@ -203,7 +219,7 @@ const createRental = asyncHandler(async (req, res) => {
  * @route   GET /api/rentals
  */
 const getRentals = asyncHandler(async (req, res) => {
-  const { status, paymentFrequency, from, to, search, agent, sort, page = 1, limit = 10 } = req.query;
+  const { status, from, to, search, agent, sort, page = 1, limit = 10 } = req.query;
 
   const query = {};
   if (req.user.role !== 'admin') {
@@ -223,7 +239,6 @@ const getRentals = asyncHandler(async (req, res) => {
     }
     query.status = status;
   }
-  if (paymentFrequency) query.paymentFrequency = paymentFrequency;
   if (from || to) {
     const fromDate = parseDateParam(from);
     const toDate = parseDateParam(to);
@@ -307,6 +322,10 @@ const getRentalById = asyncHandler(async (req, res) => {
  * @desc    Admin verifies a pending rental -> property rented, lead closed, commission recorded
  * @route   PATCH /api/rentals/:id/verify
  * @access  Private (admin)
+ *
+ * NOTE: this deliberately diverges from verifySale - the commission here is
+ * entered by the admin by hand (no automatic calculation). Do not "fix" it
+ * back to auto-calculating for consistency.
  */
 const verifyRental = asyncHandler(async (req, res) => {
   const rental = await Rental.findById(req.params.id);
@@ -320,19 +339,36 @@ const verifyRental = asyncHandler(async (req, res) => {
     });
   }
 
-  const property = await Property.findById(rental.property).populate(
-    'propertyType',
-    'defaultCommissionPercentage'
-  );
+  // The admin enters the commission amount by hand - a missing, non-numeric
+  // or negative value is rejected. Zero is a legitimate "no commission" case.
+  const { commissionAmount: rawAmount } = req.body || {};
+  if (rawAmount === undefined || rawAmount === null || rawAmount === '') {
+    return res.status(400).json({
+      success: false,
+      message: 'commissionAmount is required to verify a rental.',
+    });
+  }
+  const commissionAmount = Number(rawAmount);
+  if (!Number.isFinite(commissionAmount) || commissionAmount < 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'commissionAmount must be a non-negative number.',
+    });
+  }
+
+  const property = await Property.findById(rental.property);
   if (!property) return res.status(404).json({ success: false, message: 'Property not found' });
 
   const lead = await Lead.findById(rental.lead);
   if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
 
-  // 🔑 Commission basis is the LEASE VALUE (rent × duration), not a sale price.
-  const pct = effectiveCommissionPercentage(property, property.propertyType);
+  // Lease value is the commission basis. The percentage below is derived from
+  // the admin-entered amount purely for the existing required field and for
+  // reporting consistency with Sale-originated records - it is informational
+  // only and never used to recompute or validate the amount.
   const leaseValue = rental.monthlyRent * rental.durationInMonths;
-  const commissionAmount = Number(((leaseValue * pct) / 100).toFixed(2));
+  const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+  const pct = leaseValue > 0 ? round2((commissionAmount / leaseValue) * 100) : 0;
 
   await runWithTransaction(async (session) => {
     rental.status = 'verified';
@@ -340,7 +376,7 @@ const verifyRental = asyncHandler(async (req, res) => {
     rental.reviewedAt = new Date();
     rental.recordActivity({
       type: 'verified',
-      message: `Rental verified by ${req.user.name}. Commission ${pct}% of lease value NPR ${leaseValue.toLocaleString()} = NPR ${commissionAmount.toLocaleString()}.`,
+      message: `Rental verified by ${req.user.name}. Commission NPR ${commissionAmount.toLocaleString()} recorded (${pct}% of lease value NPR ${leaseValue.toLocaleString()}).`,
       by: req.user._id,
       byName: req.user.name,
     });
@@ -367,12 +403,12 @@ const verifyRental = asyncHandler(async (req, res) => {
     return CommissionRecord.create(
       [
         {
-          // 🔑 Reference the rental, not a sale — see "CommissionRecord" note below
+          // 🔑 Reference the rental, not a sale
           rental: rental._id,
           sale: null,
           property: property._id,
           agent: rental.agent,
-          saleAmount: leaseValue, // rename conceptually to "transactionAmount" if you can
+          transactionAmount: leaseValue,
           commissionPercentage: pct,
           commissionAmount,
           isPaid: false,

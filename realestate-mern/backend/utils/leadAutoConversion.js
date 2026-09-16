@@ -212,7 +212,7 @@ const ensureLeadFromContactForm = async ({ contactForm, actor = null, overrides 
   const propertyId = overrides.property || idOf(contactForm.property) || null;
   let propertyDoc = null;
   if (propertyId) {
-    propertyDoc = await Property.findById(propertyId).select('title listedBy');
+    propertyDoc = await Property.findById(propertyId).select('title listedBy saleType');
   }
 
   const actorName = actor ? actor.name : 'Auto-conversion';
@@ -257,6 +257,9 @@ const ensureLeadFromContactForm = async ({ contactForm, actor = null, overrides 
     contactForm: contactForm._id,
     user: idOf(contactForm.user) || null,
     property: propertyId,
+    // Lock the deal type up front when the property's saleType is known;
+    // otherwise it stays null until the first Sale/Rental filing locks it.
+    dealType: propertyDoc ? Lead.dealTypeForSaleType(propertyDoc.saleType) : null,
     assignedAgent: overrides.assignedAgent || null,
     category: overrides.category || 'property',
     priority: overrides.priority || 'medium',
@@ -335,7 +338,7 @@ const ensureLeadFromVisit = async ({ visit, actor = null, overrides = {} }) => {
   if (!visit.populated('requestedBy')) await visit.populate('requestedBy', 'name email phone');
   let propertyDoc = null;
   if (visit.property) {
-    if (!visit.populated('property')) await visit.populate('property', 'title listedBy');
+    if (!visit.populated('property')) await visit.populate('property', 'title listedBy saleType');
     propertyDoc = visit.property;
   }
 
@@ -406,6 +409,9 @@ const ensureLeadFromVisit = async ({ visit, actor = null, overrides = {} }) => {
     visit: visit._id,
     property: idOf(visit.property) || null,
     user: idOf(requester) || null,
+    // Lock the deal type up front when the property's saleType is known
+    // (office visits have no property, so they stay null until filing).
+    dealType: propertyDoc ? Lead.dealTypeForSaleType(propertyDoc.saleType) : null,
     assignedAgent,
     category: overrides.category || 'property',
     priority: overrides.priority || 'high',

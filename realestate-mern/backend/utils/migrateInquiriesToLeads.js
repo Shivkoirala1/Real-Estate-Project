@@ -135,8 +135,11 @@ const migrateInquiries = async () => {
       contactForm.convertedLead = lead._id;
       await contactForm.save();
 
-      // 3) Conversation thread from reply history
-      if (Array.isArray(inquiry.messages) && inquiry.messages.length > 0) {
+      // 3) Conversation thread from reply history - only when the inquiry came
+      // from a registered user (a thread needs an inquirer account); guest
+      // submissions skip thread creation so no inquirer-less conversation is
+      // ever created.
+      if (inquiry.user && Array.isArray(inquiry.messages) && inquiry.messages.length > 0) {
         const conversation = await Conversation.create({
           lead: lead._id,
           inquirer: inquiry.user || null,

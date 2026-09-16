@@ -2,6 +2,7 @@ const Review = require('../models/Review');
 const Property = require('../models/Property');
 const Visit = require('../models/Visit');
 const Sale = require('../models/Sale');
+const Rental = require('../models/Rental');
 const asyncHandler = require('../utils/asyncHandler');
 const { awardReward } = require('../utils/rewards');
 const { notify, notifyMany } = require('../utils/notify');
@@ -16,11 +17,14 @@ const REVIEWABLE_ROLES = ['user', 'agent'];
  * A review is only allowed when the user (role 'user' or 'agent'):
  *   - has a visit on that property marked 'completed', OR
  *   - has a 'verified' Sale record on that property with their account
- *     linked as the buyer (i.e. they purchased it).
+ *     linked as the buyer (i.e. they purchased it), OR
+ *   - has a 'verified' Rental record on that property with their account
+ *     linked as the tenant (i.e. they rent it - eligible immediately, no
+ *     need to wait for the lease term to end).
  *
  * Returns { eligible, reason, alreadyReviewed, hidden } where `reason` is
- * either the human-readable block reason, or ('visit' | 'purchase') when
- * eligible - the latter is stored on the review itself for the audit trail.
+ * either the human-readable block reason, or ('visit' | 'purchase' | 'rental')
+ * when eligible - the latter is stored on the review itself for the audit trail.
  * `hidden` is set when the existing review is the reason for the block *and*
  * an admin has hidden it, so the UI can explain that instead of implying the
  * review never went through.
@@ -65,9 +69,18 @@ const getReviewEligibility = async (user, property) => {
     return { eligible: true, reason: 'purchase' };
   }
 
+  const verifiedRental = await Rental.findOne({
+    property: property._id,
+    'tenant.user': user._id,
+    status: 'verified',
+  });
+  if (verifiedRental) {
+    return { eligible: true, reason: 'rental' };
+  }
+
   return {
     eligible: false,
-    reason: 'You can review a property only after a completed visit or a verified purchase',
+    reason: 'You can review a property only after a completed visit, a verified purchase, or a verified rental',
   };
 };
 

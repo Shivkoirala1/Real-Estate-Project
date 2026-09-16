@@ -6,6 +6,7 @@ const {
   createProperty,
   updateProperty,
   updatePropertyStatus,
+  endTenancy,
   deleteProperty,
   getMyProperties,
   toggleFavorite,
@@ -35,6 +36,7 @@ router.get('/:id', optionalAuth, getProperty);
 router.post('/', protect, requireVerified, propertyUpload, createProperty);
 router.put('/:id', protect, requireVerified, propertyUpload, updateProperty);
 router.patch('/:id/status', protect, requireVerified, updatePropertyStatus);
+router.patch('/:id/end-tenancy', protect, requireVerified, endTenancy);
 router.delete('/:id', protect, requireVerified, deleteProperty);
 
 // Any registered user - favorites

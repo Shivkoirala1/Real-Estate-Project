@@ -1,4 +1,5 @@
 const { PropertyType, District, City } = require('../models/Category');
+const Property = require('../models/Property');
 const asyncHandler = require('../utils/asyncHandler');
 
 // ---------- Property Types ----------
@@ -49,6 +50,13 @@ const updatePropertyType = asyncHandler(async (req, res) => {
 });
 
 const deletePropertyType = asyncHandler(async (req, res) => {
+  const inUse = await Property.countDocuments({ propertyType: req.params.id });
+  if (inUse > 0) {
+    return res.status(409).json({
+      success: false,
+      message: `Cannot delete: ${inUse} ${inUse === 1 ? 'property still uses' : 'properties still use'} this property type. Reassign them first.`,
+    });
+  }
   const type = await PropertyType.findByIdAndDelete(req.params.id);
   if (!type) return res.status(404).json({ success: false, message: 'Property type not found' });
   res.json({ success: true, message: 'Property type deleted' });
@@ -73,6 +81,13 @@ const updateDistrict = asyncHandler(async (req, res) => {
 });
 
 const deleteDistrict = asyncHandler(async (req, res) => {
+  const inUse = await Property.countDocuments({ 'location.district': req.params.id });
+  if (inUse > 0) {
+    return res.status(409).json({
+      success: false,
+      message: `Cannot delete: ${inUse} ${inUse === 1 ? 'property still uses' : 'properties still use'} this district. Reassign them first.`,
+    });
+  }
   const district = await District.findByIdAndDelete(req.params.id);
   if (!district) return res.status(404).json({ success: false, message: 'District not found' });
   res.json({ success: true, message: 'District deleted' });
@@ -144,6 +159,13 @@ const updateCity = asyncHandler(async (req, res) => {
 });
 
 const deleteCity = asyncHandler(async (req, res) => {
+  const inUse = await Property.countDocuments({ 'location.city': req.params.id });
+  if (inUse > 0) {
+    return res.status(409).json({
+      success: false,
+      message: `Cannot delete: ${inUse} ${inUse === 1 ? 'property still uses' : 'properties still use'} this city. Reassign them first.`,
+    });
+  }
   const city = await City.findByIdAndDelete(req.params.id);
   if (!city) return res.status(404).json({ success: false, message: 'City not found' });
   res.json({ success: true, message: 'City deleted' });

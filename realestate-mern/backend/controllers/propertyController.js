@@ -1,4 +1,5 @@
 const Property = require('../models/Property');
+const Rental = require('../models/Rental');
 const User = require('../models/User');
 const { PropertyType } = require('../models/Category');
 const asyncHandler = require('../utils/asyncHandler');
@@ -414,6 +415,56 @@ const updatePropertyStatus = asyncHandler(async (req, res) => {
   res.json({ success: true, property });
 });
 
+// @desc    End the current tenancy: return a rented property to available
+// @route   PATCH /api/properties/:id/end-tenancy
+// @access  Private (owner or admin)
+//
+// This is the ONLY way a property moves from 'rented' back to 'available' -
+// never automatically (no date/cron trigger). The underlying verified Rental
+// document is left untouched as the permanent historical record; only the
+// property's current-occupancy snapshot is cleared.
+const endTenancy = asyncHandler(async (req, res) => {
+  const property = await Property.findById(req.params.id);
+  if (!property) {
+    return res.status(404).json({ success: false, message: 'Property not found' });
+  }
+
+  const isOwner = property.listedBy.toString() === req.user._id.toString();
+  if (req.user.role !== 'admin' && !isOwner) {
+    return res.status(403).json({ success: false, message: 'Not authorized' });
+  }
+
+  if (property.status !== 'rented') {
+    return res.status(400).json({
+      success: false,
+      message: 'Property is not currently marked as rented.',
+    });
+  }
+
+  property.status = 'available';
+  property.rentedFrom = null;
+  property.rentedUntil = null;
+  property.tenant = null;
+  await property.save();
+
+  // Record when the tenancy actually ended on the permanent Rental record,
+  // distinct from when it was verified.
+  const rental = await Rental.findOne({ property: property._id, status: 'verified' }).sort({
+    createdAt: -1,
+  });
+  if (rental) {
+    rental.recordActivity({
+      type: 'updated',
+      message: 'Tenancy ended — property returned to available',
+      by: req.user._id,
+      byName: req.user.name,
+    });
+    await rental.save();
+  }
+
+  res.json({ success: true, property });
+});
+
 // @desc    Delete property
 // @route   DELETE /api/properties/:id
 // @access  Private (owner or admin)
@@ -510,6 +561,7 @@ module.exports = {
   createProperty,
   updateProperty,
   updatePropertyStatus,
+  endTenancy,
   deleteProperty,
   getMyProperties,
   toggleFavorite,

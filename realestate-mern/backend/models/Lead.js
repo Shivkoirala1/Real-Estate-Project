@@ -176,6 +176,28 @@ leadSchema.statics.normalizeStage = function (stage) {
 leadSchema.statics.STAGES = LEAD_STAGES;
 leadSchema.statics.SOURCES = LEAD_SOURCES;
 
+// Maps a Property.saleType onto the locked Lead.dealType value
+// ('rent' -> 'rental', 'sale' -> 'sale', anything else -> null).
+// Used at lead-creation time when the property is already known.
+leadSchema.statics.dealTypeForSaleType = function (saleType) {
+  if (saleType === 'rent') return 'rental';
+  if (saleType === 'sale') return 'sale';
+  return null;
+};
+
+/**
+ * Locks the lead to one transaction type the first time a deal is filed.
+ *   - dealType null  -> sets it to `type`, returns true (first filing locks it)
+ *   - dealType == type -> returns true (no-op, e.g. resubmission after rejection)
+ *   - dealType == other -> returns false (caller must reject and direct the
+ *     user to create a new Lead for the other deal type)
+ */
+leadSchema.methods.lockDealType = function (type) {
+  if (this.dealType && this.dealType !== type) return false;
+  if (!this.dealType) this.dealType = type;
+  return true;
+};
+
 /**
  * Push an activity entry onto the embedded timeline and bump lastActivity.
  * Usage: lead.recordActivity({ type: 'stage_changed', message: '...', by: user })

@@ -71,6 +71,13 @@ const createConversation = asyncHandler(async (req, res) => {
     });
   }
 
+  if (!inquirer) {
+    return res.status(400).json({
+      success: false,
+      message: 'Inquirer is required',
+    });
+  }
+
   if (!initialMessage.trim()) {
     return res.status(400).json({
       success: false,
@@ -87,11 +94,11 @@ const createConversation = asyncHandler(async (req, res) => {
 
   // Verify users exist
   const [inquirerUser, ownerUser] = await Promise.all([
-    inquirer ? User.findById(inquirer) : Promise.resolve(null),
+    User.findById(inquirer),
     User.findById(owner),
   ]);
 
-  if (inquirer && !inquirerUser) {
+  if (!inquirerUser) {
     return res.status(404).json({
       success: false,
       message: 'Inquirer not found',
@@ -130,7 +137,7 @@ const createConversation = asyncHandler(async (req, res) => {
 
   // Create conversation
   const conversation = await Conversation.create({
-    inquirer: inquirer || null,
+    inquirer,
     owner,
     property: property || null,
     lead: lead || null,
@@ -313,6 +320,16 @@ const getConversationById = asyncHandler(async (req, res) => {
     });
   }
 
+  // Legacy conversations created before `inquirer` became required (e.g. by
+  // the one-time migration script) stay readable, but the participant checks
+  // below would null-dereference without this guard.
+  if (!conversation.inquirer) {
+    return res.status(409).json({
+      success: false,
+      message: 'This is a legacy conversation without an inquirer and can no longer be replied to.',
+    });
+  }
+
   // Authorization
   const isInquirer = String(conversation.inquirer._id) === String(req.user._id);
   const isOwner = String(conversation.owner._id) === String(req.user._id);
@@ -364,6 +381,16 @@ const addMessage = asyncHandler(async (req, res) => {
     return res.status(404).json({
       success: false,
       message: 'Conversation not found',
+    });
+  }
+
+  // Legacy conversations created before `inquirer` became required (e.g. by
+  // the one-time migration script) can no longer accept new messages - fail
+  // with a clear error instead of a null-dereference 500 below.
+  if (!conversation.inquirer) {
+    return res.status(409).json({
+      success: false,
+      message: 'This is a legacy conversation without an inquirer and can no longer be replied to.',
     });
   }
 

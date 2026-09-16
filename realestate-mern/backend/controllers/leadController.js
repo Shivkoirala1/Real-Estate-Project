@@ -123,7 +123,7 @@ const createLead = asyncHandler(async (req, res) => {
   // Verify property exists if provided
   let propertyDoc = null;
   if (property) {
-    propertyDoc = await Property.findById(property).select('title');
+    propertyDoc = await Property.findById(property).select('title saleType');
     if (!propertyDoc) {
       return res.status(404).json({ success: false, message: 'Property not found' });
     }
@@ -135,6 +135,9 @@ const createLead = asyncHandler(async (req, res) => {
     phone: phone || '',
     category: category || 'property',
     property: property || null,
+    // Lock the deal type up front when the property's saleType is known;
+    // otherwise it stays null until the first Sale/Rental filing locks it.
+    dealType: propertyDoc ? Lead.dealTypeForSaleType(propertyDoc.saleType) : null,
     assignedAgent: assignedAgent || null,
     notes: notes || '',
     priority: priority || 'medium',
@@ -489,12 +492,12 @@ const updateLeadStage = asyncHandler(async (req, res) => {
   }
 
   // Spec v2 (Feature 1) role-based stage guards: the verification stage is
-  // entered only by submitting a Sale, and agents can no longer close a lead
-  // by hand - the lead closes automatically once a sale is verified. Admins
-  // keep manual close/reopen for edge cases.
+  // entered only by submitting a Sale or Rental, and agents can no longer
+  // close a lead by hand - the lead closes automatically once a sale or
+  // rental is verified. Admins keep manual close/reopen for edge cases.
   const isAdmin = req.user.role === 'admin';
-  if (newStage === 'pending_sale_verification') {
-    return res.status(400).json({ success: false, message: 'Leads move to sale verification automatically when a Sale record is submitted. Use the "Submit Sale" action on this lead instead.' });
+  if (newStage === 'pending_verification') {
+    return res.status(400).json({ success: false, message: 'Leads move to verification automatically when a Sale or Rental record is submitted. Use the relevant "Submit" action on this lead instead.' });
   }
   if (newStage === 'closed' && !isAdmin) {
     return res.status(403).json({ success: false, message: 'Agents cannot close a lead directly. Submit a Sale for verification — the lead closes automatically once the sale is verified.' });
@@ -922,6 +925,15 @@ const getSuggestedAction = asyncHandler(async (req, res) => {
       case 'negotiation':
         action = 'prepare_quote';
         reason = 'Active negotiation - share pricing, terms, and close the deal.';
+        break;
+      case 'pending_verification':
+        action = 'awaiting_verification';
+        reason =
+          lead.dealType === 'rental'
+            ? 'Awaiting rental verification — no action needed until admin verifies.'
+            : lead.dealType === 'sale'
+              ? 'Awaiting sale verification — no action needed until admin verifies.'
+              : 'Awaiting verification — no action needed until admin verifies.';
         break;
       case 'closed':
         action = 'archive_lead';
