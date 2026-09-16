@@ -16,7 +16,7 @@ const monthLabel = (key) => {
 };
 
 // Pure-CSS bar chart (no chart library) - brass bars on parchment tracks.
-const SalesBarChart = ({ series }) => {
+const SalesBarChart = ({ series, unit = 'sale' }) => {
   const max = Math.max(...series.map((s) => Number(s.value) || 0), 0);
   return (
     <div className="flex items-end gap-1 sm:gap-2 h-44">
@@ -27,7 +27,7 @@ const SalesBarChart = ({ series }) => {
           <div key={s.month} className="flex-1 min-w-0 flex flex-col items-center h-full">
             <div
               className="w-full max-w-[36px] flex-1 bg-parchment rounded-sm flex items-end"
-              title={`${monthLabel(s.month)} (${s.month}): ${s.count} sale${s.count === 1 ? '' : 's'} · ${npr(value)}`}
+              title={`${monthLabel(s.month)} (${s.month}): ${s.count} ${unit}${s.count === 1 ? '' : 's'} · ${npr(value)}`}
             >
               <div
                 className="w-full bg-brass rounded-t-sm"
@@ -88,15 +88,19 @@ const Analytics = () => {
   };
 
   const salesOverTime = analytics?.salesOverTime || [];
+  const rentalsOverTime = analytics?.rentalsOverTime || [];
   const commissions = analytics?.commissions || {};
   const emi = analytics?.emiPortfolio || {};
   const leaderboard = analytics?.agentLeaderboard || [];
   const pipeline = analytics?.pipeline || {};
   const countsByStage = pipeline.countsByStage || {};
-  const pendingVerifications = pipeline.pendingSaleVerifications ?? 0;
+  const pendingSaleVerifications = pipeline.pendingSaleVerifications ?? 0;
+  const pendingRentalVerifications = pipeline.pendingRentalVerifications ?? 0;
 
   const verifiedSalesValue = salesOverTime.reduce((sum, s) => sum + (Number(s.value) || 0), 0);
   const salesCountTotal = salesOverTime.reduce((sum, s) => sum + (Number(s.count) || 0), 0);
+  const verifiedRentalsValue = rentalsOverTime.reduce((sum, s) => sum + (Number(s.value) || 0), 0);
+  const rentalsCountTotal = rentalsOverTime.reduce((sum, s) => sum + (Number(s.count) || 0), 0);
   const commissionSplitTotal = (Number(commissions.paidAmount) || 0) + (Number(commissions.pendingAmount) || 0);
 
   // Stage chips: zero-init over every known stage so nothing silently hides.
@@ -158,12 +162,22 @@ const Analytics = () => {
         </div>
       </div>
 
-      {/* KPI row 1 — sales + commissions */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
+      {/* KPI row 1 — sales + rentals + commissions */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
         <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
           <p className="text-xs uppercase tracking-wide text-slate-muted mb-2">Verified Sales Value (12 mo)</p>
           <p className="text-2xl font-display text-navy">{npr(verifiedSalesValue)}</p>
           <p className="text-xs text-slate-muted mt-1">{salesCountTotal} sale{salesCountTotal === 1 ? '' : 's'}</p>
+        </div>
+        <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
+          <p className="text-xs uppercase tracking-wide text-slate-muted mb-2">Verified Lease Value (12 mo)</p>
+          <p className="text-2xl font-display text-navy">{npr(verifiedRentalsValue)}</p>
+          <p className="text-xs text-slate-muted mt-1">{rentalsCountTotal} rental{rentalsCountTotal === 1 ? '' : 's'}</p>
+        </div>
+        <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
+          <p className="text-xs uppercase tracking-wide text-slate-muted mb-2">Deals Closed (12 mo)</p>
+          <p className="text-2xl font-display text-navy">{salesCountTotal + rentalsCountTotal}</p>
+          <p className="text-xs text-slate-muted mt-1">Sales + rentals combined</p>
         </div>
         <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
           <p className="text-xs uppercase tracking-wide text-slate-muted mb-2">Commission Earned</p>
@@ -216,6 +230,22 @@ const Analytics = () => {
         )}
       </div>
 
+      {/* Rentals volume & value over time */}
+      <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
+          <div>
+            <h2 className="font-display text-lg text-navy">Rentals volume &amp; value over time</h2>
+            <p className="text-xs text-slate-muted mt-0.5">Verified rentals, last 12 months · bar height = lease value</p>
+          </div>
+          <span className="text-xs text-slate-muted">Peak {npr(Math.max(...rentalsOverTime.map((s) => Number(s.value) || 0), 0))}</span>
+        </div>
+        {rentalsOverTime.length === 0 ? (
+          <p className="text-sm text-slate-muted py-10 text-center">No verified rentals in the last 12 months yet.</p>
+        ) : (
+          <SalesBarChart series={rentalsOverTime} unit="rental" />
+        )}
+      </div>
+
       {/* Commission paid vs pending */}
       <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card mb-6">
         <h2 className="font-display text-lg text-navy mb-5">Commission paid vs pending</h2>
@@ -259,21 +289,24 @@ const Analytics = () => {
       <div className="bg-white border border-navy/10 rounded-sm shadow-card mb-6 overflow-hidden">
         <div className="p-5 pb-3">
           <h2 className="font-display text-lg text-navy">Agent leaderboard</h2>
-          <p className="text-xs text-slate-muted mt-0.5">Top agents by verified sales value</p>
+          <p className="text-xs text-slate-muted mt-0.5">Top agents by commission earned</p>
         </div>
         {leaderboard.length === 0 ? (
           <p className="text-sm text-slate-muted py-10 text-center border-t border-navy/5">
-            No verified sales yet — the leaderboard fills in as sales are verified.
+            No verified sales or rentals yet — the leaderboard fills in as deals are verified.
           </p>
         ) : (
           <div className="overflow-x-auto border-t border-navy/5">
-            <table className="w-full text-sm min-w-[640px]">
+            <table className="w-full text-sm min-w-[900px]">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-muted">
                   <th className="px-5 py-3 w-10">#</th>
                   <th className="px-5 py-3">Agent</th>
                   <th className="px-5 py-3 text-right">Sales</th>
                   <th className="px-5 py-3 text-right">Sale Value</th>
+                  <th className="px-5 py-3 text-right">Rentals</th>
+                  <th className="px-5 py-3 text-right">Lease Value</th>
+                  <th className="px-5 py-3 text-right">Deals Closed</th>
                   <th className="px-5 py-3 text-right">Commission Earned</th>
                 </tr>
               </thead>
@@ -287,6 +320,9 @@ const Analytics = () => {
                     </td>
                     <td className="px-5 py-3 text-right text-slate-ink">{row.salesCount ?? 0}</td>
                     <td className="px-5 py-3 text-right text-slate-ink">{npr(row.salesValue)}</td>
+                    <td className="px-5 py-3 text-right text-slate-ink">{row.rentalCount ?? 0}</td>
+                    <td className="px-5 py-3 text-right text-slate-ink">{npr(row.rentalValue)}</td>
+                    <td className="px-5 py-3 text-right text-slate-ink">{row.dealsClosed ?? (row.salesCount ?? 0) + (row.rentalCount ?? 0)}</td>
                     <td className="px-5 py-3 text-right font-medium text-navy">{npr(row.commissionEarned)}</td>
                   </tr>
                 ))}
@@ -316,13 +352,22 @@ const Analytics = () => {
             </span>
           ))}
         </div>
-        <Link
-          to="/dashboard/admin/sales"
-          className="inline-flex items-center gap-2 text-sm font-medium text-brass-dark bg-brass/10 hover:bg-brass/20 border border-brass/25 rounded-sm px-3 py-2 transition-colors"
-        >
-          Sales awaiting verification: {pendingVerifications}
-          <span aria-hidden="true">→</span>
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            to="/dashboard/admin/verification-queue?type=sale"
+            className="inline-flex items-center gap-2 text-sm font-medium text-brass-dark bg-brass/10 hover:bg-brass/20 border border-brass/25 rounded-sm px-3 py-2 transition-colors"
+          >
+            Sales awaiting verification: {pendingSaleVerifications}
+            <span aria-hidden="true">→</span>
+          </Link>
+          <Link
+            to="/dashboard/admin/verification-queue?type=rental"
+            className="inline-flex items-center gap-2 text-sm font-medium text-brass-dark bg-brass/10 hover:bg-brass/20 border border-brass/25 rounded-sm px-3 py-2 transition-colors"
+          >
+            Rentals awaiting verification: {pendingRentalVerifications}
+            <span aria-hidden="true">→</span>
+          </Link>
+        </div>
       </div>
     </div>
   );

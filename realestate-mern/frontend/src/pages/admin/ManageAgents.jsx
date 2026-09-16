@@ -60,7 +60,8 @@ const ModalShell = ({ title, subtitle, onClose, children }) => (
 
 // Admin CRUD for agent accounts (Spec v2 F4). Performance stats and the
 // drill-down links come from GET /api/agents (salesCount/salesValue/
-// commissionEarned/commissionPaid nested under `performance`).
+// rentalCount/rentalValue/dealsClosed/commissionEarned/commissionPaid
+// nested under `performance`).
 const ManageAgents = () => {
   const { showToast } = useToast();
   const confirm = useConfirm();
@@ -282,6 +283,10 @@ const ManageAgents = () => {
     agent.performance || {
       salesCount: agent.salesCount ?? 0,
       salesValue: agent.salesValue ?? 0,
+      rentalCount: agent.rentalCount ?? 0,
+      rentalValue: agent.rentalValue ?? 0,
+      dealsClosed:
+        agent.dealsClosed ?? (agent.salesCount ?? 0) + (agent.rentalCount ?? 0),
       commissionEarned: agent.commissionEarned ?? 0,
       commissionPaid: agent.commissionPaid ?? 0,
     };
@@ -439,8 +444,20 @@ const ManageAgents = () => {
                       <p className="text-sm font-medium text-navy">{p.salesCount ?? 0}</p>
                     </div>
                     <div>
-                      <p className="text-[11px] uppercase tracking-wide text-slate-muted">Value</p>
+                      <p className="text-[11px] uppercase tracking-wide text-slate-muted">Sale value</p>
                       <p className="text-sm font-medium text-navy">{npr(p.salesValue)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-slate-muted">Rentals</p>
+                      <p className="text-sm font-medium text-navy">{p.rentalCount ?? 0}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-slate-muted">Lease value</p>
+                      <p className="text-sm font-medium text-navy">{npr(p.rentalValue)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wide text-slate-muted">Deals closed</p>
+                      <p className="text-sm font-medium text-navy">{p.dealsClosed ?? (p.salesCount ?? 0) + (p.rentalCount ?? 0)}</p>
                     </div>
                     <div>
                       <p className="text-[11px] uppercase tracking-wide text-slate-muted">Commission earned</p>

@@ -47,9 +47,11 @@ const AdminDashboard = () => {
           <StatCard label="Available" value={stats.availableProperties} accent="#3C6E52" />
           <StatCard label="Reserved" value={stats.reservedProperties} accent="#B8863B" />
           <StatCard label="Sold" value={stats.soldProperties} accent="#A6472F" />
+          <StatCard label="Rented" value={stats.rentedProperties} accent="#4C6FA0" />
           <StatCard label="Registered Users" value={stats.totalUsers} />
           <StatCard label="New Inquiries" value={stats.newInquiries} accent="#A6472F" />
-          <LinkedStatCard label="Sales to Verify" value={stats.pendingSaleVerifications} accent="#B8863B" to="/dashboard/admin/sales" />
+          <LinkedStatCard label="Sales to Verify" value={stats.pendingSaleVerifications} accent="#B8863B" to="/dashboard/admin/verification-queue?type=sale" />
+          <LinkedStatCard label="Rentals to Verify" value={stats.pendingRentalVerifications} accent="#B8863B" to="/dashboard/admin/verification-queue?type=rental" />
           <LinkedStatCard label="Agents" value={stats.agentCount} to="/dashboard/admin/agents" />
         </div>
       )}

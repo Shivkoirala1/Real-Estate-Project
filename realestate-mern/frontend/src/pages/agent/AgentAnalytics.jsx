@@ -28,7 +28,7 @@ const Delta = ({ current, previous }) => {
 };
 
 // Pure-CSS bar chart (no chart library) - brass bars on parchment tracks.
-const SalesBarChart = ({ series }) => {
+const SalesBarChart = ({ series, unit = 'sale' }) => {
   const max = Math.max(...series.map((s) => Number(s.value) || 0), 0);
   return (
     <div className="flex items-end gap-1 sm:gap-2 h-44">
@@ -39,7 +39,7 @@ const SalesBarChart = ({ series }) => {
           <div key={s.month} className="flex-1 min-w-0 flex flex-col items-center h-full">
             <div
               className="w-full max-w-[36px] flex-1 bg-parchment rounded-sm flex items-end"
-              title={`${monthLabel(s.month)} (${s.month}): ${s.count} sale${s.count === 1 ? '' : 's'} · ${npr(value)}`}
+              title={`${monthLabel(s.month)} (${s.month}): ${s.count} ${unit}${s.count === 1 ? '' : 's'} · ${npr(value)}`}
             >
               <div
                 className="w-full bg-brass rounded-t-sm"
@@ -102,9 +102,12 @@ const AgentAnalytics = () => {
   const performance = analytics?.performance || {};
   const thisMonth = performance.thisMonth || {};
   const previousMonth = performance.previousMonth || {};
+  const rentalsThisMonth = performance.rentalsThisMonth || {};
+  const rentalsPreviousMonth = performance.rentalsPreviousMonth || {};
   const commissions = analytics?.commissions || {};
   const emi = analytics?.emiPortfolio || {};
   const salesOverTime = analytics?.salesOverTime || [];
+  const rentalsOverTime = analytics?.rentalsOverTime || [];
 
   if (loading) {
     return (
@@ -173,6 +176,19 @@ const AgentAnalytics = () => {
           <Delta current={thisMonth.salesValue ?? 0} previous={previousMonth.salesValue ?? 0} />
           <p className="text-xs text-slate-muted mt-2">Previous month: {npr(previousMonth.salesValue)}</p>
         </div>
+        <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
+          <p className="text-xs uppercase tracking-wide text-slate-muted mb-2">Rentals This Month</p>
+          <p className="text-2xl font-display text-navy">{rentalsThisMonth.rentalCount ?? 0}</p>
+          <p className="text-sm text-slate-ink mt-1">{npr(rentalsThisMonth.rentalValue)} in lease value</p>
+          <Delta current={rentalsThisMonth.rentalCount ?? 0} previous={rentalsPreviousMonth.rentalCount ?? 0} />
+          <p className="text-xs text-slate-muted mt-2">Previous month: {rentalsPreviousMonth.rentalCount ?? 0} · {npr(rentalsPreviousMonth.rentalValue)}</p>
+        </div>
+        <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
+          <p className="text-xs uppercase tracking-wide text-slate-muted mb-2">Deals Closed This Month</p>
+          <p className="text-2xl font-display text-navy">{performance.dealsClosedThisMonth ?? (thisMonth.salesCount ?? 0) + (rentalsThisMonth.rentalCount ?? 0)}</p>
+          <p className="text-sm text-slate-ink mt-1">Sales + rentals combined</p>
+          <p className="text-xs text-slate-muted mt-2">Previous month: {performance.dealsClosedPreviousMonth ?? (previousMonth.salesCount ?? 0) + (rentalsPreviousMonth.rentalCount ?? 0)}</p>
+        </div>
       </div>
 
       {/* Commission summary */}
@@ -230,6 +246,24 @@ const AgentAnalytics = () => {
           </p>
         ) : (
           <SalesBarChart series={salesOverTime} />
+        )}
+      </div>
+
+      {/* My rentals over time */}
+      <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
+          <div>
+            <h2 className="font-display text-lg text-navy">My rentals over time</h2>
+            <p className="text-xs text-slate-muted mt-0.5">Verified rentals, last 12 months · bar height = lease value</p>
+          </div>
+          <span className="text-xs text-slate-muted">Peak {npr(Math.max(...rentalsOverTime.map((s) => Number(s.value) || 0), 0))}</span>
+        </div>
+        {rentalsOverTime.length === 0 ? (
+          <p className="text-sm text-slate-muted py-10 text-center">
+            No verified rentals in the last 12 months yet — verified rentals appear here.
+          </p>
+        ) : (
+          <SalesBarChart series={rentalsOverTime} unit="rental" />
         )}
       </div>
     </div>
