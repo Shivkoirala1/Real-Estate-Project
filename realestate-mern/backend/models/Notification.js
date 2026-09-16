@@ -19,6 +19,8 @@ const notificationSchema = new mongoose.Schema(
         'visit_confirmed',         // a visit has been confirmed
         'visit_rejected',          // a visit has been rejected
         'visit_cancelled',         // a buyer cancelled a visit
+        'visit_completed',         // a visit was marked completed (reward awarded)
+        'visit_rescheduled',       // a visit's schedule was changed
         'lead_assigned',           // a lead has been assigned to an agent
         'lead_created',            // a new lead entered the pipeline (admin alert)
         'lead_stage_changed',      // a lead moved to a different pipeline stage
@@ -27,15 +29,28 @@ const notificationSchema = new mongoose.Schema(
         'sale_submitted',          // Spec v2: agent filed a sale - admin alert (verification queue)
         'sale_verified',           // Spec v2: admin verified the agent's sale
         'sale_rejected',           // Spec v2: admin rejected the agent's sale (reason attached)
+        'rental_submitted',        // agent filed a rental - admin alert (verification queue)
+        'rental_verified',         // admin verified the agent's rental
+        'rental_rejected',         // admin rejected the agent's rental (reason attached)
+        'management_request_submitted',     // owner requested property management - admin alert
+        'management_request_approved',      // admin approved a management request
+        'management_request_rejected',      // admin rejected a management request
+        'management_agent_assigned',        // an agent was assigned to a management request
+        'management_status_changed',        // a management request changed status
+        'management_terminated',            // a management agreement was terminated
+        'management_termination_requested', // termination was requested on a management agreement
         'commission_paid',         // Spec v2: admin marked the agent's commission as paid
         'emi_installment_due',     // Spec v2: reminder a few days before an installment's dueDate
         'emi_installment_overdue', // Spec v2: an installment is past its due date
         'emi_plan_created',        // Spec v3: an EMI plan was initialized for a sale
+        'emi_plan_pending',        // Spec v3: verified EMI sale has no plan yet - admin alert
         'emi_installment_updated', // Spec v3: admin changed an installment's status/schedule
         'emi_plan_status_changed', // Spec v3: plan-level status changed (e.g. defaulted, completed)
         'emi_verification_requested', // Spec v3: buyer submitted proof of payment - admin/agent alert
         'emi_verification_approved',  // Spec v3: admin confirmed the buyer's payment
         'emi_verification_rejected',  // Spec v3: admin rejected the buyer's proof of payment
+        'review_posted',           // someone left a review on your property - lister alert
+        'review_reply',            // an admin replied to your review
         'system',                  // generic/system notification, reserved for future use
       ],
       required: true,
@@ -51,8 +66,9 @@ const notificationSchema = new mongoose.Schema(
     conversation: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', default: null },
     visit: { type: mongoose.Schema.Types.ObjectId, ref: 'Visit', default: null },
     property: { type: mongoose.Schema.Types.ObjectId, ref: 'Property', default: null },
-    // Spec v2: sale / commission / EMI related notifications
+    // Spec v2: sale / rental / commission / EMI related notifications
     sale: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale', default: null },
+    rental: { type: mongoose.Schema.Types.ObjectId, ref: 'Rental', default: null },
     commissionRecord: { type: mongoose.Schema.Types.ObjectId, ref: 'CommissionRecord', default: null },
     emiPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'EMIPlan', default: null },
 

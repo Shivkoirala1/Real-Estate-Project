@@ -7,12 +7,16 @@ const mongoose = require('mongoose');
  * visit, or manual creation by the team) - lives in this single collection
  * and flows through the same pipeline:
  *
- *   new -> contacted -> site_visit_scheduled -> negotiation -> pending_sale_verification -> closed / lost
+ *   new -> contacted -> site_visit_scheduled -> negotiation -> pending_verification -> closed / lost
  *
- * An agent moves a lead into `pending_sale_verification` by submitting a Sale
- * record. Agents can no longer set a lead directly to `closed` - only the
- * system does that automatically once an admin verifies the Sale (admins
+ * An agent moves a lead into `pending_verification` by submitting a Sale or
+ * Rental record. Agents can no longer set a lead directly to `closed` - only the
+ * system does that automatically once an admin verifies the Sale or Rental (admins
  * retain manual close/reopen for edge cases).
+ *
+ * `dealType` locks the lead to one transaction type ('sale' | 'rental') the
+ * first time a deal is filed against it - a lead wanting the other deal type
+ * needs a new Lead.
  *
  * `source` records where the lead originated, `activities` is the embedded
  * audit trail shown in the admin timeline, and the various references
@@ -28,7 +32,7 @@ const LEAD_STAGES = [
   'contacted',
   'site_visit_scheduled',
   'negotiation',
-  'pending_sale_verification',
+  'pending_verification',
   'closed',
   'lost',
 ];
@@ -60,6 +64,11 @@ const leadSchema = new mongoose.Schema(
       default: 'new',
       index: true,
     },
+    // Locked the first time a Sale or Rental is filed against this lead (or
+    // set at creation when the property's saleType is known). Immutable
+    // after that - a lead wanting the other deal type needs a new Lead.
+    // Null is the intended state for a lead that hasn't reached a filing yet.
+    dealType: { type: String, enum: ['sale', 'rental'], default: null },
     assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     category: {
       type: String,
@@ -96,6 +105,9 @@ const leadSchema = new mongoose.Schema(
             'sale_submitted',
             'sale_verified',
             'sale_rejected',
+            'rental_submitted',
+            'rental_verified',
+            'rental_rejected',
             'updated',
           ],
           default: 'updated',
@@ -123,7 +135,7 @@ leadSchema.index({ name: 'text', email: 'text' });
 
 // ---------- Virtuals ----------
 leadSchema.virtual('isActive').get(function () {
-  return !['closed', 'lost', 'pending_sale_verification'].includes(this.stage);
+  return !['closed', 'lost', 'pending_verification'].includes(this.stage);
 });
 
 // Overdue follow-up helper usable in aggregations via $gt comparisons elsewhere
@@ -142,7 +154,7 @@ leadSchema.statics.normalizeStage = function (stage) {
     contacted: 'contacted',
     site_visit_scheduled: 'site_visit_scheduled',
     negotiation: 'negotiation',
-    pending_sale_verification: 'pending_sale_verification',
+    pending_verification: 'pending_verification',
     closed: 'closed',
     lost: 'lost',
     // legacy capitalized values
@@ -151,8 +163,10 @@ leadSchema.statics.normalizeStage = function (stage) {
     'site visit scheduled': 'site_visit_scheduled',
     'office visit scheduled': 'site_visit_scheduled',
     'negotiation': 'negotiation',
-    'pending sale verification': 'pending_sale_verification',
-    'sale pending verification': 'pending_sale_verification',
+    'pending sale verification': 'pending_verification',
+    'sale pending verification': 'pending_verification',
+    // stage value stored by the pre-rename code - map it forward
+    pending_sale_verification: 'pending_verification',
     'closed': 'closed',
     'lost': 'lost',
   };

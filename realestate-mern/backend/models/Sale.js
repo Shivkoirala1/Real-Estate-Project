@@ -24,7 +24,9 @@ const saleSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Lead',
       required: [true, 'A lead is required to file a sale'],
-      index: true,
+      // No plain index here on purpose - a {lead:1} index would collide with
+      // the partial unique index below at index-sync time (same default
+      // name). Lead-scoped pending checks are served by that partial index.
     },
     property: {
       type: mongoose.Schema.Types.ObjectId,
@@ -109,8 +111,10 @@ saleSchema.index({ agent: 1, status: 1 });
 saleSchema.index({ property: 1, status: 1 });
 // Archival job scans exactly this shape (settled sales past their age cutoff)
 saleSchema.index({ status: 1, updatedAt: 1 });
-// A verified sale is one-to-one with its lead - block double-filing
-saleSchema.index({ lead: 1, status: 1 }, { unique: true, sparse: true });
+// At most one pending_review filing per lead at a time - rejected/verified
+// history is kept permanently, so the unique constraint must cover only the
+// pending state (same partial-index pattern as PropertyManagementRequest)
+saleSchema.index({ lead: 1 }, { unique: true, partialFilterExpression: { status: 'pending_review' } });
 
 // ---------- Statics ----------
 saleSchema.statics.STATUSES = SALE_STATUSES;

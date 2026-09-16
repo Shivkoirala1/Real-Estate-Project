@@ -27,7 +27,7 @@ export const getProperties = async (params = {}) => {
  * Get a single property with its similar listings
  * GET /api/properties/:id
  */
-export const getPropertyById = async (id) => {
+export const getPropertyByIdorSlug = async (id) => {
   const { data } = await api.get(`/properties/${id}`);
   return data; // { property, similarProperties }
 };

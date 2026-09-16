@@ -1,12 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
-  getPropertyById,
+  getPropertyByIdorSlug,
   shareProperty,
   toggleFavorite,
 } from "../../services/propertyService";
 import { createContactForm } from "../../services/contactFormService";
 import { createVisit } from "../../services/visitService";
+import {
+  getPropertyReviews,
+  getReviewEligibility,
+  createReview,
+} from "../../services/reviewService";
 import ImageGallery from "../../components/ImageGallery";
 import MapView from "../../components/MapView";
 import PropertyCard from "../../components/PropertyCard";
@@ -15,7 +20,7 @@ import { formatPrice } from "../../utils/format";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { useConfirm } from "../../context/ConfirmContext";
-import {nepaliInputToUTC} from "../../utils/timeConverter";
+import { nepaliInputToUTC } from "../../utils/timeConverter";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\d{10}$/;
@@ -90,6 +95,7 @@ const PropertyDetail = () => {
   const [reviewForm, setReviewForm] = useState({ rating: 5, comment: "" });
   const [reviewSending, setReviewSending] = useState(false);
   const [reviewError, setReviewError] = useState("");
+  const [reviewEligibility, setReviewEligibility] = useState(null);
 
   useEffect(() => {
     if (user) {
@@ -104,12 +110,13 @@ const PropertyDetail = () => {
 
   // Load property details and similar properties when the component mounts or the ID changes
   useEffect(() => {
+    if (property && (property._id === id || property.slug === id)) return;
     const load = async () => {
       setLoading(true);
       setNotFound(false);
       setLoadError("");
       try {
-        const data = await getPropertyById(id);
+        const data = await getPropertyByIdorSlug(id);
         setProperty(data.property);
         setSimilar(data.similarProperties);
       } catch (err) {
@@ -134,9 +141,11 @@ const PropertyDetail = () => {
   }, [id]);
 
   useEffect(() => {
+    if (!property?._id) return; // don't run until property is loaded
+
     const loadReviews = async () => {
       try {
-        const data = await getPropertyReviews(id);
+        const data = await getPropertyReviews(property._id);
         setReviews(data.reviews);
         setAvgRating(data.avgRating);
       } catch (err) {
@@ -144,13 +153,34 @@ const PropertyDetail = () => {
       }
     };
     loadReviews();
-  }, [id]);
+  }, [property?._id]);
+
+  // Whether the signed-in user is allowed to write a review (completed visit
+  // or verified purchase) is decided server-side - fetch it rather than
+  // guessing in the UI, since it's the same rule the API enforces.
+  useEffect(() => {
+    if (!user || !property?._id) {
+      setReviewEligibility(null);
+      return;
+    }
+    const loadEligibility = async () => {
+      try {
+        const data = await getReviewEligibility(property._id);
+        setReviewEligibility(data);
+      } catch (err) {
+        setReviewEligibility(null);
+      }
+    };
+    loadEligibility();
+  }, [property?._id, user]);
 
   const handleFavorite = async () => {
     if (!user) return showToast("Please sign in to save properties", "error");
     try {
       var data = await toggleFavorite(property._id);
-      (data.favorited == true) ? showToast("Saved to your favorites") : showToast("Removed from your favorites");
+      data.favorited == true
+        ? showToast("Saved to your favorites")
+        : showToast("Removed from your favorites");
     } catch (err) {
       showToast("Something went wrong", "error");
     }
@@ -180,6 +210,7 @@ const PropertyDetail = () => {
   // Handle the submission of the inquiry form
   const handleInquiry = async (e) => {
     e.preventDefault();
+    if (isStaff) return showToast("Only buyers can send inquiries", "error");
     if (!validateInquiry()) return;
 
     // Confirm with the user before sending the inquiry
@@ -240,6 +271,7 @@ const PropertyDetail = () => {
   // Handle the submission of the schedule-a-visit form
   const handleScheduleVisit = async (e) => {
     e.preventDefault();
+    if (isStaff) return showToast("Only buyers can schedule visits", "error");
     if (!user) return showToast("Please sign in to schedule a visit", "error");
     if (!validateVisit()) return;
 
@@ -293,20 +325,29 @@ const PropertyDetail = () => {
     setReviewError("");
     setReviewSending(true);
     try {
-      const { data } = await api.post("/reviews", {
+      const review = await createReview({
         propertyId: property._id,
         rating: reviewForm.rating,
         comment: reviewForm.comment,
       });
-      setReviews((prev) => [data.review, ...prev]);
+      setReviews((prev) => [review, ...prev]);
       setAvgRating((prevAvg) => {
         const total = prevAvg * reviews.length + reviewForm.rating;
         return Math.round((total / (reviews.length + 1)) * 10) / 10;
       });
       setReviewForm({ rating: 5, comment: "" });
+      setReviewEligibility({ eligible: false, alreadyReviewed: true });
       showToast("Review posted! You earned 100 YC 🎉");
     } catch (err) {
       setReviewError(err.response?.data?.message || "Failed to post review");
+      if (err.response?.data?.alreadyReviewed) {
+        setReviewEligibility({
+          eligible: false,
+          alreadyReviewed: true,
+          hidden: !!err.response?.data?.hidden,
+          reason: err.response?.data?.message,
+        });
+      }
     } finally {
       setReviewSending(false);
     }
@@ -349,6 +390,10 @@ const PropertyDetail = () => {
   const lng = property.location?.mapLocation?.lng;
   const isOwnListing = user && property.listedBy?._id === user._id;
   const isSold = property.status === "sold";
+
+  // Only regular users can inquire/visit — agents and admins cannot
+  const isBuyer = user?.role === "user";
+  const isStaff = user && (user.role === "agent" || user.role === "admin");
 
   return (
     <div className="max-w-7xl mx-auto px-5 md:px-8 py-10">
@@ -583,6 +628,24 @@ const PropertyDetail = () => {
               </Link>
               .
             </div>
+          ) : isStaff ? (
+            /* 🔑 new branch — agents/admins see this instead of forms */
+            <div className="bg-parchment/60 border border-dashed border-navy/20 rounded-sm px-4 py-4 text-sm text-slate-muted">
+              Inquiries and visit requests are available to buyers only.
+              {user.role === "agent" && (
+                <>
+                  {" "}
+                  Manage this listing from{" "}
+                  <Link
+                    to="/my-properties"
+                    className="text-brass hover:underline font-medium"
+                  >
+                    My Properties
+                  </Link>
+                  .
+                </>
+              )}
+            </div>
           ) : isSold ? (
             <div className="bg-brick-light/40 border border-dashed border-brick/30 rounded-sm px-4 py-4 text-sm text-slate-ink">
               This property has been sold and is no longer accepting inquiries
@@ -770,10 +833,11 @@ const PropertyDetail = () => {
             </span>
           )}
         </div>
-
+        {console.log("Review Eligibility:", reviewEligibility)}
         {user &&
           property.listedBy?._id !== user._id &&
-          !reviews.some((r) => r.user?._id === user._id) && (
+          !reviews.some((r) => r.user?._id === user._id) &&
+          (reviewEligibility?.eligible ? (
             <form
               onSubmit={handleReviewSubmit}
               className="border border-navy/10 rounded-sm p-6 mb-8 bg-parchment/40"
@@ -818,7 +882,16 @@ const PropertyDetail = () => {
                 {reviewSending ? "Posting..." : "Post review"}
               </button>
             </form>
-          )}
+          ) : (
+            reviewEligibility &&
+            (!reviewEligibility.alreadyReviewed ||
+              reviewEligibility.hidden) && (
+              <div className="border border-navy/10 rounded-sm p-4 mb-8 bg-parchment/40 text-sm text-slate-muted">
+                {reviewEligibility.reason ||
+                  "You can review a property only after a completed visit or a verified purchase."}
+              </div>
+            )
+          ))}
 
         {reviews.length === 0 ? (
           <p className="text-slate-muted text-sm">
@@ -853,6 +926,16 @@ const PropertyDetail = () => {
                 <p className="text-sm text-slate-ink leading-relaxed">
                   {r.comment}
                 </p>
+                {r.adminReply?.text && (
+                  <div className="mt-3 ml-4 pl-4 border-l-2 border-brass/40">
+                    <p className="text-xs font-semibold text-navy mb-1">
+                      Reply from {r.adminReply.repliedBy?.name || "Admin"}
+                    </p>
+                    <p className="text-sm text-slate-ink leading-relaxed">
+                      {r.adminReply.text}
+                    </p>
+                  </div>
+                )}
               </div>
             ))}
           </div>

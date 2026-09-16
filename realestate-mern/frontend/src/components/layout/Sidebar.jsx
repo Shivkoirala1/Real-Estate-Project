@@ -46,6 +46,10 @@ const adminNavGroups = [
         to: '/dashboard/admin/properties',
         end: true,
       },
+      {
+        label: 'Review Dashboard',
+        to: '/dashboard/admin/reviews',
+      },
     ],
   },
 
@@ -54,8 +58,8 @@ const adminNavGroups = [
     label: 'Sales & Finance',
     items: [
       {
-        label: 'Sales Verification',
-        to: '/dashboard/admin/sales',
+        label: 'Verification Queue',
+        to: '/dashboard/admin/verification-queue',
       },
       {
         label: 'Commission Management',
@@ -96,7 +100,7 @@ const adminNavGroups = [
 
   {
     id: 'content',
-    label: 'Content & Configuration',
+    label: 'Blogs & Configuration',
     items: [
       {
         label: 'Blog Management',

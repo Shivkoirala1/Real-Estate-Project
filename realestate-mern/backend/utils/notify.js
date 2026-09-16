@@ -5,8 +5,9 @@ const Notification = require('../models/Notification');
 // (e.g. an inquiry should still save even if, for some reason, the notification doesn't).
 //
 // Accepted related-record fields: inquiry (legacy), contactForm, lead,
-// conversation, visit, property - only the ones provided are stored, the rest
-// stay null. `link` is the in-app path the notification opens when clicked.
+// conversation, visit, property, sale, rental, commissionRecord, emiPlan -
+// only the ones provided are stored, the rest stay null. `link` is the
+// in-app path the notification opens when clicked.
 const notify = async ({
   recipient,
   type,
@@ -19,6 +20,7 @@ const notify = async ({
   visit = null,
   property = null,
   sale = null,
+  rental = null,
   commissionRecord = null,
   emiPlan = null,
   link = '',
@@ -37,6 +39,7 @@ const notify = async ({
       visit,
       property,
       sale,
+      rental,
       commissionRecord,
       emiPlan,
       link,

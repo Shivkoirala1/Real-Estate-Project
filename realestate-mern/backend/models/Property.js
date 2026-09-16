@@ -77,11 +77,12 @@ const propertySchema = new mongoose.Schema(
       video: { type: String, default: '' },
     },
 
-    status: {
-      type: String,
-      enum: ['available', 'reserved', 'sold'],
-      default: 'available',
-    },
+status: {
+  type: String,
+  enum: ['available', 'reserved', 'sold', 'rented'],
+  default: 'available',
+  index: true,
+},
 
     isApproved: { type: Boolean, default: true },
     isFeatured: { type: Boolean, default: false },
@@ -93,6 +94,13 @@ const propertySchema = new mongoose.Schema(
     listedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     soldTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     soldAt: { type: Date, default: null },
+    // Current-occupancy snapshot for the rental flow (set on Rental
+    // verification, cleared only by the explicit end-tenancy action). The
+    // verified Rental document remains the source of truth for the
+    // historical transaction.
+    rentedFrom: { type: Date, default: null },
+    rentedUntil: { type: Date, default: null },
+    tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
 );

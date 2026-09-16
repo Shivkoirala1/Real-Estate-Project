@@ -183,7 +183,7 @@ const createSale = asyncHandler(async (req, res) => {
       sale: sale._id,
       property: property._id,
       lead: lead._id,
-      link: '/dashboard/admin/sales',
+      link: '/dashboard/admin/verification-queue',
     }
   );
 
@@ -389,6 +389,8 @@ const verifySale = asyncHandler(async (req, res) => {
     await sale.save(opts(session));
 
     property.status = 'sold';
+    property.soldAt = property.soldAt || new Date();
+    property.soldTo = sale.buyer.user || null;
     await property.save(opts(session));
 
     lead.stage = 'closed';
@@ -428,7 +430,7 @@ const verifySale = asyncHandler(async (req, res) => {
     message: `Your sale for "${property.title}" was verified by ${req.user.name}. Commission NPR ${commissionAmount.toLocaleString()} recorded.`,
     sale: sale._id,
     property: property._id,
-    link: '/dashboard/agent/sales',
+    link: '/dashboard/agent/verification-queue',
   });
 
   // EMI plan initialization is an admin-only follow-up of the sale
@@ -529,7 +531,7 @@ const rejectSale = asyncHandler(async (req, res) => {
     message: `Your sale for "${property.title}" was rejected: ${trimmedReason}`,
     sale: sale._id,
     property: property._id,
-    link: '/dashboard/agent/sales',
+    link: '/dashboard/agent/verification-queue',
   });
 
   res.json({

@@ -7,7 +7,7 @@ import {
   findOrCreateCity,
 } from '../../services/categoryService';
 import {
-  getPropertyById,
+  getPropertyByIdorSlug,
   createProperty,
   updateProperty,
 } from '../../services/propertyService';
@@ -148,7 +148,7 @@ const AddEditProperty = () => {
 
   useEffect(() => {
     if (isEdit) {
-      getPropertyById(id).then((data) => {
+      getPropertyByIdorSlug(id).then((data) => {
         const p = data.property;
         setForm({
           title: p.title,

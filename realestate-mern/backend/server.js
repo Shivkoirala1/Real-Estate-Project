@@ -27,6 +27,7 @@ const conversationRoutes = require('./routes/conversationRoutes');
 
 // Spec v2: sales / commissions / EMI plans / agents / analytics
 const saleRoutes = require('./routes/saleRoutes');
+const rentalRoutes = require('./routes/rentalRoutes');
 const commissionRoutes = require('./routes/commissionRoutes');
 const emiPlanRoutes = require('./routes/emiPlanRoutes');
 const agentRoutes = require('./routes/agentRoutes');
@@ -113,6 +114,7 @@ app.use('/api/conversations', conversationRoutes);
 
 // Spec v2: sales / commissions / EMI plans / agents / analytics
 app.use('/api/sales', saleRoutes);
+app.use('/api/rentals', rentalRoutes);
 app.use('/api/commissions', commissionRoutes);
 app.use('/api/emi-plans', emiPlanRoutes);
 app.use('/api/agents', agentRoutes);

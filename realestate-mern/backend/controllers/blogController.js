@@ -22,7 +22,8 @@ const createBlog = async (req, res) => {
         message: "Title and body are required",
       });
     }
-
+    
+    const slug = createSlug(title);
     const existingBlog = await BlogPost.findOne({ slug });
 
     if (existingBlog) {

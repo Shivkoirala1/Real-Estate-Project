@@ -16,23 +16,21 @@ const mongoose = require('mongoose');
 
 const commissionRecordSchema = new mongoose.Schema(
   {
-    // One-to-one with the verified sale
-    sale: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Sale',
-      required: true,
-      unique: true,
-      index: true,
-    },
+    // One-to-one with the verified sale or rental
+    sale:   { type: mongoose.Schema.Types.ObjectId, ref: 'Sale',   default: null, index: true },
+rental: { type: mongoose.Schema.Types.ObjectId, ref: 'Rental', default: null, index: true },
     // Denormalized for easy reporting
     property: { type: mongoose.Schema.Types.ObjectId, ref: 'Property', required: true, index: true },
     agent: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
 
-    // Copied from Sale.agreedPrice at verification time
-    saleAmount: { type: Number, required: true, min: 0 },
+    // Transaction value - Sale.agreedPrice, or the rental's lease value
+    // (monthlyRent x durationInMonths)
+    transactionAmount: { type: Number, required: true, min: 0 },
     // Effective % at the time of calculation (frozen)
     commissionPercentage: { type: Number, required: true, min: 0, max: 100 },
-    // saleAmount x commissionPercentage / 100
+    // Sale: transactionAmount x commissionPercentage / 100.
+    // Rental: entered by the admin at verification; the % above is
+    // back-computed from this amount for reporting consistency.
     commissionAmount: { type: Number, required: true, min: 0 },
 
     // Simple tracking flag - Sale verification is already the approval gate,

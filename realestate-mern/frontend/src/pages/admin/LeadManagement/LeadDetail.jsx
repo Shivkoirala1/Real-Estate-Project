@@ -20,6 +20,7 @@ import LeadConversationThread from '../../../components/LeadManagement/LeadConve
 import LeadStatusBadge from '../../../components/LeadManagement/LeadStatusBadge';
 import LeadSourceIcon from '../../../components/LeadManagement/LeadSourceIcon';
 import SubmitSaleModal from '../../../components/LeadManagement/SubmitSaleModal';
+import SubmitRentalModal from '../../../components/LeadManagement/SubmitRentalModel';
 import { STAGES, STAGE_META, PRIORITIES, CATEGORIES } from '../../../utils/leadConstants';
 import { timeAgo } from '../../../utils/format';
 
@@ -40,6 +41,9 @@ const LeadDetail = () => {
   const [followUpLocal, setFollowUpLocal] = useState('');
   const [suggestion, setSuggestion] = useState(null);
   const [showSubmitSale, setShowSubmitSale] = useState(false);
+  const [saleModalOpen, setSaleModalOpen] = useState(false);
+  const isRentalProperty = property?.saleType === 'rent';
+
 
   const loadLead = useCallback(async () => {
     try {
@@ -274,7 +278,7 @@ const LeadDetail = () => {
               <label className="label-field">Assigned agent</label>
               <select
                 value={lead.assignedAgent?._id || ''}
-                disabled={saving || user?.role !== 'admin'}
+                disabled={saving}
                 onChange={(e) =>
                   runUpdate(
                     () => assignLeadToAgent(lead._id, e.target.value),
@@ -385,17 +389,19 @@ const LeadDetail = () => {
         {/* Right: conversations */}
         <LeadConversationThread lead={lead} onChange={loadLead} />
       </div>
-
-      <SubmitSaleModal
-        lead={lead}
-        property={lead.property}
-        open={showSubmitSale}
-        onClose={() => setShowSubmitSale(false)}
-        onSuccess={() => {
-          setShowSubmitSale(false);
-          loadLead();
-        }}
-      />
+{isRentalProperty ? (
+  <SubmitRentalModal
+    lead={lead} property={property}
+    open={saleModalOpen} onClose={() => setSaleModalOpen(false)}
+    onSuccess={() => { setSaleModalOpen(false); /* refetch lead */ }}
+  />
+) : (
+  <SubmitSaleModal
+    lead={lead} property={property}
+    open={saleModalOpen} onClose={() => setSaleModalOpen(false)}
+    onSuccess={() => { setSaleModalOpen(false); /* refetch lead */ }}
+  />
+)}
     </div>
   );
 };

@@ -55,9 +55,10 @@ import Inquiries from "./pages/admin/RevampedInquiries";
 import Visits from "./pages/admin/Visits";
 import EmiPlans from "./pages/admin/EmiPlans";
 import EmiPlanDetail from "./pages/admin/EmiPlanDetail";
-import SalesVerification from "./pages/admin/SalesVerification";
+import VerificationQueue from "./pages/admin/VerificationQueue";
 import Commissions from "./pages/admin/Commissions";
 import DataArchives from "./pages/admin/DataArchives";
+import ReviewManagement from "./pages/admin/ReviewManagement";
 import ManageAgents from "./pages/admin/ManageAgents";
 import Analytics from "./pages/admin/Analytics";
 import LeadDashboard from "./pages/admin/LeadManagement/LeadDashboard";
@@ -355,11 +356,11 @@ function App() {
             }
           />
           <Route
-            path="/dashboard/admin/sales"
+            path="/dashboard/admin/verification-queue"
             element={
               <ProtectedRoute roles={["admin"]}>
                 <DashboardLayout>
-                  <SalesVerification />
+                  <VerificationQueue />
                 </DashboardLayout>
               </ProtectedRoute>
             }
@@ -400,6 +401,16 @@ function App() {
               <ProtectedRoute roles={["admin"]}>
                 <DashboardLayout>
                   <DataArchives />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin/reviews"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <ReviewManagement />
                 </DashboardLayout>
               </ProtectedRoute>
             }

@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 /**
  * Archive - generic cold storage for records moved out of their hot
- * collection (Property, Sale, EMIPlan, ...).
+ * collection (Property, Sale, Rental, EMIPlan, ...).
  *
  * Why one generic collection instead of `archivedproperties`,
  * `archivedsales`, etc.: the source schemas change over time, and a
@@ -18,7 +18,7 @@ const mongoose = require('mongoose');
  * unique - a record can only be archived once at a time (it must be
  * restored before it can be archived again).
  */
-const ARCHIVABLE_TYPES = ['property', 'sale', 'emiPlan'];
+const ARCHIVABLE_TYPES = ['property', 'sale', 'rental', 'emiPlan'];
 
 const archiveSchema = new mongoose.Schema(
   {
