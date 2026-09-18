@@ -3,6 +3,7 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const morgan = require('morgan');
 
@@ -151,6 +152,18 @@ app.use(notFound);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+const httpServer = http.createServer(app);
+
+// Realtime delivery layer (server -> client only). Defensive like the
+// schedulers above: a Socket.IO init failure must never crash boot —
+// the API continues in REST-only mode.
+try {
+  const { init } = require('./realtime/io');
+  init(httpServer);
+} catch (err) {
+  console.error('Socket.IO not started (REST-only mode):', err.message);
+}
+
+httpServer.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
 });
