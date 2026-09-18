@@ -43,9 +43,12 @@ const run = async () => {
       email: sampleEmail,
       password: 'User@123',
       role: 'user',
-      selfiePhoto: '/uploads/placeholder-selfie.jpg',
-      citizenshipPhotoFront: '/uploads/placeholder-citizenship-front.jpg',
-      citizenshipPhotoBack: '/uploads/placeholder-citizenship-back.jpg',
+      // NOTE (legacy uploads deprecation): verification photos upload to
+      // Cloudinary at runtime; the old local placeholder files never existed
+      // on disk, so seed with empty strings (schema defaults) instead.
+      selfiePhoto: '',
+      citizenshipPhotoFront: '',
+      citizenshipPhotoBack: '',
       verificationStatus: 'verified',
       verifiedAt: new Date(),
       isEmailVerified: true,
