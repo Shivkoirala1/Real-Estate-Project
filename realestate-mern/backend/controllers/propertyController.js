@@ -87,6 +87,8 @@ const getProperties = asyncHandler(async (req, res) => {
 
   // Management-purpose properties are owner/admin-only and never publicly
   // listed - this default exclusion applies to every public query surface.
+  // isApproved is always true in practice (no approval workflow exists);
+  // the predicate stays as a guard so a future workflow can use the field.
   const query = { isArchived: false, isApproved: true, saleType: { $in: ['sale', 'rent'] } };
 
   if (keyword) {

@@ -233,6 +233,19 @@ describe('B1.15 XP:YC ratio documented as 2:1', () => {
   });
 });
 
+describe('B1.17 commission pages use the service layer', () => {
+  it('ManageVisits orphan is gone', () => {
+    assert.ok(!fs.existsSync(path.join(__dirname, '..', '..', 'frontend/src/pages/admin/ManageVisits.jsx')), 'orphan page remains');
+  });
+  it('no direct /commissions api calls in the two pages', () => {
+    for (const f of ['pages/agent/MyCommissions.jsx', 'pages/admin/Commissions.jsx']) {
+      const body = read(path.join(FRONT, f));
+      assert.ok(!/api\.(get|patch)\('\/commissions/.test(body), `${f} bypasses commissionService`);
+      assert.ok(body.includes('services/commissionService'), `${f} missing service import`);
+    }
+  });
+});
+
 describe('B1.16 owner inquiries view uses live endpoints only', () => {
   it('no dead /inquiries client references remain', () => {
     const { execSync } = require('node:child_process');

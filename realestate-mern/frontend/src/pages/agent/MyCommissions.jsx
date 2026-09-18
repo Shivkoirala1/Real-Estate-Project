@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../../utils/axios';
+import { getCommissions, getCommissionSummary } from '../../services/commissionService';
 import { imageUrl } from '../../utils/format';
 
 const PAGE_SIZE = 10;
@@ -36,10 +36,10 @@ const MyCommissions = () => {
         if (statusFilter === 'paid') params.isPaid = 'true';
         if (statusFilter === 'pending') params.isPaid = 'false';
         params.sort = sort;
-        const res = await api.get('/commissions', { params });
+        const data = await getCommissions(params);
         if (cancelled) return;
-        setCommissions(res.data?.commissions || []);
-        setPagination(res.data?.pagination || { page, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+        setCommissions(data.commissions || []);
+        setPagination(data.pagination || { page, limit: PAGE_SIZE, total: 0, totalPages: 1 });
       } catch (err) {
         if (cancelled) return;
         setError(err.response?.data?.message || 'Failed to load commissions');
@@ -54,10 +54,9 @@ const MyCommissions = () => {
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .get('/commissions/summary')
-      .then((res) => {
-        if (!cancelled) setSummary(res.data?.summary || null);
+    getCommissionSummary()
+      .then((data) => {
+        if (!cancelled) setSummary(data.summary || null);
       })
       .catch((err) => console.error('Failed to load commission summary:', err));
     return () => {

@@ -85,6 +85,10 @@ status: {
   default: 'available',
 },
 
+    // Policy of record: there is currently no approval workflow -
+    // listings go live immediately (isApproved defaults true and no
+    // controller ever clears it). isFeatured is a manual marketing flag
+    // (filterable on list); isArchived feeds the cold-storage archival job.
     isApproved: { type: Boolean, default: true },
     isFeatured: { type: Boolean, default: false },
     isArchived: { type: Boolean, default: false },

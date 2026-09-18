@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../../utils/axios';
+import { getCommissions, markCommissionPaid } from '../../services/commissionService';
 import { useToast } from '../../context/ToastContext';
 import { imageUrl } from '../../utils/format';
 
@@ -54,11 +55,11 @@ const Commissions = () => {
         if (fromDate) params.from = fromDate;
         if (toDate) params.to = toDate;
         params.sort = sort;
-        const res = await api.get('/commissions', { params });
+        const data = await getCommissions(params);
         if (cancelled) return;
-        setCommissions(res.data?.commissions || []);
-        setPagination(res.data?.pagination || { page, limit: PAGE_SIZE, total: 0, totalPages: 1 });
-        setTotals(res.data?.totals || null);
+        setCommissions(data.commissions || []);
+        setPagination(data.pagination || { page, limit: PAGE_SIZE, total: 0, totalPages: 1 });
+        setTotals(data.totals || null);
       } catch (err) {
         if (cancelled) return;
         setError(err.response?.data?.message || 'Failed to load commissions');
@@ -119,7 +120,7 @@ const Commissions = () => {
     if (!payModal) return;
     setPaying(true);
     try {
-      await api.patch(`/commissions/${payModal._id}/mark-paid`, { paidNote: payNote });
+      await markCommissionPaid(payModal._id, payNote);
       showToast('Commission marked as paid');
       setPayModal(null);
       setRefreshKey((k) => k + 1); // refetch list + totals with current filters
