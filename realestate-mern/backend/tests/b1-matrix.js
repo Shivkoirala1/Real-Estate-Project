@@ -223,6 +223,7 @@ async function main() {
   await runAnalyticsExport({ tAdmin, tLead });
   await runManualSold({ tFiling, f });
   await runOwnerInbox({ tBuyer });
+  await runSingleRole({ tAdmin, f });
 
   const fails = results.filter((x) => !x.pass);
   console.log(`\nB1+B2+B3+B4+B6+PM+SliceB live matrix: ${results.length - fails.length}/${results.length} pass`);
@@ -846,6 +847,15 @@ async function runOwnerInbox({ tBuyer }) {
   check('OI sent list returns own forms', r.status === 200 && forms.length >= 1 && forms.every((c) => c.response !== undefined), `status=${r.status} n=${forms.length}`);
   r = await req('GET', '/conversations/my-conversations?isActive=all', tBuyer);
   check('OI own threads reachable', r.status === 200 && Array.isArray(r.json.conversations), `status=${r.status}`);
+}
+
+// ---- Single-role invariant: role changes rejected, no upgrade path ----
+async function runSingleRole({ tAdmin, f }) {
+  const r = await req('PUT', `/users/${f.buyer._id}`, tAdmin, { role: 'agent' });
+  check('SR role change rejected 400', r.status === 400, `status=${r.status}`);
+  const User = require('../models/User');
+  const still = await User.findById(f.buyer._id).select('role').lean();
+  check('SR role unchanged after attempt', still && still.role === 'user', String(still && still.role));
 }
 
 // ---- Slice A fixtures: property-management lifecycle ----

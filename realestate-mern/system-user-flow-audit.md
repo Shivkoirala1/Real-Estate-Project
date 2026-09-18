@@ -734,7 +734,7 @@ Most connected hub: **Lead** (touched by contact-form, visit, conversation, sale
 9. ~~`lead_followup_due` notifications~~ — DECIDED/SHIPPED: daily job (`59dce10`).
 10. Verification-docs retention + `/uploads` access control — open: runtime uploads are Cloudinary-only and seed placeholders fixed, but no retention policy documented. Still open.
 11. ~~Delete semantics~~ — DECIDED and recorded (`release-policy-notes.md` R10): hard delete outside archive coverage, restore within it, no backfill.
-12. Multi-role users (agent who also lists as owner): currently single-role; is switching/dual-hat needed? — still open (unchanged).
+12. Multi-role users — DECIDED: not allowed, and verified to have zero footprint. `User.role` is a single enum string (`user|admin|agent`); role changes via API are rejected with 400 + audit log; agent creation refuses existing emails (409), so no upgrade/dual-hat path exists; seed data contains only single-role accounts. Locked in by B1.18 + live role-change rejection tests. Nothing to remove — no instances can exist by schema.
 
 ---
 

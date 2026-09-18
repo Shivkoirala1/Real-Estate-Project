@@ -258,3 +258,18 @@ describe('B1.16 owner inquiries view uses live endpoints only', () => {
     assert.ok(page.includes('getMyConversations'), 'threads source missing');
   });
 });
+
+describe('B1.18 single-role invariant (no multi-role)', () => {
+  it('role is a single enum string, no roles array exists', () => {
+    const src = read('models/User.js');
+    assert.match(src, /role: \{\s*\n?\s*type: String,/);
+    assert.match(src, /enum: \['user', 'admin', 'agent'\]/);
+    assert.ok(!/roles:\s*\[/.test(src), 'roles array field exists');
+  });
+  it('role changes are rejected and agent creation refuses existing emails', () => {
+    const users = read('controllers/userController.js');
+    assert.match(users, /Role changes are not supported/);
+    const agents = read('controllers/agentController.js');
+    assert.match(agents, /A user with this email already exists/);
+  });
+});
