@@ -135,5 +135,9 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "",
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "typescript-language-server": "^6.0.0"
+  }
 }
