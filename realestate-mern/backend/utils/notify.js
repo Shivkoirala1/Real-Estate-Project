@@ -1,4 +1,5 @@
 const Notification = require('../models/Notification');
+const { publishNotificationUnread } = require('../realtime/notifyPublisher');
 
 // Small helper so controllers don't repeat the same Notification.create boilerplate.
 // Swallows errors so a notification failure never breaks the primary request
@@ -27,7 +28,7 @@ const notify = async ({
 }) => {
   if (!recipient) return null;
   try {
-    return await Notification.create({
+    const doc = await Notification.create({
       recipient,
       type,
       title,
@@ -44,6 +45,11 @@ const notify = async ({
       propertyManagementRequest,
       link,
     });
+    // Realtime delivery (Phase 7): emit only after persistence succeeded.
+    // Never throws — publishNotificationUnread swallows all realtime
+    // failures, so fire-and-forget callers (no await) stay safe too.
+    await publishNotificationUnread(doc);
+    return doc;
   } catch (err) {
     console.error('Failed to create notification:', err.message);
     return null;

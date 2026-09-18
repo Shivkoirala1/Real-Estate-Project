@@ -4,6 +4,17 @@ const User = require('../models/User');
 const Lead = require('../models/Lead');
 const asyncHandler = require('../utils/asyncHandler');
 const { notify, notifyMany } = require('../utils/notify');
+const { getIO } = require('../realtime/io');
+const { emitConversationMessage } = require('../realtime/publishMessage');
+const { emitConversationStatus } = require('../realtime/publishStatus');
+const { publishConversationUnread } = require('../realtime/publishConversationUnread');
+// Shared unread-rule helpers + count queries (single source of truth for
+// REST unread-count endpoints and the realtime publisher).
+const {
+  sideForUser,
+  isUnreadForViewer,
+  countUnreadConversations,
+} = require('../realtime/unreadCounts');
 
 // Search by participant name. inquirer/owner are ObjectId refs, so a dotted
 // 'inquirer.name' regex can never match. Resolve names to ids first.
@@ -11,6 +22,10 @@ const resolveParticipantIds = async (search) => {
   const users = await User.find({ name: { $regex: search, $options: 'i' } }).select('_id');
   return users.map((u) => u._id);
 };
+
+// Single-message masking (shared with the realtime publisher so socket
+// payloads preserve REST's information-exposure rules).
+const { maskSingleMessage } = require('../realtime/masking');
 
 /**
  * Mask owner identity for non-admin users
@@ -20,48 +35,13 @@ const maskOwnerIdentity = (conversation, viewerIsAdmin) => {
   if (viewerIsAdmin) return conversation;
 
   const plain = conversation.toObject ? conversation.toObject() : conversation;
-  plain.messages = (plain.messages || []).map((msg) =>
-    msg.side === 'owner'
-      ? {
-          ...msg,
-          sender: undefined, // Hide actual admin who replied
-        }
-      : msg
-  );
+  plain.messages = (plain.messages || []).map((msg) => maskSingleMessage(msg, viewerIsAdmin));
   return plain;
 };
 
-/**
- * Resolve which side ('inquirer' | 'owner' | null) the given user sits on
- * for a conversation. Works with populated docs or raw ObjectIds.
- */
-const sideForUser = (conversation, userId) => {
-  const id = String(userId);
-  if (conversation.inquirer && String(conversation.inquirer._id || conversation.inquirer) === id) {
-    return 'inquirer';
-  }
-  if (conversation.owner && String(conversation.owner._id || conversation.owner) === id) {
-    return 'owner';
-  }
-  return null;
-};
-
-/**
- * A thread is unread for a viewer when the newest message was sent by the
- * OTHER side and arrived after the viewer's lastReadAt stamp (missing stamp
- * counts as never read).
- */
-const isUnreadForViewer = (conversation, viewerId) => {
-  const side = sideForUser(conversation, viewerId);
-  if (!side) return false;
-  const messages = conversation.messages || [];
-  const lastMessage = messages[messages.length - 1];
-  if (!lastMessage || lastMessage.side === side) return false;
-
-  const lastReadAt = conversation.lastReadAt?.[side];
-  if (!lastReadAt) return true;
-  return new Date(conversation.lastMessageAt).getTime() > new Date(lastReadAt).getTime();
-};
+/* sideForUser / isUnreadForViewer are imported from
+   realtime/unreadCounts above (single source of truth shared with the
+   realtime publisher). */
 
 /**
  * @desc    Create a new conversation thread
@@ -305,17 +285,7 @@ const getMyConversations = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const getUnreadCount = asyncHandler(async (req, res) => {
-  // Participant-scoped, active threads only. We only need the fields the
-  // unread rule uses, so the select keeps the payload tiny.
-  const conversations = await Conversation.find({
-    $or: [{ inquirer: req.user._id }, { owner: req.user._id }],
-    isActive: true,
-  }).select('inquirer owner messages.side lastMessageAt lastReadAt');
-
-  const unreadCount = conversations.reduce(
-    (total, conv) => total + (isUnreadForViewer(conv, req.user._id) ? 1 : 0),
-    0
-  );
+  const unreadCount = await countUnreadConversations(req.user._id);
 
   res.json({ success: true, unreadCount });
 });
@@ -368,6 +338,9 @@ const getConversationById = asyncHandler(async (req, res) => {
     conversation.lastReadAt = conversation.lastReadAt || {};
     conversation.lastReadAt[viewerSide] = new Date();
     await conversation.save();
+    // Realtime delivery (Phase 8): the stamp can clear the viewer's badge.
+    // Never throws — a socket failure must not fail the REST request.
+    await publishConversationUnread(req.user._id, getIO());
   }
 
   res.json({
@@ -410,6 +383,15 @@ const addMessage = asyncHandler(async (req, res) => {
     return res.status(409).json({
       success: false,
       message: 'This is a legacy conversation without an inquirer and can no longer be replied to.',
+    });
+  }
+
+  // Closed threads are read-only (matches the UI, which hides the reply
+  // box): they stay readable via GET but reject new messages.
+  if (!conversation.isActive) {
+    return res.status(403).json({
+      success: false,
+      message: 'This conversation is closed and can no longer receive messages.',
     });
   }
 
@@ -458,6 +440,23 @@ const addMessage = asyncHandler(async (req, res) => {
   }
 
   await conversation.populate('messages.sender', 'name');
+
+  // Realtime delivery (Phase 5): emit only after persistence succeeded.
+  // Never throws — a socket failure must not fail the REST request or roll
+  // back the saved message. Frontend dedupes by message _id.
+  const persistedMessage = conversation.messages[conversation.messages.length - 1];
+  await emitConversationMessage(getIO(), conversation, persistedMessage);
+
+  // Realtime delivery (Phase 8): a new message can make the OTHER side's
+  // thread unread. The sender's own thread is read for them and
+  // non-participant admins always count 0, so only the other participant
+  // is published to. Never throws.
+  // (inquirer/owner are populated above; `._id || raw` covers both shapes.)
+  const affectedUserId =
+    side === 'owner'
+      ? conversation.inquirer._id || conversation.inquirer
+      : conversation.owner._id || conversation.owner;
+  await publishConversationUnread(affectedUserId, getIO());
 
   // Send notifications
   if (side === 'owner') {
@@ -535,6 +534,15 @@ const closeConversation = asyncHandler(async (req, res) => {
   conversation.isActive = false;
   await conversation.save();
 
+  // Realtime delivery (Phase 6): emit only after persistence succeeded.
+  // Never throws — a socket failure must not fail the REST request.
+  await emitConversationStatus(getIO(), conversation);
+
+  // Realtime delivery (Phase 8): closing drops the thread from the
+  // active-only unread count, so both participants get fresh counts.
+  await publishConversationUnread(conversation.inquirer, getIO());
+  await publishConversationUnread(conversation.owner, getIO());
+
   res.json({
     success: true,
     message: 'Conversation closed',
@@ -567,6 +575,15 @@ const reopenConversation = asyncHandler(async (req, res) => {
 
   conversation.isActive = true;
   await conversation.save();
+
+  // Realtime delivery (Phase 6): emit only after persistence succeeded.
+  // Never throws — a socket failure must not fail the REST request.
+  await emitConversationStatus(getIO(), conversation);
+
+  // Realtime delivery (Phase 8): reopening can restore the thread into the
+  // active-only unread count, so both participants get fresh counts.
+  await publishConversationUnread(conversation.inquirer, getIO());
+  await publishConversationUnread(conversation.owner, getIO());
 
   res.json({
     success: true,
@@ -606,4 +623,7 @@ module.exports = {
   closeConversation,
   reopenConversation,
   deleteConversation,
+  // Shared with the realtime publisher (Phase 5): per-recipient socket
+  // payloads must preserve REST's masking rules.
+  maskSingleMessage,
 };

@@ -1,5 +1,7 @@
 const Notification = require('../models/Notification');
 const asyncHandler = require('../utils/asyncHandler');
+// Shared count query (single source of truth for REST + realtime publisher).
+const { countUnreadNotifications } = require('../realtime/unreadCounts');
 
 // @desc    Get the current user's notifications (paginated, newest first)
 // @route   GET /api/notifications?filter=unread&page=1&limit=20
@@ -35,7 +37,7 @@ const getNotifications = asyncHandler(async (req, res) => {
 // @route   GET /api/notifications/unread-count
 // @access  Private
 const getUnreadCount = asyncHandler(async (req, res) => {
-  const unreadCount = await Notification.countDocuments({ recipient: req.user._id, isRead: false });
+  const unreadCount = await countUnreadNotifications(req.user._id);
   res.json({ success: true, unreadCount });
 });
 
