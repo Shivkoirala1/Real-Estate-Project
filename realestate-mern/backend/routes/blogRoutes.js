@@ -41,8 +41,10 @@ router.delete("/:id",   protect,
 // Public
 router.get("/published", getPublishedBlogs);
 
-router.get("/:id", getBlogById);
-
+// NOTE: /slug/:slug must stay above /:id - otherwise a slug is swallowed
+// by the id handler below.
 router.get("/slug/:slug", getBlogBySlug);
+
+router.get("/:id", getBlogById);
 
 module.exports = router;

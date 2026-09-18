@@ -23,12 +23,11 @@ router.get('/property-types', getPropertyTypes);
 router.get('/districts', getDistricts);
 router.get('/cities', getCities);
 
-// Cities: any logged-in user can add one that's missing while posting a
-// property (e.g. a smaller town not yet in the list) - it's saved
-// permanently so every future user sees it too. Districts stay admin-only
-// since Nepal's official district list is fixed and complete.
+// Districts and cities stay admin-only: Nepal's official district list is
+// fixed and complete, and city entries are curated to match it (owners pick
+// from the existing list when posting; unknown towns go through an admin).
 router.post('/districts/find-or-create', protect, authorize('admin'), findOrCreateDistrict);
-router.post('/cities/find-or-create', protect, findOrCreateCity);
+router.post('/cities/find-or-create', protect, authorize('admin'), findOrCreateCity);
 
 // Admin-only write access
 router.post('/property-types', protect, authorize('admin'), createPropertyType);

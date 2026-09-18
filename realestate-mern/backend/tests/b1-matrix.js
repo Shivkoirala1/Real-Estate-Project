@@ -677,7 +677,19 @@ async function runB4({ tAdmin, tFiling, tLead, tBuyer, f }) {
   r = await req('GET', '/properties?limit=5', null);
   check('B4 dual envelope consistent', r.status === 200 && r.json.pagination?.total != null, `keys=${Object.keys(r.json || {})}`);
 
+  // ---- B4.5 category write guards + blog route shapes ----
+  r = await req('POST', '/categories/districts', tAdmin, { name: 'Matrix District', province: 'Bagmati' });
+  check('B4 admin district create', r.status === 201 && r.json.district?._id != null, `status=${r.status}`);
+  const matrixDistrict = r.json.district?._id;
+  r = await req('POST', '/categories/cities/find-or-create', tLead, { name: 'Matrix Town', district: matrixDistrict });
+  check('B4 city find-or-create agent 403', r.status === 403, `status=${r.status}`);
+  r = await req('POST', '/categories/cities/find-or-create', tAdmin, { name: 'Matrix Town', district: matrixDistrict });
+  check('B4 city find-or-create admin 201', (r.status === 201 || r.status === 200) && r.json.city?._id != null, `status=${r.status}`);
+  r = await req('GET', `/blogs/slug/${b4.blog.slug}`, null);
+  check('B4 slug lookup resolves', r.status === 200 && r.json.blog?.title === 'Matrix Post', `status=${r.status}`);
+
   // ---- B6.2 legacy keys removed; canonical pagination only ----
+  r = await req('GET', '/properties?limit=5', null);
   check('B6 legacy total/page/pages absent', !('total' in (r.json || {})) && !('page' in (r.json || {})) && !('pages' in (r.json || {})), `keys=${Object.keys(r.json || {})}`);
   check('B6 canonical pagination complete', r.json.pagination?.page === 1 && r.json.pagination?.limit === 5 && typeof r.json.pagination?.total === 'number' && typeof r.json.pagination?.totalPages === 'number', JSON.stringify(r.json.pagination));
   check('B6 count retained', typeof r.json.count === 'number', '');

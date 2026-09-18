@@ -202,3 +202,16 @@ describe('B1.12 admin export requires admin role', () => {
     assert.match(src, /Only admins can request the admin analytics report/);
   });
 });
+
+describe('B1.13 category and blog route hardening', () => {
+  it('city find-or-create matches the district admin guard', () => {
+    const src = read('routes/categoryRoutes.js');
+    assert.match(src, /router\.post\('\/cities\/find-or-create', protect, authorize\('admin'\), findOrCreateCity\)/);
+  });
+  it('slug route is registered before :id', () => {
+    const src = read('routes/blogRoutes.js');
+    const slugAt = src.indexOf('"/slug/:slug"');
+    const idAt = src.indexOf('"/:id", getBlogById');
+    assert.ok(slugAt !== -1 && idAt !== -1 && slugAt < idAt, 'slug route must precede :id');
+  });
+});
