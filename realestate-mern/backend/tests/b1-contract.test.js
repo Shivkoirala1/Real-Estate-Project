@@ -232,3 +232,16 @@ describe('B1.15 XP:YC ratio documented as 2:1', () => {
     assert.match(src, /xp = yc \* 2/);
   });
 });
+
+describe('B1.16 owner inquiries view uses live endpoints only', () => {
+  it('no dead /inquiries client references remain', () => {
+    const { execSync } = require('node:child_process');
+    const out = execSync('grep -rn "inquiryService" --include="*.jsx" --include="*.js" frontend/src || true', { cwd: path.join(__dirname, '..'), encoding: 'utf8' });
+    assert.equal(out.trim(), '', `dead inquiry references remain:\n${out}`);
+  });
+  it('owner page reads sent forms and own threads', () => {
+    const page = read(path.join(FRONT, 'pages/admin/RevampedInquiries.jsx'));
+    assert.ok(page.includes('getSentContactForms'), 'sent forms source missing');
+    assert.ok(page.includes('getMyConversations'), 'threads source missing');
+  });
+});
