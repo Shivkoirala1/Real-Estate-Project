@@ -127,6 +127,42 @@ describe('B1.8 seeder carries no legacy /uploads references', () => {
   });
 });
 
+describe('B1.10 manual lead close + close notifications', () => {
+  const src = read('controllers/leadController.js');
+  const model = read('models/Lead.js');
+  it('agents may close (only pending_verification is hand-blocked)', () => {
+    assert.match(src, /newStage === 'pending_verification'/);
+    assert.ok(!src.includes('Agents cannot close a lead directly'), 'old agent-close block remains');
+  });
+  it('close notifies the other party with a dedicated type, no generic dup', () => {
+    assert.match(src, /type: 'lead_closed'/);
+    assert.match(src, /role: 'admin'/);
+    const notif = read('models/Notification.js');
+    assert.ok(notif.includes("'lead_closed'"), 'lead_closed missing from Notification enum');
+  });
+  it('manual stage options exclude the system stage and include closed', () => {
+    const consts = read(path.join(FRONT, 'utils/leadConstants.js'));
+    assert.match(consts, /MANUAL_STAGES = STAGES\.filter\(\(s\) => s !== 'pending_verification'\)/);
+    for (const f of ['pages/admin/LeadManagement/LeadDetail.jsx', 'pages/admin/LeadManagement/LeadList.jsx', 'pages/agent/MyLeads.jsx']) {
+      assert.ok(read(path.join(FRONT, f)).includes('MANUAL_STAGES'), `${f} still offers system stages`);
+    }
+  });
+  it('close model comment matches the new rule', () => {
+    assert.ok(!model.includes('Agents can no longer set a lead directly to'), 'stale model comment remains');
+  });
+});
+
+describe('B1.11 referral code backfill', () => {
+  const model = read('models/User.js');
+  const auth = read('controllers/authController.js');
+  it('generator is shared and backfill is a no-op when a code exists', () => {
+    assert.match(model, /generateUniqueReferralCode/);
+    assert.match(model, /ensureReferralCode/);
+  });
+  it('session bootstrap mints missing codes without failing the request', () => {
+    assert.match(auth, /ensureReferralCode/);
+  });
+});
 describe('B1.9 lead follow-up overdue reminder generator', () => {
   const src = read('utils/leadFollowupReminders.js');
   const server = read('server.js');

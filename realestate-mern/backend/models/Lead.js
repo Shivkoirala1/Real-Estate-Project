@@ -10,9 +10,10 @@ const mongoose = require('mongoose');
  *   new -> contacted -> site_visit_scheduled -> negotiation -> pending_verification -> closed / lost
  *
  * An agent moves a lead into `pending_verification` by submitting a Sale or
- * Rental record. Agents can no longer set a lead directly to `closed` - only the
- * system does that automatically once an admin verifies the Sale or Rental (admins
- * retain manual close/reopen for edge cases).
+ * Rental record. The assigned agent (or an admin) may also close a lead by
+ * hand when appropriate; the lead still closes automatically once an admin
+ * verifies the Sale or Rental, and admins retain manual close/reopen for
+ * edge cases. `pending_verification` itself is never set by hand.
  *
  * `dealType` locks the lead to one transaction type ('sale' | 'rental') the
  * first time a deal is filed against it - a lead wanting the other deal type

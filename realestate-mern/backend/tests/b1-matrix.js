@@ -219,6 +219,7 @@ async function main() {
   await runPM({ tAdmin, f });
   await runSliceB({ tAdmin, tFiling, tBuyer, f });
   await runLeadReminders({ f });
+  await runLeadClose({ tAdmin, tLead, f });
 
   const fails = results.filter((x) => !x.pass);
   console.log(`\nB1+B2+B3+B4+B6+PM+SliceB live matrix: ${results.length - fails.length}/${results.length} pass`);
@@ -714,6 +715,58 @@ async function runLeadReminders({ f }) {
 
   await Notification.deleteMany({ type: 'lead_followup_due', lead: { $in: ids } });
   await Lead.deleteMany({ _id: { $in: ids } });
+}
+
+// ---- Manual lead close (agent may close; both directions notify) + referral backfill ----
+async function runLeadClose({ tAdmin, tLead, f }) {
+  const Lead = require('../models/Lead');
+  const Notification = require('../models/Notification');
+  const User = require('../models/User');
+  const tag = Math.random().toString(36).slice(2);
+  const mk = (over) => Lead.create({
+    name: 'Close', email: `close-${tag}-${Math.random().toString(36).slice(2)}@t.co`,
+    phone: '9800000003', property: f.property._id, assignedAgent: f.leadAgent._id, ...over,
+  });
+  let r;
+
+  // Agent closes own lead -> admins notified, no generic duplicate
+  const agentLead = await mk({ name: 'CloseByAgent' });
+  r = await req('PATCH', `/leads/${agentLead._id}/stage`, tLead, { stage: 'closed' });
+  check('LC agent close 200', r.status === 200 && r.json.lead?.stage === 'closed', `status=${r.status}`);
+  const nAdmin = await Notification.findOne({ recipient: f.admin._id, type: 'lead_closed', lead: agentLead._id }).lean();
+  check('LC agent close notifies admin', !!nAdmin && nAdmin.link === `/dashboard/lead-management/leads/${agentLead._id}`, nAdmin ? nAdmin.link : 'none');
+  check('LC close sends no generic stage_changed', (await Notification.countDocuments({ type: 'lead_stage_changed', lead: agentLead._id })) === 0, '');
+
+  // Admin closes assigned lead -> agent notified
+  const adminLead = await mk({ name: 'CloseByAdmin' });
+  r = await req('PATCH', `/leads/${adminLead._id}/stage`, tAdmin, { stage: 'closed' });
+  check('LC admin close 200', r.status === 200 && r.json.lead?.stage === 'closed', `status=${r.status}`);
+  const nAgent = await Notification.findOne({ recipient: f.leadAgent._id, type: 'lead_closed', lead: adminLead._id }).lean();
+  check('LC admin close notifies agent', !!nAgent, 'none');
+
+  // System stage stays protected for agents
+  const sysLead = await mk({ name: 'CloseSys' });
+  r = await req('PATCH', `/leads/${sysLead._id}/stage`, tLead, { stage: 'pending_verification' });
+  check('LC agent pending_verification still 400', r.status === 400, `status=${r.status}`);
+
+  // Referral: legacy account without a code gets one minted on session bootstrap
+  const legacy = await User.create({
+    name: 'Legacy', email: `legacy-${tag}@t.co`, password: 'password123',
+    phone: '9800000001', isEmailVerified: true, verificationStatus: 'verified',
+  });
+  await User.updateOne({ _id: legacy._id }, { $unset: { referralCode: 1 } });
+  const { generateToken } = require('../utils/generateToken');
+  r = await req('GET', '/auth/me', generateToken(legacy._id, legacy.role));
+  check('LC legacy user backfilled via me', r.status === 200 && typeof r.json.user?.referralCode === 'string' && r.json.user.referralCode.length > 0, `status=${r.status} code=${r.json.user?.referralCode}`);
+  const fresh = await User.create({
+    name: 'Fresh', email: `fresh-${tag}@t.co`, password: 'password123',
+    phone: '9800000001', isEmailVerified: true, verificationStatus: 'verified',
+  });
+  check('LC new user auto-receives code', typeof fresh.referralCode === 'string' && fresh.referralCode.length > 0, String(fresh.referralCode));
+
+  await Notification.deleteMany({ lead: { $in: [agentLead._id, adminLead._id, sysLead._id] } });
+  await Lead.deleteMany({ _id: { $in: [agentLead._id, adminLead._id, sysLead._id] } });
+  await User.deleteMany({ _id: { $in: [legacy._id, fresh._id] } });
 }
 
 // ---- Slice A fixtures: property-management lifecycle ----

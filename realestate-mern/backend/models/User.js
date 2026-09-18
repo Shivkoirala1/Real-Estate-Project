@@ -155,19 +155,22 @@ const userSchema = new mongoose.Schema(
 
 // Generates a short, human-shareable referral code the first time a user is
 // created, e.g. "RAM4F82". Retries on the rare collision.
-userSchema.pre('save', async function (next) {
-  if (this.referralCode || !this.isNew) return next();
-  const base = (this.name || 'YRE').replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase().padEnd(3, 'X');
+const generateUniqueReferralCode = async (name) => {
+  const base = (name || 'YRE').replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase().padEnd(3, 'X');
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
     const candidate = `${base}${suffix}`;
     // eslint-disable-next-line no-await-in-loop
     const exists = await mongoose.models.User.findOne({ referralCode: candidate });
-    if (!exists) {
-      this.referralCode = candidate;
-      break;
-    }
+    if (!exists) return candidate;
   }
+  return null;
+};
+
+userSchema.pre('save', async function (next) {
+  if (this.referralCode || !this.isNew) return next();
+  const code = await generateUniqueReferralCode(this.name);
+  if (code) this.referralCode = code;
   next();
 });
 
@@ -187,6 +190,17 @@ userSchema.methods.toSafeObject = function () {
   delete obj.password;
   obj.level = levelForXp(obj.xp || 0);
   return obj;
+};
+
+// Backfills a referral code for accounts created before codes existed.
+// Safe to call on every read: no-op when a code is already present.
+userSchema.methods.ensureReferralCode = async function () {
+  if (this.referralCode) return this.referralCode;
+  const code = await generateUniqueReferralCode(this.name);
+  if (!code) return null;
+  this.referralCode = code;
+  await this.save();
+  return code;
 };
 
 module.exports = mongoose.model('User', userSchema);

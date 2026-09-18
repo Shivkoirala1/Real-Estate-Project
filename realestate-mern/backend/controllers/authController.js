@@ -362,6 +362,15 @@ const getMe = asyncHandler(async (req, res) => {
   // Session bootstrap carries favorite ids + count only (no property docs);
   // full cards come from GET /api/properties/my/favorites.
   const user = await User.findById(req.user._id);
+  // Older accounts predate referral codes - mint one lazily so Profile and
+  // Wallet always have a code to display. No-op for everyone else.
+  if (user && !user.referralCode) {
+    try {
+      await user.ensureReferralCode();
+    } catch (err) {
+      console.error('Referral code backfill failed:', err.message);
+    }
+  }
   const safe = user ? user.toSafeObject() : null;
   if (safe) {
     const favs = Array.isArray(safe.favorites) ? safe.favorites : [];

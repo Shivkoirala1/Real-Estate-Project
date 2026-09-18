@@ -5,7 +5,7 @@ import { getAgents} from '../../../services/agentService';
 import { useToast } from '../../../context/ToastContext';
 import LeadSourceIcon from '../../../components/LeadManagement/LeadSourceIcon';
 import LeadStatusBadge from '../../../components/LeadManagement/LeadStatusBadge';
-import { STAGES, STAGE_META, PRIORITIES, PRIORITY_META } from '../../../utils/leadConstants';
+import { MANUAL_STAGES, STAGE_META, PRIORITIES, PRIORITY_META } from '../../../utils/leadConstants';
 import { timeAgo } from '../../../utils/format';
 
 // Table view of all leads with filtering, inline stage/agent updates and
@@ -149,7 +149,7 @@ const LeadList = ({ filters = {}, reloadKey = 0, onConverted }) => {
                         onChange={(e) => changeStage(lead, e.target.value)}
                         className="input-field text-xs py-1.5 w-40"
                       >
-                        {STAGES.map((s) => (
+                        {MANUAL_STAGES.map((s) => (
                           <option key={s} value={s}>
                             {STAGE_META[s].label}
                           </option>

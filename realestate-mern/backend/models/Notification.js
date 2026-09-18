@@ -24,6 +24,7 @@ const notificationSchema = new mongoose.Schema(
         'lead_assigned',           // a lead has been assigned to an agent
         'lead_created',            // a new lead entered the pipeline (admin alert)
         'lead_stage_changed',      // a lead moved to a different pipeline stage
+        'lead_closed',             // a lead was manually closed (agent close alerts admins, admin close alerts the agent)
         'lead_followup_due',       // a lead follow-up is overdue (admin/agent alert)
         'property_sold',           // a property's status was changed to sold - admin alert
         'sale_submitted',          // Spec v2: agent filed a sale - admin alert (verification queue)

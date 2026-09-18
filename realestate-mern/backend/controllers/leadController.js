@@ -500,16 +500,13 @@ const updateLeadStage = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'You are not authorized to update this lead' });
   }
 
-  // Spec v2 (Feature 1) role-based stage guards: the verification stage is
-  // entered only by submitting a Sale or Rental, and agents can no longer
-  // close a lead by hand - the lead closes automatically once a sale or
-  // rental is verified. Admins keep manual close/reopen for edge cases.
+  // Stage guards: the verification stage is entered only by submitting a
+  // Sale or Rental (nobody sets it by hand), while `closed` is a manual
+  // action for the admin or the assigned agent (canManage above already
+  // guarantees the caller is one of those two).
   const isAdmin = req.user.role === 'admin';
   if (newStage === 'pending_verification') {
     return res.status(400).json({ success: false, message: 'Leads move to verification automatically when a Sale or Rental record is submitted. Use the relevant "Submit" action on this lead instead.' });
-  }
-  if (newStage === 'closed' && !isAdmin) {
-    return res.status(403).json({ success: false, message: 'Agents cannot close a lead directly. Submit a Sale for verification — the lead closes automatically once the sale is verified.' });
   }
 
   const previousStage = lead.stage;
@@ -536,10 +533,42 @@ const updateLeadStage = asyncHandler(async (req, res) => {
   await lead.save();
   await lead.populate(LEAD_POPULATE);
 
-  // Notify the assigned agent when someone else moves their lead
-  if (
+  // Notify on stage moves. A manual close alerts the other party with a
+  // dedicated event (so it isn't buried as a generic stage change): an
+  // agent close notifies all admins, an admin close notifies the assigned
+  // agent. Non-close moves keep the existing generic notification.
+  const actorId = String(req.user._id);
+  if (newStage === 'closed') {
+    const closeMessage = `${req.user.name} closed lead "${lead.name}"`;
+    const closeLink = '/dashboard/lead-management/leads/' + String(lead._id);
+    if (isAdmin) {
+      const agentId = lead.assignedAgent && String(lead.assignedAgent._id || lead.assignedAgent);
+      if (agentId && agentId !== actorId) {
+        await notify({
+          recipient: lead.assignedAgent._id || lead.assignedAgent,
+          type: 'lead_closed',
+          title: 'Lead Closed',
+          message: closeMessage,
+          lead: lead._id,
+          link: closeLink,
+        });
+      }
+    } else {
+      const admins = await User.find({ role: 'admin' }).select('_id');
+      await notifyMany(
+        admins.map((a) => a._id),
+        {
+          type: 'lead_closed',
+          title: 'Agent closed a lead',
+          message: closeMessage,
+          lead: lead._id,
+          link: closeLink,
+        }
+      );
+    }
+  } else if (
     lead.assignedAgent &&
-    String(lead.assignedAgent._id || lead.assignedAgent) !== String(req.user._id)
+    String(lead.assignedAgent._id || lead.assignedAgent) !== actorId
   ) {
     await notify({
       recipient: lead.assignedAgent._id || lead.assignedAgent,

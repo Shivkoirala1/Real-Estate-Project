@@ -28,6 +28,7 @@ const typeMeta = {
   conversation_message: { label: 'Message', tint: 'bg-sage-light text-sage' },
   conversation_followup: { label: 'Follow-up', tint: 'bg-navy/10 text-navy' },
   lead_followup_due: { label: 'Follow-up overdue', tint: 'bg-brick-light text-brick' },
+  lead_closed: { label: 'Lead closed', tint: 'bg-navy text-ivory' },
   management_request_submitted: { label: 'Management request', tint: 'bg-brass-light/25 text-brass-dark' },
   management_request_accepted: { label: 'Request accepted', tint: 'bg-sage-light text-sage' },
   management_request_declined: { label: 'Request declined', tint: 'bg-brick-light text-brick' },
