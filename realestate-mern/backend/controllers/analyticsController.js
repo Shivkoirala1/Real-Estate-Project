@@ -684,6 +684,12 @@ const exportAnalytics = asyncHandler(async (req, res) => {
   }
   const format = req.query.format === 'pdf' ? 'pdf' : 'csv'; // default csv
 
+  // The admin report is platform-wide - only admins may request it. Agents
+  // use type=agent (self-scoped via resolveAgentScope below).
+  if (type === 'admin' && req.user.role !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Only admins can request the admin analytics report' });
+  }
+
   let analytics;
   let title;
   if (type === 'admin') {

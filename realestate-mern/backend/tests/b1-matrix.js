@@ -220,6 +220,7 @@ async function main() {
   await runSliceB({ tAdmin, tFiling, tBuyer, f });
   await runLeadReminders({ f });
   await runLeadClose({ tAdmin, tLead, f });
+  await runAnalyticsExport({ tAdmin, tLead });
 
   const fails = results.filter((x) => !x.pass);
   console.log(`\nB1+B2+B3+B4+B6+PM+SliceB live matrix: ${results.length - fails.length}/${results.length} pass`);
@@ -774,6 +775,31 @@ async function runLeadClose({ tAdmin, tLead, f }) {
   await Notification.deleteMany({ lead: { $in: [agentLead._id, adminLead._id, sysLead._id] } });
   await Lead.deleteMany({ _id: { $in: [agentLead._id, adminLead._id, sysLead._id] } });
   await User.deleteMany({ _id: { $in: [legacy._id, fresh._id] } });
+}
+
+// ---- Analytics export authorization boundary (CSV bodies are not JSON,
+// so statuses go through req() and content through a raw text fetch) ----
+async function runAnalyticsExport({ tAdmin, tLead }) {
+  let r;
+  r = await req('GET', '/analytics/export?type=admin&format=csv', tAdmin);
+  check('AX admin type=admin 200', r.status === 200, `status=${r.status}`);
+  r = await req('GET', '/analytics/export?type=admin&format=csv', tLead);
+  check('AX agent type=admin 403', r.status === 403, `status=${r.status}`);
+  r = await req('GET', '/analytics/export?type=agent&format=csv', tLead);
+  check('AX agent type=agent 200', r.status === 200, `status=${r.status}`);
+  r = await req('GET', '/analytics/export?type=agent&format=csv', null);
+  check('AX anonymous 401', r.status === 401, `status=${r.status}`);
+
+  const raw = async (url, token) => {
+    const res = await fetch(`http://127.0.0.1:5057/api${url}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    return { status: res.status, text: await res.text() };
+  };
+  const agentCsv = await raw('/analytics/export?type=agent&format=csv', tLead);
+  check('AX agent export self-scoped content', agentCsv.status === 200 && agentCsv.text.includes('Agent analytics report') && !agentCsv.text.includes('Admin analytics report'), `status=${agentCsv.status}`);
+  const adminCsv = await raw('/analytics/export?type=admin&format=csv', tAdmin);
+  check('AX admin export intact', adminCsv.status === 200 && adminCsv.text.includes('Admin analytics report'), `status=${adminCsv.status}`);
 }
 
 // ---- Slice A fixtures: property-management lifecycle ----

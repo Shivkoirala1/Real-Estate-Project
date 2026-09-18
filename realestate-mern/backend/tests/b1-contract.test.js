@@ -158,8 +158,7 @@ describe('B1.10 manual lead close + lost notifications', () => {
   });
 });
 
-describe('B1.11 referral code backfill', () => {
-  const model = read('models/User.js');
+describe('B1.11 referral code backfill', () => {  const model = read('models/User.js');
   const auth = read('controllers/authController.js');
   it('generator is shared and backfill is a no-op when a code exists', () => {
     assert.match(model, /generateUniqueReferralCode/);
@@ -193,5 +192,13 @@ describe('B1.9 lead follow-up overdue reminder generator', () => {
     const page = read(path.join(FRONT, 'pages/user/Notifications.jsx'));
     assert.ok(bell.includes('lead_followup_due'), 'bell missing lead_followup_due icon/tint');
     assert.ok(page.includes('lead_followup_due'), 'notifications page missing lead_followup_due label');
+  });
+});
+
+describe('B1.12 admin export requires admin role', () => {
+  it('exportAnalytics rejects non-admin type=admin with 403', () => {
+    const src = read('controllers/analyticsController.js');
+    assert.match(src, /type === 'admin' && req\.user\.role !== 'admin'/);
+    assert.match(src, /Only admins can request the admin analytics report/);
   });
 });
