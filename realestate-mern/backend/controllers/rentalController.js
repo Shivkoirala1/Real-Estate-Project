@@ -260,10 +260,8 @@ const getRentals = asyncHandler(async (req, res) => {
   const [rentals, total, statusCounts] = await Promise.all([
     Rental.find(query)
       .populate('property', 'title slug price status media.coverImage')
-      .populate('lead', 'name email phone')
       .populate('agent', 'name email')
       .populate('reviewedBy', 'name')
-      .populate('tenant.user', 'name email')
       .sort(rentalSortMap[sort] || rentalSortMap.newest)
       .skip(skip)
       .limit(limitNum),
@@ -274,14 +272,28 @@ const getRentals = asyncHandler(async (req, res) => {
     ]),
   ]);
 
+  // Same list contract as sales: tenant scalars + registered flag, no tenant
+  // object, no lead object, no activities history.
+  const items = rentals.map((r) => {
+    const o = r.toObject();
+    o.tenant = {
+      name: o.tenant?.name,
+      phone: o.tenant?.phone,
+      email: o.tenant?.email,
+      registered: Boolean(o.tenant?.user),
+    };
+    delete o.activities;
+    return o;
+  });
+
   const countsByStatus = {};
   Rental.STATUSES.forEach((s) => (countsByStatus[s] = 0));
   statusCounts.forEach(({ _id, count }) => (countsByStatus[_id] = count));
 
   res.json({
     success: true,
-    count: rentals.length,
-    rentals,
+    count: items.length,
+    rentals: items,
     pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
     countsByStatus,
   });
@@ -309,7 +321,7 @@ const getRentalById = asyncHandler(async (req, res) => {
 
   await rental.populate([
     { path: 'property', select: 'title slug price status saleType media.coverImage listedBy' },
-    { path: 'lead' },
+    { path: 'lead', select: '_id name email phone stage assignedAgent', populate: { path: 'assignedAgent', select: '_id name' } },
     { path: 'agent', select: 'name email' },
     { path: 'reviewedBy', select: 'name' },
     { path: 'tenant.user', select: 'name email phone' },

@@ -121,6 +121,11 @@ const createSale = asyncHandler(async (req, res) => {
   if (!property) {
     return res.status(404).json({ success: false, message: 'Property not found' });
   }
+  // Management-purpose properties are never sale-filed (mirrors the rental
+  // controller's saleType gate).
+  if (property.saleType !== 'sale') {
+    return res.status(400).json({ success: false, message: 'Only properties listed for sale can have a sale filed.' });
+  }
   if (property.status === 'sold') {
     return res.status(409).json({ success: false, message: 'This property is already sold.' });
   }
@@ -278,11 +283,8 @@ const getSales = asyncHandler(async (req, res) => {
   const [sales, total, statusCounts] = await Promise.all([
     Sale.find(query)
       .populate('property', 'title slug price status media.coverImage')
-      .populate('lead', 'name email phone')
       .populate('agent', 'name email')
       .populate('reviewedBy', 'name')
-      // buyer.user lets the UI show a "Registered" chip on the buyer block
-      .populate('buyer.user', 'name email')
       .sort(saleSortMap[sort] || saleSortMap.newest)
       .skip(skip)
       .limit(limitNum),
@@ -292,6 +294,21 @@ const getSales = asyncHandler(async (req, res) => {
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]),
   ]);
+
+  // List rows carry buyer scalars + a registered flag (no buyer.user object),
+  // remarks/rejectionReason (rendered in the queue), and no lead object or
+  // activities history (detail workspace owns those).
+  const items = sales.map((s) => {
+    const o = s.toObject();
+    o.buyer = {
+      name: o.buyer?.name,
+      phone: o.buyer?.phone,
+      email: o.buyer?.email,
+      registered: Boolean(o.buyer?.user),
+    };
+    delete o.activities;
+    return o;
+  });
 
   const countsByStatus = {};
   Sale.STATUSES.forEach((s) => {
@@ -303,8 +320,8 @@ const getSales = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    count: sales.length,
-    sales,
+    count: items.length,
+    sales: items,
     pagination: {
       page: pageNum,
       limit: limitNum,
@@ -340,10 +357,11 @@ const getSaleById = asyncHandler(async (req, res) => {
       .json({ success: false, message: 'You are not authorized to view this sale' });
   }
 
-  // Re-populate the lead in full now that access is confirmed
+  // Re-populate the lead with a bounded selection now that access is
+  // confirmed (full notes/activities stay in the lead workspace).
   await sale.populate([
     { path: 'property', select: 'title slug price status propertyType media.coverImage listedBy' },
-    { path: 'lead' },
+    { path: 'lead', select: '_id name email phone stage assignedAgent', populate: { path: 'assignedAgent', select: '_id name' } },
     { path: 'agent', select: 'name email' },
     { path: 'reviewedBy', select: 'name' },
     { path: 'buyer.user', select: 'name email phone' },

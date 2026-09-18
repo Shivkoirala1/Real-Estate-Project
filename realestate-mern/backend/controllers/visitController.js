@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Visit = require("../models/Visit");
 const Property = require("../models/Property");
 const Lead = require("../models/Lead");
@@ -285,20 +286,42 @@ const getVisits = asyncHandler(async (req, res) => {
       .skip(startIndex)
       .limit(limitNum);
   } else {
-    // Mixed view: prioritize the queue (pending reviews first) before
-    // pagination, which requires seeing the full result set.
-    const all = await Visit.find(query)
-      .populate(VISIT_POPULATE)
-      .sort({ requestedSlot: 1 });
-
-    all.sort(
-      (a, b) =>
-        (VISIT_STATUS_PRIORITY[a.status] ?? 9) -
-          (VISIT_STATUS_PRIORITY[b.status] ?? 9) ||
-        new Date(a.requestedSlot) - new Date(b.requestedSlot),
+    // Mixed view: priority-then-slot ordering is computed in the DB via a
+    // priority-rank stage so only the requested page is ever loaded
+    // (previously the whole collection was fetched and sliced in JS).
+    const toObjectId = (v) =>
+      mongoose.Types.ObjectId.isValid(v) ? new mongoose.Types.ObjectId(v) : v;
+    const match = { ...query };
+    if (match.assignedAgent) match.assignedAgent = toObjectId(match.assignedAgent);
+    if (match.property) match.property = toObjectId(match.property);
+    const pageIds = await Visit.aggregate([
+      { $match: match },
+      {
+        $addFields: {
+          __priorityRank: {
+            $switch: {
+              branches: [
+                { case: { $eq: ["$status", "pending_agent_review"] }, then: 0 },
+                { case: { $eq: ["$status", "confirmed"] }, then: 1 },
+                { case: { $eq: ["$status", "completed"] }, then: 2 },
+                { case: { $eq: ["$status", "rejected"] }, then: 3 },
+                { case: { $eq: ["$status", "cancelled"] }, then: 3 },
+              ],
+              default: 9,
+            },
+          },
+        },
+      },
+      { $sort: { __priorityRank: 1, requestedSlot: 1 } },
+      { $skip: startIndex },
+      { $limit: limitNum },
+      { $project: { _id: 1 } },
+    ]);
+    const order = new Map(pageIds.map((d, i) => [String(d._id), i]));
+    visits = await Visit.find({ _id: { $in: pageIds.map((d) => d._id) } }).populate(
+      VISIT_POPULATE,
     );
-
-    visits = all.slice(startIndex, startIndex + limitNum);
+    visits.sort((a, b) => order.get(String(a._id)) - order.get(String(b._id)));
   }
 
   res.json({
@@ -329,8 +352,12 @@ const getMyVisits = asyncHandler(async (req, res) => {
 
   const total = await Visit.countDocuments(query);
 
+  // Buyer-minimal: property identity only (no address/city — MyVisits
+  // renders title/slug/coverImage). assignedAgent keeps name/phone/email
+  // (all three rendered in MyVisits); requestedBy/convertedLead are never
+  // populated here by construction.
   const visits = await Visit.find(query)
-    .populate("property", "title slug media.coverImage address city")
+    .populate("property", "title slug media.coverImage")
     .populate("assignedAgent", "name phone email")
     .sort({ requestedSlot: -1 })
     .skip(startIndex)
@@ -381,9 +408,29 @@ const getVisitById = asyncHandler(async (req, res) => {
     });
   }
 
+  const staffViewer = isAdmin || isAssignedAgent;
+  const sanitized = sanitizeVisitForViewer(visit, staffViewer);
+  let outVisit = sanitized;
+  // Buyer-minimal detail: the requester (non-staff) gets no other-party
+  // contact, no workflow link, and no lister identity.
+  if (!staffViewer) {
+    const o = sanitized.toObject ? sanitized.toObject() : { ...sanitized };
+    delete o.requestedBy;
+    delete o.convertedLead;
+    if (o.property && typeof o.property === 'object' && o.property._id) {
+      o.property = {
+        _id: o.property._id,
+        title: o.property.title,
+        slug: o.property.slug,
+        media: o.property.media,
+      };
+    }
+    outVisit = o;
+  }
+
   res.json({
     success: true,
-    visit: sanitizeVisitForViewer(visit, isAdmin || isAssignedAgent),
+    visit: outVisit,
   });
 });
 
@@ -652,7 +699,13 @@ const updateVisit = asyncHandler(async (req, res) => {
   res.json({
     success: true,
     message: "Visit updated successfully",
-    visit,
+    visit: sanitizeVisitForViewer(
+      visit,
+      req.user.role === "admin" ||
+        (visit.assignedAgent &&
+          String(visit.assignedAgent._id ?? visit.assignedAgent) ===
+            String(req.user._id)),
+    ),
   });
 });
 

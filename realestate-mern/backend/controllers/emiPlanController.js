@@ -473,6 +473,29 @@ const getEmiPlans = asyncHandler(async (req, res) => {
     delete summary.totalOutstanding;
   }
 
+  // List rows keep installment scalars + verification status/reviewNote
+  // (all read by the EmiPlans/EMISales/MyEMI tables). Slip evidence and
+  // reviewer bookkeeping stay in the detail endpoint.
+  const VERIFICATION_LIST_KEYS = ['status', 'reviewNote'];
+  const trimPlanForList = (planDoc) => {
+    const o = planDoc.toObject ? planDoc.toObject() : planDoc;
+    o.installments = (o.installments || []).map((inst) => ({
+      installmentNumber: inst.installmentNumber,
+      dueDate: inst.dueDate,
+      amount: inst.amount,
+      status: inst.status,
+      paidDate: inst.paidDate,
+      paidAmount: inst.paidAmount,
+      remarks: inst.remarks,
+      verification: Object.fromEntries(
+        VERIFICATION_LIST_KEYS.filter((k) => inst.verification && inst.verification[k] !== undefined).map(
+          (k) => [k, inst.verification[k]]
+        )
+      ),
+    }));
+    return o;
+  };
+
   res.json({
     success: true,
     count: plans.length,
@@ -483,7 +506,7 @@ const getEmiPlans = asyncHandler(async (req, res) => {
       limit: limitNum,
     },
     summary,
-    plans: isAgentRequester ? sanitizeManyForAgent(plans) : plans,
+    plans: isAgentRequester ? sanitizeManyForAgent(plans.map(trimPlanForList)) : plans.map(trimPlanForList),
   });
 });
 

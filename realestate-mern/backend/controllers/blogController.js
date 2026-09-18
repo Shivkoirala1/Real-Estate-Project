@@ -57,6 +57,7 @@ const createBlog = async (req, res) => {
     });
 
     res.status(201).json({
+      success: true,
       message: "Blog created successfully",
       blog,
     });
@@ -112,6 +113,7 @@ const getBlogs = async (req, res) => {
     const totalPages = Math.ceil(total / limit);
 
     res.status(200).json({
+      success: true,
       blogs,
       pagination: {
         page,
@@ -163,6 +165,7 @@ const getPublishedBlogs = async (req, res) => {
     const totalPages = Math.ceil(total / limit);
 
     res.status(200).json({
+      success: true,
       blogs,
       pagination: {
         page,
@@ -192,7 +195,7 @@ const getBlogById = async (req, res) => {
       });
     }
 
-    res.status(200).json(blog);
+    res.status(200).json({ success: true, blog });
   } catch (error) {
     res.status(500).json({
       message: "Failed to fetch blog",
@@ -219,7 +222,7 @@ const getBlogBySlug = async (req, res) => {
         message: "Blog not found",
       });
     }
-    res.status(200).json(blog);
+    res.status(200).json({ success: true, blog });
   } catch (error) {
     res.status(500).json({
       message: "Failed to fetch blog",
@@ -279,6 +282,7 @@ const updateBlog = async (req, res) => {
     await blog.save();
 
     res.status(200).json({
+      success: true,
       message: "Blog updated successfully",
       blog,
     });

@@ -43,7 +43,11 @@ const toMatchStage = (filter) => {
 const COMMISSION_POPULATE = [
   { path: 'property', select: 'title slug media.coverImage status' },
   { path: 'agent', select: 'name email' },
-  { path: 'sale', select: 'agreedPrice paymentType submittedAt' },
+  // NOTE (B2): the sale entry was dropped — tables read denormalized
+  // transactionAmount/commissionPercentage/commissionAmount and never the
+  // populated sale.
+  // B4: rental populated symmetrically (additive; pair kept, no discriminator).
+  { path: 'rental', select: 'monthlyRent durationInMonths' },
 ];
 
 const commissionSortMap = {

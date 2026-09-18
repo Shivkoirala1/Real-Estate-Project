@@ -359,8 +359,17 @@ const resetPassword = asyncHandler(async (req, res) => {
 // @route   GET /api/auth/me
 // @access  Private
 const getMe = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user._id).populate('favorites');
-  res.json({ success: true, user: user ? user.toSafeObject() : null });
+  // Session bootstrap carries favorite ids + count only (no property docs);
+  // full cards come from GET /api/properties/my/favorites.
+  const user = await User.findById(req.user._id);
+  const safe = user ? user.toSafeObject() : null;
+  if (safe) {
+    const favs = Array.isArray(safe.favorites) ? safe.favorites : [];
+    safe.favoriteIds = favs.map((f) => String(f._id ?? f));
+    safe.favoritesCount = favs.length;
+    delete safe.favorites;
+  }
+  res.json({ success: true, user: safe });
 });
 
 // @desc    Update own profile (name, phone, avatar, verification documents)

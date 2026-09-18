@@ -57,6 +57,13 @@ const populateLead = (query) =>
     .populate('visit', 'visitType requestedSlot status')
     .populate('user', 'name email');
 
+// List rows render from base scalars + property/assignee only; contactForm,
+// visit and user stay as _id links (detail resolves them).
+const populateLeadList = (query) =>
+  query
+    .populate('assignedAgent', '_id name')
+    .populate('property', 'title slug media.coverImage price status');
+
 const LEAD_POPULATE = [
   { path: 'assignedAgent', select: 'name email phone' },
   { path: 'property', select: 'title slug media.coverImage price status' },
@@ -226,7 +233,7 @@ const getLeads = asyncHandler(async (req, res) => {
   };
 
   const [leads, total, stageCounts] = await Promise.all([
-    populateLead(Lead.find(query))
+    populateLeadList(Lead.find(query))
       .sort(sortMap[sort] || sortMap.newest)
       .skip(skip)
       .limit(limitNum),
@@ -284,7 +291,7 @@ const getMyLeads = asyncHandler(async (req, res) => {
   const skip = (pageNum - 1) * limitNum;
 
   const [leads, total] = await Promise.all([
-    populateLead(Lead.find(query))
+    populateLeadList(Lead.find(query))
       .sort({ nextFollowUp: 1, updatedAt: -1 })
       .skip(skip)
       .limit(limitNum),
@@ -332,7 +339,7 @@ const getLeadsByStage = asyncHandler(async (req, res) => {
   const skip = (pageNum - 1) * limitNum;
 
   const [leads, total] = await Promise.all([
-    populateLead(Lead.find(query))
+    populateLeadList(Lead.find(query))
       .sort({ priority: -1, updatedAt: -1 })
       .skip(skip)
       .limit(limitNum),
@@ -358,15 +365,17 @@ const getLeadsByStage = asyncHandler(async (req, res) => {
  * @access  Private (admin or assigned agent)
  */
 const getLeadById = asyncHandler(async (req, res) => {
+  // Thread summaries only (no messages[]): message bodies load on demand
+  // via GET /api/conversations/:id, which enforces participant-or-admin
+  // auth per thread (stricter than the old embedded-messages shape).
   const lead = await Lead.findById(req.params.id)
     .populate(LEAD_POPULATE)
     .populate({
       path: 'conversationThreads',
+      select: '_id property owner lastMessageAt isActive',
       populate: [
-        { path: 'inquirer', select: 'name email' },
-        { path: 'owner', select: 'name email' },
-        { path: 'property', select: 'title' },
-        { path: 'messages.sender', select: 'name' },
+        { path: 'property', select: '_id title' },
+        { path: 'owner', select: '_id' },
       ],
     });
 

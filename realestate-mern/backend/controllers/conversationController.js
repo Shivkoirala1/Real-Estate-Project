@@ -5,6 +5,13 @@ const Lead = require('../models/Lead');
 const asyncHandler = require('../utils/asyncHandler');
 const { notify, notifyMany } = require('../utils/notify');
 
+// Search by participant name. inquirer/owner are ObjectId refs, so a dotted
+// 'inquirer.name' regex can never match. Resolve names to ids first.
+const resolveParticipantIds = async (search) => {
+  const users = await User.find({ name: { $regex: search, $options: 'i' } }).select('_id');
+  return users.map((u) => u._id);
+};
+
 /**
  * Mask owner identity for non-admin users
  * Hides the actual admin user who replied on behalf of the property owner
@@ -195,13 +202,12 @@ const getConversations = asyncHandler(async (req, res) => {
     query.isActive = isActive === 'true';
   }
 
-  // Search by inquirer or owner name
+  // Search by participant name. inquirer/owner are ObjectId refs, so a
+  // dotted 'inquirer.name' regex can never match (B4 bug fix: admin search
+  // silently returned zero rows). Resolve names to ids first, then match.
   if (search) {
-    // This is a simplified search - for better performance, use text indexes
-    query.$or = [
-      { 'inquirer.name': { $regex: search, $options: 'i' } },
-      { 'owner.name': { $regex: search, $options: 'i' } },
-    ];
+    const ids = await resolveParticipantIds(search);
+    query.$or = [{ inquirer: { $in: ids } }, { owner: { $in: ids } }];
   }
 
   const skip = (page - 1) * limit;
@@ -237,14 +243,23 @@ const getConversations = asyncHandler(async (req, res) => {
  */
 const getMyConversations = asyncHandler(async (req, res) => {
   // Same string-default note as getConversations above.
-  const { isActive = 'true', page = 1, limit = 10 } = req.query;
+  // Server-side participant-name search (additive; the client-side page
+  // filter stays as a second narrowing pass).
+  const { isActive = 'true', page = 1, limit = 10, search } = req.query;
 
   const query = {
-    $or: [{ inquirer: req.user._id }, { owner: req.user._id }],
+    $and: [
+      { $or: [{ inquirer: req.user._id }, { owner: req.user._id }] },
+    ],
   };
 
   if (isActive !== 'all') {
-    query.isActive = isActive === 'true';
+    query.$and.push({ isActive: isActive === 'true' });
+  }
+
+  if (search) {
+    const ids = await resolveParticipantIds(search);
+    query.$and.push({ $or: [{ inquirer: { $in: ids } }, { owner: { $in: ids } }] });
   }
 
   const skip = (page - 1) * limit;

@@ -8,9 +8,11 @@ const propertySchema = new mongoose.Schema(
     description: { type: String, required: [true, 'Property description is required'] },
 
     propertyType: { type: mongoose.Schema.Types.ObjectId, ref: 'PropertyType', required: true },
-    saleType: { type: String, enum: ['sale', 'rent'], default: 'sale' },
+    saleType: { type: String, enum: ['sale', 'rent', 'management'], default: 'sale' }, // exactly one purpose: sale | rent | management
 
-    price: { type: Number, required: [true, 'Price is required'] },
+    // Management-purpose properties carry no asking price (validatePropertyInput
+    // enforces the same rule above schema level with friendlier errors).
+    price: { type: Number, required: [function () { return this.saleType !== 'management'; }, 'Price is required'] },
     currency: { type: String, default: 'NPR', enum: ['NPR'] }, // platform is NPR-only by design
     negotiable: { type: Boolean, default: false },
     // Spec v2 (Feature 2): optional commission override % for this specific

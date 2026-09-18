@@ -14,8 +14,13 @@ const CURRENT_YEAR = new Date().getFullYear();
 // PropertyType) - the two posting forms ask for genuinely different
 // information, so what's required differs too: a land listing has no
 // bedrooms to validate, and a house listing needs more than just an area.
-const validatePropertyInput = (data, category = 'building') => {
+// `purpose` is 'listing' (sale/rent marketing) or 'management' (registering
+// a property for management services). Management skips marketing-only
+// requirements (asking price, copy thresholds); identity/location fields
+// stay required regardless of purpose.
+const validatePropertyInput = (data, category = 'building', purpose = 'listing') => {
   const errors = [];
+  const isManagement = purpose === 'management';
   const title = (data.title || '').trim();
   const description = (data.description || '').trim();
   const details = data.details || {};
@@ -23,20 +28,25 @@ const validatePropertyInput = (data, category = 'building') => {
   const isLand = category === 'land';
 
   if (!title) errors.push('Property title is required');
-  else if (title.length < 10) errors.push('Title should be at least 10 characters');
+  else if (!isManagement && title.length < 10) errors.push('Title should be at least 10 characters');
   else if (title.length > 120) errors.push('Title must be under 120 characters');
 
   if (!description) errors.push('Property description is required');
-  else if (description.length < 30) errors.push('Description should be at least 30 characters');
+  else if (!isManagement && description.length < 30) errors.push('Description should be at least 30 characters');
 
   if (!data.propertyType) errors.push('Property type is required');
 
-  if (data.price === undefined || data.price === null || data.price === '') {
-    errors.push('Price is required');
-  } else if (Number(data.price) <= 0) {
-    errors.push('Price must be greater than 0');
-  } else if (Number(data.price) > 100_000_000_000) {
-    errors.push('Price is unrealistically high - please double-check it');
+  // Management properties have no asking price.
+  if (!isManagement) {
+    if (data.price === undefined || data.price === null || data.price === '') {
+      errors.push('Price is required');
+    } else if (Number(data.price) <= 0) {
+      errors.push('Price must be greater than 0');
+    } else if (Number(data.price) > 100_000_000_000) {
+      errors.push('Price is unrealistically high - please double-check it');
+    }
+  } else if (data.price !== undefined && data.price !== null && data.price !== '' && Number(data.price) < 0) {
+    errors.push('Price cannot be negative');
   }
 
   if (!location.district) errors.push('District is required');

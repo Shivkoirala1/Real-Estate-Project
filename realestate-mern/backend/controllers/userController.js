@@ -1,7 +1,8 @@
 const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
 const asyncHandler = require('../utils/asyncHandler');
-const crypto = require('crypto');
+const sendEmail = require('../utils/sendEmail');
+const { generateCode, CODE_TTL_MS } = require('../utils/otp');
 
 // Best-effort audit write - a failed audit log must never break the actual
 // admin operation, so failures are swallowed after logging.
@@ -33,7 +34,9 @@ const getUsers = asyncHandler(async (req, res) => {
     newest: { createdAt: -1 },
     oldest: { createdAt: 1 },
   };
-  const users = await User.find(query).sort(sortMap[sort] || sortMap.newest);
+  const users = await User.find(query)
+    .select('_id name email phone role verificationStatus isActive createdAt')
+    .sort(sortMap[sort] || sortMap.newest);
   res.json({ success: true, count: users.length, users });
 });
 
@@ -41,7 +44,8 @@ const getUsers = asyncHandler(async (req, res) => {
 // @route   GET /api/users/:id
 // @access  Private (admin)
 const getUser = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id);
+  const user = await User.findById(req.params.id)
+    .select('_id name email phone role verificationStatus isActive createdAt');
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
   res.json({ success: true, user });
 });
@@ -114,16 +118,28 @@ const toggleUserStatus = asyncHandler(async (req, res) => {
   res.json({ success: true, user: user.toSafeObject() });
 });
 
-// @desc    Reset a user's password (admin action - generates a temporary password)
+// @desc    Initiate a password reset for a user (admin action - emails a single-use code)
 // @route   POST /api/users/:id/reset-password
 // @access  Private (admin)
 const resetPassword = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-  const tempPassword = crypto.randomBytes(4).toString('hex');
-  user.password = tempPassword;
+  // Single-use reset code via the shared otp machinery (same as the
+  // self-service forgot-password flow): hash stored, 15-min TTL, cleared
+  // on consume. The user keeps their current password until they complete
+  // POST /api/auth/reset-password with the emailed code.
+  const { code, hash } = generateCode();
+  user.passwordResetCodeHash = hash;
+  user.passwordResetExpires = new Date(Date.now() + CODE_TTL_MS);
   await user.save();
+
+  await sendEmail({
+    to: user.email,
+    subject: 'Reset your Youth Real Estate password',
+    text: `An administrator initiated a password reset for your account. Your reset code is ${code}. It expires in 15 minutes. If you didn't expect this, you can ignore this email.`,
+    html: `<p>Hi ${user.name},</p><p>An administrator initiated a password reset for your account. Your reset code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px;">${code}</p><p>This code expires in 15 minutes. If you didn't expect this, you can safely ignore this email.</p>`,
+  });
 
   await recordAudit({
     actor: req.user._id,
@@ -134,8 +150,8 @@ const resetPassword = asyncHandler(async (req, res) => {
     newValue: '[redacted]',
   });
 
-  // In production this would be emailed to the user instead of returned in the response
-  res.json({ success: true, message: 'Password reset successfully', tempPassword });
+  // Never return the secret in the response body (proxies/browsers log it).
+  res.json({ success: true, message: 'If an account exists for this email, a reset code has been sent.' });
 });
 
 // @desc    Delete a user account
@@ -162,7 +178,9 @@ const deleteUser = asyncHandler(async (req, res) => {
 // @route   GET /api/users/verifications/pending
 // @access  Private (admin)
 const getPendingVerifications = asyncHandler(async (req, res) => {
-  const users = await User.find({ verificationStatus: 'pending' }).sort({ createdAt: 1 });
+  const users = await User.find({ verificationStatus: 'pending' })
+    .select('_id name email phone role verificationStatus isActive createdAt selfiePhoto citizenshipPhotoFront citizenshipPhotoBack verificationNote')
+    .sort({ createdAt: 1 });
   res.json({ success: true, count: users.length, users });
 });
 

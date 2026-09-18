@@ -285,6 +285,7 @@ const respondToContactForm = asyncHandler(async (req, res) => {
 
   const contactForm = await ContactForm.findById(req.params.id).populate(
     "user",
+    "_id name email",
   );
 
   if (!contactForm) {

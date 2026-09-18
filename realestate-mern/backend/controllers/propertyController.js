@@ -85,7 +85,9 @@ const getProperties = asyncHandler(async (req, res) => {
     featured,
   } = req.query;
 
-  const query = { isArchived: false, isApproved: true };
+  // Management-purpose properties are owner/admin-only and never publicly
+  // listed - this default exclusion applies to every public query surface.
+  const query = { isArchived: false, isApproved: true, saleType: { $in: ['sale', 'rent'] } };
 
   if (keyword) {
     // Case-insensitive partial match on title/description. This is more
@@ -121,12 +123,18 @@ const getProperties = asyncHandler(async (req, res) => {
   const limitNum = Math.max(Number(limit), 1);
   const skip = (pageNum - 1) * limitNum;
 
+  // Card DTO: whitelist only list-rendered fields (description, images[],
+  // full details/location, views/shares stay in the detail endpoint).
+  // Keyword search still matches title+description at the DB level.
+  const CARD_SELECT = '_id slug title price currency negotiable status saleType commissionPercentage media.coverImage location.city location.district location.municipality details.bedrooms details.bathrooms details.landArea details.landAreaUnit propertyType createdAt';
+
   const [properties, total] = await Promise.all([
     Property.find(query)
+      .select(CARD_SELECT)
       .populate('propertyType', 'name defaultCommissionPercentage')
       .populate('location.city', 'name')
       .populate('location.district', 'name')
-      .populate('listedBy', 'name email phone')
+      .populate('listedBy', 'name')
       .sort(sortOption)
       .skip(skip)
       .limit(limitNum),
@@ -138,9 +146,14 @@ const getProperties = asyncHandler(async (req, res) => {
   res.json({
     success: true,
     count: visibleProperties.length,
-    total,
-    page: pageNum,
-    pages: Math.ceil(total / limitNum),
+    // Canonical pagination envelope (B6: legacy flat total/page/pages removed;
+    // consumers read `pagination` — see PropertyListing/ManageProperties).
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum),
+    },
     properties: visibleProperties,
   });
 });
@@ -153,14 +166,31 @@ const getProperty = asyncHandler(async (req, res) => {
   const isObjectId = id.match(/^[0-9a-fA-F]{24}$/);
 
   const query = isObjectId ? { _id: id } : { slug: id };
+  // Contact info (phone/email) is disclosed to authenticated callers only.
+  // Anonymous viewers get identity fields; the detail UI falls back to
+  // "Not provided — use the form below" (B1 approved default).
+  const listedBySelect = req.user
+    ? 'name email phone selfiePhoto verificationStatus createdAt'
+    : 'name selfiePhoto verificationStatus createdAt';
   const property = await Property.findOne(query)
     .populate('propertyType', 'name category defaultCommissionPercentage')
     .populate('location.city', 'name')
     .populate('location.district', 'name')
-    .populate('listedBy', 'name email phone selfiePhoto verificationStatus createdAt');
+    .populate('listedBy', listedBySelect);
 
   if (!property) {
     return res.status(404).json({ success: false, message: 'Property not found' });
+  }
+
+  // Management-purpose properties are owner/admin-only. Anyone else gets a
+  // 404 (indistinguishable from a missing listing) on the public surface.
+  if (property.saleType === 'management') {
+    const viewer = req.user;
+    const listedById = property.listedBy?._id || property.listedBy;
+    const isOwner = viewer && listedById && String(listedById) === String(viewer._id);
+    if (!viewer || (viewer.role !== 'admin' && !isOwner)) {
+      return res.status(404).json({ success: false, message: 'Property not found' });
+    }
   }
 
   property.views += 1;
@@ -171,6 +201,7 @@ const getProperty = asyncHandler(async (req, res) => {
     propertyType: property.propertyType,
     isArchived: false,
     isApproved: true,
+    saleType: { $in: ['sale', 'rent'] },
   })
     .limit(4)
     .select('title price media.coverImage location status slug');
@@ -223,8 +254,15 @@ const coverImage = files.coverImage ? files.coverImage[0].path : (images[0] || '
   const propertyTypeDoc = body.propertyType ? await PropertyType.findById(body.propertyType).select('category') : null;
   const category = propertyTypeDoc?.category || 'building';
 
-  const validationErrors = validatePropertyInput(body, category);
-  if (!coverImage) validationErrors.push('A cover image is required');
+  // Exactly one purpose: sale | rent | management. Management properties
+  // skip marketing-only requirements (asking price, cover image).
+  if (body.saleType !== undefined && !['sale', 'rent', 'management'].includes(body.saleType)) {
+    return res.status(400).json({ success: false, message: 'Invalid saleType value' });
+  }
+  const purpose = body.saleType === 'management' ? 'management' : 'listing';
+
+  const validationErrors = validatePropertyInput(body, category, purpose);
+  if (!coverImage && purpose !== 'management') validationErrors.push('A cover image is required');
   if (validationErrors.length > 0) {
     return res.status(400).json({ success: false, message: validationErrors[0], errors: validationErrors });
   }
@@ -322,8 +360,9 @@ const newCoverImage = files.coverImage ? files.coverImage[0].path : currentMedia
   };
   const propertyTypeDoc = await PropertyType.findById(merged.propertyType).select('category');
   const propertyTypeCategory = propertyTypeDoc?.category || 'building';
-  const validationErrors = validatePropertyInput(merged, propertyTypeCategory);
-  if (!body.media.coverImage) validationErrors.push('A cover image is required');
+  const mergedPurpose = merged.saleType === 'management' ? 'management' : 'listing';
+  const validationErrors = validatePropertyInput(merged, propertyTypeCategory, mergedPurpose);
+  if (!body.media.coverImage && mergedPurpose !== 'management') validationErrors.push('A cover image is required');
   if (validationErrors.length > 0) {
     return res.status(400).json({ success: false, message: validationErrors[0], errors: validationErrors });
   }
@@ -530,9 +569,17 @@ const toggleFavorite = asyncHandler(async (req, res) => {
 // @route   GET /api/properties/my/favorites
 // @access  Private
 const getFavorites = asyncHandler(async (req, res) => {
+  // Card DTO (same projection as the property list): favorites render as
+  // cards, never as full documents.
   const user = await User.findById(req.user._id).populate({
     path: 'favorites',
-    populate: [{ path: 'propertyType', select: 'name' }],
+    select: '_id slug title price currency negotiable status saleType media.coverImage location.city location.district location.municipality details.bedrooms details.bathrooms details.landArea details.landAreaUnit propertyType createdAt',
+    populate: [
+      { path: 'propertyType', select: 'name' },
+      { path: 'location.city', select: 'name' },
+      { path: 'location.district', select: 'name' },
+      { path: 'listedBy', select: 'name' },
+    ],
   });
   res.json({ success: true, favorites: user.favorites });
 });

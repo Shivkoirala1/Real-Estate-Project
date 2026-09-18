@@ -13,8 +13,9 @@ const getNotifications = asyncHandler(async (req, res) => {
   if (filter === 'unread') query.isRead = false;
 
   const [notifications, total, unreadCount] = await Promise.all([
+    // No property populate: bell/list render _id/title/message/link/isRead
+    // only and navigate via the link string (link-id trim deferred to B3).
     Notification.find(query)
-      .populate('property', 'title slug media.coverImage')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit),
