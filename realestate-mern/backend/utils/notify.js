@@ -4,16 +4,15 @@ const Notification = require('../models/Notification');
 // Swallows errors so a notification failure never breaks the primary request
 // (e.g. an inquiry should still save even if, for some reason, the notification doesn't).
 //
-// Accepted related-record fields: inquiry (legacy), contactForm, lead,
-// conversation, visit, property, sale, rental, commissionRecord, emiPlan -
-// only the ones provided are stored, the rest stay null. `link` is the
-// in-app path the notification opens when clicked.
+// Accepted related-record fields: contactForm, lead,
+// conversation, visit, property, sale, rental, commissionRecord, emiPlan,
+// propertyManagementRequest - only the ones provided are stored, the rest
+// stay null. `link` is the in-app path the notification opens when clicked.
 const notify = async ({
   recipient,
   type,
   title,
   message,
-  inquiry = null,
   contactForm = null,
   lead = null,
   conversation = null,
@@ -23,6 +22,7 @@ const notify = async ({
   rental = null,
   commissionRecord = null,
   emiPlan = null,
+  propertyManagementRequest = null,
   link = '',
 }) => {
   if (!recipient) return null;
@@ -32,7 +32,6 @@ const notify = async ({
       type,
       title,
       message,
-      inquiry,
       contactForm,
       lead,
       conversation,
@@ -42,6 +41,7 @@ const notify = async ({
       rental,
       commissionRecord,
       emiPlan,
+      propertyManagementRequest,
       link,
     });
   } catch (err) {

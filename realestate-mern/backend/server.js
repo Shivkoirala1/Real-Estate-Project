@@ -14,11 +14,11 @@ const authRoutes = require('./routes/authRoutes');
 const propertyRoutes = require('./routes/propertyRoutes');
 const userRoutes = require('./routes/userRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
-const inquiryRoutes = require('./routes/inquiryRoutes'); // compat placeholder (see file)
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const blogRoutes = require('./routes/blogRoutes');
 const visitRoutes = require('./routes/visitRoutes');
+const propertyManagementRoutes = require('./routes/propertyManagementRoutes');
 
 // Unified lead management module
 const leadRoutes = require('./routes/leadRoutes');
@@ -101,10 +101,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/categories', categoryRoutes);
-app.use('/api', inquiryRoutes); // legacy placeholder - kept last among specific mounts
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/visits', visitRoutes);
+app.use('/api/property-management', propertyManagementRoutes);
 app.use('/api/blogs', blogRoutes);
 
 // Unified lead management module

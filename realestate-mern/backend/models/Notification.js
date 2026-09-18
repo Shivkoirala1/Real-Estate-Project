@@ -33,11 +33,9 @@ const notificationSchema = new mongoose.Schema(
         'rental_verified',         // admin verified the agent's rental
         'rental_rejected',         // admin rejected the agent's rental (reason attached)
         'management_request_submitted',     // owner requested property management - admin alert
-        'management_request_approved',      // admin approved a management request
-        'management_request_rejected',      // admin rejected a management request
-        'management_agent_assigned',        // an agent was assigned to a management request
-        'management_status_changed',        // a management request changed status
-        'management_terminated',            // a management agreement was terminated
+        'management_request_accepted',      // admin accepted a management request
+        'management_request_declined',      // admin declined a management request
+        'management_terminated',            // a management agreement was terminated (either path)
         'management_termination_requested', // termination was requested on a management agreement
         'commission_paid',         // Spec v2: admin marked the agent's commission as paid
         'emi_installment_due',     // Spec v2: reminder a few days before an installment's dueDate
@@ -60,7 +58,6 @@ const notificationSchema = new mongoose.Schema(
     message: { type: String, required: true, trim: true },
 
     // Related records - used by the frontend to render context and deep links
-    inquiry: { type: mongoose.Schema.Types.ObjectId, ref: 'Inquiry', default: null }, // legacy
     contactForm: { type: mongoose.Schema.Types.ObjectId, ref: 'ContactForm', default: null },
     lead: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead', default: null },
     conversation: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', default: null },
@@ -71,6 +68,7 @@ const notificationSchema = new mongoose.Schema(
     rental: { type: mongoose.Schema.Types.ObjectId, ref: 'Rental', default: null },
     commissionRecord: { type: mongoose.Schema.Types.ObjectId, ref: 'CommissionRecord', default: null },
     emiPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'EMIPlan', default: null },
+    propertyManagementRequest: { type: mongoose.Schema.Types.ObjectId, ref: 'PropertyManagementRequest', default: null },
 
     // Where the bell/notification card should take the user when clicked
     link: { type: String, default: '' },

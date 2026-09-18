@@ -1,40 +1,46 @@
 const mongoose = require('mongoose');
 
-const MANAGEMENT_STATUSES = ['pending_review', 'approved', 'rejected', 'active', 'terminated'];
-
-const MANAGEMENT_SERVICES = [
-  'tenant_management',
-  'rent_collection',
-  'property_inspection',
-  'maintenance_coordination',
-  'lease_management',
-  'property_marketing',
-  'utility_management',
-  'general_supervision',
+// Lifecycle: pending -> active | declined; active -> termination_pending
+//   -> terminated; active -> terminated (direct admin terminate).
+// Terminal states (declined, terminated) never transition; a new request
+// may be filed afterwards (partial index only guards live states).
+const MANAGEMENT_STATUSES = [
+  'pending',
+  'active',
+  'declined',
+  'termination_pending',
+  'terminated',
 ];
 
+// Service names are denormalized strings captured at submission time so a
+// later deactivation/rename of a ManagementService never alters what a
+// historical request displays. Canonical list lives in ManagementService;
+// this array is the submission-time snapshot, validated on create.
 const propertyManagementRequestSchema = new mongoose.Schema(
   {
     property: { type: mongoose.Schema.Types.ObjectId, ref: 'Property', required: true, index: true },
-    // Denormalized from Property.listedBy at creation time, for flat reporting queries
+    // Denormalized from Property.listedBy for flat reporting queries
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
 
-    // Independent of `status` - can be set/changed by an admin at any time,
-    // including before or after approval, without needing its own status value.
-    assignedAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    status: { type: String, enum: MANAGEMENT_STATUSES, default: 'pending', index: true },
 
-    status: { type: String, enum: MANAGEMENT_STATUSES, default: 'pending_review', index: true },
-    rejectionReason: { type: String, default: '', trim: true }, // required when status = rejected
+    services: [{ type: String, trim: true }],
 
-    services: [{ type: String, enum: MANAGEMENT_SERVICES }],
-    preferredStartDate: { type: Date, default: null },
-    ownerNotes: { type: String, default: '', trim: true },
+    // Owner's optional note at submission time
+    note: { type: String, default: '', trim: true },
 
-    reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-    reviewedAt: { type: Date, default: null },
-    startedAt: { type: Date, default: null },
-    terminatedAt: { type: Date, default: null },
+    // Admin's decline reason (required on decline)
+    decisionReason: { type: String, default: '', trim: true },
+    // Owner's optional reason for requesting termination
     terminationReason: { type: String, default: '', trim: true },
+    // Admin's reason for terminating (required on direct terminate)
+    terminatedReason: { type: String, default: '', trim: true },
+
+    decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    decidedAt: { type: Date, default: null },
+    terminationRequestedAt: { type: Date, default: null },
+    terminatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    terminatedAt: { type: Date, default: null },
 
     // Embedded audit trail - same shape used across the platform's other stateful modules
     activities: [
@@ -42,8 +48,12 @@ const propertyManagementRequestSchema = new mongoose.Schema(
         type: {
           type: String,
           enum: [
-            'submitted', 'approved', 'rejected', 'agent_assigned', 'agent_reassigned',
-            'status_changed', 'note_added', 'terminated',
+            'submitted',
+            'accepted',
+            'declined',
+            'termination_requested',
+            'terminated',
+            'note_added',
           ],
           default: 'note_added',
         },
@@ -57,16 +67,15 @@ const propertyManagementRequestSchema = new mongoose.Schema(
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
-// One live (non-terminal) request per property at a time
+// One live (non-terminal) request per property at a time. Declined and
+// terminated requests are terminal and do not block a fresh filing.
 propertyManagementRequestSchema.index(
   { property: 1, status: 1 },
-  { unique: true, partialFilterExpression: { status: { $in: ['pending_review', 'approved', 'active'] } } }
+  { unique: true, partialFilterExpression: { status: { $in: ['pending', 'active', 'termination_pending'] } } }
 );
-propertyManagementRequestSchema.index({ assignedAgent: 1, status: 1 });
 propertyManagementRequestSchema.index({ owner: 1, createdAt: -1 });
 
 propertyManagementRequestSchema.statics.STATUSES = MANAGEMENT_STATUSES;
-propertyManagementRequestSchema.statics.SERVICES = MANAGEMENT_SERVICES;
 
 propertyManagementRequestSchema.methods.recordActivity = function ({ type = 'note_added', message, by = null, byName = 'System' }) {
   this.activities.push({ type, message, by, byName });
