@@ -224,3 +224,11 @@ describe('B1.14 manual sold carries no revenue effects', () => {
     assert.match(block, /no commission generated/);
   });
 });
+
+describe('B1.15 XP:YC ratio documented as 2:1', () => {
+  it('no 1:1 claim remains in reward levels', () => {
+    const src = read('utils/rewardLevels.js');
+    assert.ok(!src.includes('1:1'), 'stale 1:1 claim remains');
+    assert.match(src, /xp = yc \* 2/);
+  });
+});

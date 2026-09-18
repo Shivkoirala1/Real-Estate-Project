@@ -34,8 +34,9 @@ const nextLevelInfo = (xp = 0) => {
 // the RewardTransaction "action" value and as the lookup key when awarding.
 //
 // NOTE: the client's reward sheet only specifies YC (Youth Coin) amounts -
-// there's no separate XP table. XP mirrors the YC amount 1:1 for every
-// action below (adjust independently here if that should ever change).
+// there's no separate XP table. XP is awarded at twice the YC amount
+// (xp = yc * 2, see rewards.js); level thresholds are calibrated to that
+// 2:1 behavior, so do not "fix" the multiplier without re-baselining levels.
 const ACTIONS = {
   ACCOUNT_REGISTER: { label: 'नयाँ Account Register', labelEn: 'New account registered', yc: 100 },
   PROFILE_COMPLETE: { label: 'Profile पूरा गर्ने', labelEn: 'Profile completed', yc: 50 },
