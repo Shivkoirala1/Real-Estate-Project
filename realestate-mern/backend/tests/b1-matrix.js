@@ -224,6 +224,7 @@ async function main() {
   await runManualSold({ tFiling, f });
   await runOwnerInbox({ tBuyer });
   await runSingleRole({ tAdmin, f });
+  await runVerificationRetention({ tLead });
 
   const fails = results.filter((x) => !x.pass);
   console.log(`\nB1+B2+B3+B4+B6+PM+SliceB live matrix: ${results.length - fails.length}/${results.length} pass`);
@@ -856,6 +857,45 @@ async function runSingleRole({ tAdmin, f }) {
   const User = require('../models/User');
   const still = await User.findById(f.buyer._id).select('role').lean();
   check('SR role unchanged after attempt', still && still.role === 'user', String(still && still.role));
+}
+
+// ---- Verification docs: agent list hides ID photos; retention nulls them on old deactivated accounts ----
+async function runVerificationRetention({ tLead }) {
+  const User = require('../models/User');
+  const { cleanupVerificationDocs } = require('../utils/verificationRetention');
+  let r = await req('GET', '/agents?limit=5', tLead);
+  const leaked = (r.json.agents || []).some((a) => 'selfiePhoto' in a || 'citizenshipPhotoFront' in a || 'citizenshipPhotoBack' in a || 'verificationNote' in a);
+  check('VR agent list hides ID photos', r.status === 200 && !leaked, `status=${r.status}`);
+
+  const tag = Math.random().toString(36).slice(2);
+  const old = new Date(Date.now() - 100 * 864e5);
+  const stale = await User.create({
+    name: 'Stale', email: `stale-${tag}@t.co`, password: 'password123',
+    isEmailVerified: true, verificationStatus: 'verified', isActive: false,
+    selfiePhoto: 'http://x/s.jpg', citizenshipPhotoFront: 'http://x/f.jpg', citizenshipPhotoBack: 'http://x/b.jpg',
+  });
+  await User.updateOne({ _id: stale._id }, { updatedAt: old });
+  // updateOne retouches updatedAt via schema timestamps - backdate at driver level instead.
+  await User.collection.updateOne({ _id: stale._id }, { $set: { updatedAt: old } });
+  const live = await User.create({
+    name: 'Live', email: `live-${tag}@t.co`, password: 'password123',
+    isEmailVerified: true, verificationStatus: 'verified',
+    selfiePhoto: 'http://x/s.jpg', citizenshipPhotoFront: 'http://x/f.jpg', citizenshipPhotoBack: 'http://x/b.jpg',
+  });
+
+  const dry = await cleanupVerificationDocs({ dryRun: true });
+  check('VR dry run changes nothing', !!dry && dry.affected === 1, JSON.stringify(dry));
+  const kept = await User.findById(stale._id).select('selfiePhoto').lean();
+  check('VR dry run preserves URLs', !!kept && kept.selfiePhoto === 'http://x/s.jpg', String(kept && kept.selfiePhoto));
+
+  const out = await cleanupVerificationDocs({ dryRun: false });
+  check('VR job processes the stale account', !!out && out.processed === 1 && out.affected === 1, JSON.stringify(out));
+  const nulled = await User.findById(stale._id).select('selfiePhoto citizenshipPhotoFront citizenshipPhotoBack').lean();
+  check('VR stale photo URLs nulled', !!nulled && !nulled.selfiePhoto && !nulled.citizenshipPhotoFront && !nulled.citizenshipPhotoBack, JSON.stringify(nulled));
+  const intact = await User.findById(live._id).select('selfiePhoto').lean();
+  check('VR active account untouched', !!intact && intact.selfiePhoto === 'http://x/s.jpg', String(intact && intact.selfiePhoto));
+
+  await User.deleteMany({ _id: { $in: [stale._id, live._id] } });
 }
 
 // ---- Slice A fixtures: property-management lifecycle ----

@@ -273,3 +273,25 @@ describe('B1.18 single-role invariant (no multi-role)', () => {
     assert.match(agents, /A user with this email already exists/);
   });
 });
+
+describe('B1.19 verification-docs protection', () => {
+  it('agent list strips identity-document fields', () => {
+    const src = read('controllers/agentController.js');
+    assert.match(src, /stripIdentityDocs/);
+    assert.ok((src.match(/stripIdentityDocs\(user\.toSafeObject\(\)\)/g) || []).length >= 2, 'both list branches must strip');
+  });
+  it('retention job targets only long-deactivated accounts with photos', () => {
+    const src = read('utils/verificationRetention.js');
+    assert.match(src, /isActive: false/);
+    assert.match(src, /VERIFICATION_DOCS_RETENTION_DAYS', 90/);
+    assert.match(src, /\$nin: \['', null\]/);
+    assert.match(src, /dryRun/);
+  });
+  it('retention job is registered and scheduled', () => {
+    const ctrl = read('controllers/archiveController.js');
+    assert.ok(ctrl.includes('cleanup_verification_docs'), 'admin job registry missing entry');
+    const server = read('server.js');
+    assert.match(server, /runVerificationRetentionPass/);
+    assert.match(server, /30 3 \* \* \*/);
+  });
+});

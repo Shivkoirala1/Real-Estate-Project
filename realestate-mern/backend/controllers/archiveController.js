@@ -3,6 +3,7 @@ const DataOpsLog = require('../models/DataOpsLog');
 const asyncHandler = require('../utils/asyncHandler');
 const archival = require('../utils/archival');
 const dataRetention = require('../utils/dataRetention');
+const verificationRetention = require('../utils/verificationRetention');
 
 /**
  * @desc    List archived records (cold storage), newest first
@@ -92,6 +93,7 @@ const ARCHIVAL_JOBS = {
 const RETENTION_JOBS = {
   cleanup_contact_forms: dataRetention.cleanupContactForms,
   cleanup_conversations: dataRetention.cleanupConversations,
+  cleanup_verification_docs: verificationRetention.cleanupVerificationDocs,
 };
 
 /**

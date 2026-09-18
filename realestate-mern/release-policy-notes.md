@@ -47,3 +47,19 @@ code change accompanies this document.
   creation. This is a deliberate, permanent decision — not deferred work.
   Any future dispute about a specific past sale is an ops/support matter,
   not a code migration.
+
+## Verification-docs retention (open question 1, decided)
+
+- Identity photos (`selfiePhoto`, `citizenshipPhotoFront`,
+  `citizenshipPhotoBack`) are kept while the account is active, plus a
+  90-day grace window after deactivation (`VERIFICATION_DOCS_RETENTION_DAYS`,
+  `backend/utils/verificationRetention.js`). Past the window the URLs are
+  nulled and the Cloudinary bytes deleted best-effort (failures logged, never
+  fatal). The grace window runs from last account activity post-deactivation
+  (`updatedAt`), since deactivation itself has no dedicated timestamp.
+- Eligibility decisions, statuses, and admin notes are kept (admin-only
+  visibility); only the image URLs/bytes expire.
+- The agent list (`GET /api/agents`, visible to agents) never returns
+  identity-document fields; the admin-only agent detail view is unchanged.
+- Dry-run supported via the admin archives job API
+  (`cleanup_verification_docs`) before trusting the nightly 03:30 schedule.

@@ -91,6 +91,13 @@ try {
     cron.schedule('0 3 * * *', () => {
       runRetentionPass().catch((err) => console.error('Data retention job failed:', err.message));
     });
+
+    // Nightly, 03:30 - null verification-photo URLs on long-deactivated
+    // accounts (90-day grace, see utils/verificationRetention.js).
+    const { runVerificationRetentionPass } = require('./utils/verificationRetention');
+    cron.schedule('30 3 * * *', () => {
+      runVerificationRetentionPass().catch((err) => console.error('Verification retention job failed:', err.message));
+    });
   }
 } catch (err) {
   console.error('Data lifecycle schedulers not started:', err.message);

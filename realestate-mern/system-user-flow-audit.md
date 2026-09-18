@@ -732,7 +732,7 @@ Most connected hub: **Lead** (touched by contact-form, visit, conversation, sale
 7. Rental scope: applications/agreements/payments in or out? EMI for rentals in or out (currently sale-only)? — DECIDED: out of scope this release (`release-policy-notes.md` R7).
 8. ~~Buyer sale/rental history page~~ — DECIDED: out of scope; EMI + visits + conversations suffice (`release-policy-notes.md` R7).
 9. ~~`lead_followup_due` notifications~~ — DECIDED/SHIPPED: daily job (`59dce10`).
-10. Verification-docs retention + `/uploads` access control — open: runtime uploads are Cloudinary-only and seed placeholders fixed, but no retention policy documented. Still open.
+10. Verification-docs (`selfie/citizenship`) retention + `/uploads` access control — DECIDED (see `release-policy-notes.md`): photos kept while active + 90-day post-deactivation grace, then URLs nulled + Cloudinary bytes deleted best-effort (`utils/verificationRetention.js`, nightly 03:30, dry-run via admin job API); agent list strips ID-photo fields. Runtime uploads remain Cloudinary-only; `/uploads` serves no identity documents.
 11. ~~Delete semantics~~ — DECIDED and recorded (`release-policy-notes.md` R10): hard delete outside archive coverage, restore within it, no backfill.
 12. Multi-role users — DECIDED: not allowed, and verified to have zero footprint. `User.role` is a single enum string (`user|admin|agent`); role changes via API are rejected with 400 + audit log; agent creation refuses existing emails (409), so no upgrade/dual-hat path exists; seed data contains only single-role accounts. Locked in by B1.18 + live role-change rejection tests. Nothing to remove — no instances can exist by schema.
 

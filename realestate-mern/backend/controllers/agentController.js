@@ -109,10 +109,21 @@ const PAID_EXPRESSION = {
   },
 };
 
+// The agent list is visible to agents as well as admins (unlike the
+// admin-only detail view), so identity-document fields are stripped from
+// every list item. Mirrors the user-roster whitelist approach.
+const stripIdentityDocs = (safe) => {
+  delete safe.selfiePhoto;
+  delete safe.citizenshipPhotoFront;
+  delete safe.citizenshipPhotoBack;
+  delete safe.verificationNote;
+  return safe;
+};
+
 /**
  * @desc    List agents with search + pagination + per-agent performance stats
  * @route   GET /api/agents
- * @access  Private (admin)
+ * @access  Private (admin, agent)
  */
 const getAgents = asyncHandler(async (req, res) => {
   const { search, sort } = req.query;
@@ -144,7 +155,7 @@ const getAgents = asyncHandler(async (req, res) => {
     const allAgents = await User.find(query).sort({ createdAt: -1 });
     const perfMap = await buildPerformanceForAgents(allAgents.map((a) => a._id));
     const allWithStats = allAgents.map((user) => ({
-      ...user.toSafeObject(),
+      ...stripIdentityDocs(user.toSafeObject()),
       performance: performanceFor(perfMap, user._id),
     }));
     allWithStats.sort(
@@ -161,7 +172,7 @@ const getAgents = asyncHandler(async (req, res) => {
 
     const perfMap = await buildPerformanceForAgents(agents.map((a) => a._id));
     agentsPage = agents.map((user) => ({
-      ...user.toSafeObject(),
+      ...stripIdentityDocs(user.toSafeObject()),
       performance: performanceFor(perfMap, user._id),
     }));
   }
