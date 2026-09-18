@@ -221,6 +221,7 @@ async function main() {
   await runLeadReminders({ f });
   await runLeadClose({ tAdmin, tLead, f });
   await runAnalyticsExport({ tAdmin, tLead });
+  await runManualSold({ tFiling, f });
 
   const fails = results.filter((x) => !x.pass);
   console.log(`\nB1+B2+B3+B4+B6+PM+SliceB live matrix: ${results.length - fails.length}/${results.length} pass`);
@@ -812,6 +813,29 @@ async function runAnalyticsExport({ tAdmin, tLead }) {
   check('AX agent export self-scoped content', agentCsv.status === 200 && agentCsv.text.includes('Agent analytics report') && !agentCsv.text.includes('Admin analytics report'), `status=${agentCsv.status}`);
   const adminCsv = await raw('/analytics/export?type=admin&format=csv', tAdmin);
   check('AX admin export intact', adminCsv.status === 200 && adminCsv.text.includes('Admin analytics report'), `status=${adminCsv.status}`);
+}
+
+// ---- Manual sold gating: status + attribution yes, revenue effects no ----
+async function runManualSold({ tFiling, f }) {
+  const Property = require('../models/Property');
+  const RewardTransaction = require('../models/RewardTransaction');
+  const CommissionRecord = require('../models/CommissionRecord');
+  const Notification = require('../models/Notification');
+  const ptype = (await Property.findById(f.property._id).select('propertyType').lean()).propertyType;
+  const prop = await Property.create({
+    title: 'Manual Sold Probe', description: 'probe property for manual sold gating checks',
+    propertyType: ptype, price: 1000000, listedBy: f.filingAgent._id,
+  });
+
+  const r = await req('PATCH', `/properties/${prop._id}/status`, tFiling, { status: 'sold', buyerEmail: 'buyer@t.co' });
+  check('MS manual sold flips status with attribution', r.status === 200 && r.json.property?.status === 'sold' && String(r.json.property?.soldTo || '') === String(f.buyer._id), `status=${r.status}`);
+  check('MS manual sold grants no rewards', (await RewardTransaction.countDocuments({ refId: prop._id })) === 0, '');
+  check('MS manual sold creates no commission', (await CommissionRecord.countDocuments({ property: prop._id })) === 0, '');
+  const n = await Notification.findOne({ type: 'property_sold', property: prop._id }).lean();
+  check('MS manual sold alerts admins as oversight flag', !!n && /no commission/i.test(n.message || ''), n ? n.message : 'none');
+
+  await Notification.deleteMany({ property: prop._id });
+  await Property.deleteOne({ _id: prop._id });
 }
 
 // ---- Slice A fixtures: property-management lifecycle ----

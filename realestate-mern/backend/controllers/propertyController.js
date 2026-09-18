@@ -410,8 +410,9 @@ const updatePropertyStatus = asyncHandler(async (req, res) => {
 
   // When a property newly becomes sold, the owner can optionally attribute
   // the sale to a specific buyer (e.g. someone who inquired or booked a site
-  // visit). That's what unlocks the buyer/seller purchase rewards below, and
-  // is also what a referral sale reward is chained off of.
+  // visit). This is attribution only: revenue effects (purchase/sale rewards,
+  // referral bonuses, commission records, lead closure) happen exclusively
+  // on the verified-Sale path, never here.
   let buyer = null;
   if (status === 'sold' && !wasAlreadySold && req.body.buyerEmail) {
     buyer = await User.findOne({ email: req.body.buyerEmail.trim().toLowerCase() });
@@ -425,30 +426,21 @@ const updatePropertyStatus = asyncHandler(async (req, res) => {
 
   // Alert admins whenever a property newly becomes sold - not on a repeat
   // no-op update, and regardless of whether the owner or an admin made the change.
+  // This is an oversight flag, not a routine notification: a manual status
+  // change generates no commission and no rewards, so an off-platform sale
+  // recorded here bypasses the verified-Sale revenue path by design.
   if (status === 'sold' && !wasAlreadySold) {
     const admins = await User.find({ role: 'admin' }).select('_id');
     await notifyMany(
       admins.map((a) => a._id),
       {
         type: 'property_sold',
-        title: 'Property marked as sold',
-        message: `"${property.title}" was marked as sold by ${req.user.name}`,
+        title: 'Property marked as sold (manual status change)',
+        message: `"${property.title}" was manually marked as sold by ${req.user.name} - no commission generated`,
         property: property._id,
         link: '/dashboard/admin/properties',
       }
     );
-
-    if (buyer) {
-      await awardReward(buyer._id, 'PROPERTY_BUY', { refId: property._id, refModel: 'Property' });
-      await awardReward(property.listedBy, 'PROPERTY_SELL', { refId: property._id, refModel: 'Property' });
-
-      // If the buyer originally signed up through a referral, the referrer
-      // earns the (much larger) referral-sale bonus on top of their
-      // original sign-up bonus.
-      if (buyer.referredBy) {
-        await awardReward(buyer.referredBy, 'REFERRAL_SALE', { refId: property._id, refModel: 'Property' });
-      }
-    }
   }
 
   res.json({ success: true, property });

@@ -215,3 +215,12 @@ describe('B1.13 category and blog route hardening', () => {
     assert.ok(slugAt !== -1 && idAt !== -1 && slugAt < idAt, 'slug route must precede :id');
   });
 });
+
+describe('B1.14 manual sold carries no revenue effects', () => {
+  it('status endpoint awards no rewards and flags the alert as oversight', () => {
+    const src = read('controllers/propertyController.js');
+    const block = src.slice(src.indexOf('const updatePropertyStatus'), src.indexOf('const endTenancy'));
+    assert.ok(!block.includes('awardReward'), 'manual sold still grants rewards');
+    assert.match(block, /no commission generated/);
+  });
+});
