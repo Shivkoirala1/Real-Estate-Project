@@ -717,7 +717,7 @@ async function runLeadReminders({ f }) {
   await Lead.deleteMany({ _id: { $in: ids } });
 }
 
-// ---- Manual lead close (agent may close; both directions notify) + referral backfill ----
+// ---- Manual lead close (agents: lost yes, closed no) + referral backfill ----
 async function runLeadClose({ tAdmin, tLead, f }) {
   const Lead = require('../models/Lead');
   const Notification = require('../models/Notification');
@@ -729,20 +729,27 @@ async function runLeadClose({ tAdmin, tLead, f }) {
   });
   let r;
 
-  // Agent closes own lead -> admins notified, no generic duplicate
+  // Agent close rejected; agent lost allowed + notifies admins (no lead_closed)
   const agentLead = await mk({ name: 'CloseByAgent' });
   r = await req('PATCH', `/leads/${agentLead._id}/stage`, tLead, { stage: 'closed' });
-  check('LC agent close 200', r.status === 200 && r.json.lead?.stage === 'closed', `status=${r.status}`);
-  const nAdmin = await Notification.findOne({ recipient: f.admin._id, type: 'lead_closed', lead: agentLead._id }).lean();
-  check('LC agent close notifies admin', !!nAdmin && nAdmin.link === `/dashboard/lead-management/leads/${agentLead._id}`, nAdmin ? nAdmin.link : 'none');
-  check('LC close sends no generic stage_changed', (await Notification.countDocuments({ type: 'lead_stage_changed', lead: agentLead._id })) === 0, '');
+  check('LC agent close rejected 403', r.status === 403, `status=${r.status}`);
+  r = await req('PATCH', `/leads/${agentLead._id}/stage`, tLead, { stage: 'lost' });
+  check('LC agent lost allowed 200', r.status === 200 && r.json.lead?.stage === 'lost', `status=${r.status}`);
+  const nLostAdmin = await Notification.findOne({ recipient: f.admin._id, type: 'lead_stage_changed', lead: agentLead._id }).lean();
+  check('LC agent lost notifies admin', !!nLostAdmin && /lost/i.test(nLostAdmin.message || ''), nLostAdmin ? nLostAdmin.message : 'none');
+  check('LC lost sends no lead_closed', (await Notification.countDocuments({ type: 'lead_closed', lead: agentLead._id })) === 0, '');
 
-  // Admin closes assigned lead -> agent notified
+  // Valid agent working-stage move still intact
+  r = await req('PATCH', `/leads/${agentLead._id}/stage`, tLead, { stage: 'negotiation' });
+  check('LC agent working-stage move intact', r.status === 200 && r.json.lead?.stage === 'negotiation', `status=${r.status}`);
+
+  // Admin closes assigned lead -> agent notified, no generic duplicate
   const adminLead = await mk({ name: 'CloseByAdmin' });
   r = await req('PATCH', `/leads/${adminLead._id}/stage`, tAdmin, { stage: 'closed' });
   check('LC admin close 200', r.status === 200 && r.json.lead?.stage === 'closed', `status=${r.status}`);
   const nAgent = await Notification.findOne({ recipient: f.leadAgent._id, type: 'lead_closed', lead: adminLead._id }).lean();
   check('LC admin close notifies agent', !!nAgent, 'none');
+  check('LC close sends no generic stage_changed', (await Notification.countDocuments({ type: 'lead_stage_changed', lead: adminLead._id })) === 0, '');
 
   // System stage stays protected for agents
   const sysLead = await mk({ name: 'CloseSys' });

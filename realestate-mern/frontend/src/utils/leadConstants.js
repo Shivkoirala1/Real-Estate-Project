@@ -66,11 +66,12 @@ export const STAGE_META = {
 
 export const SOURCES = ['contact_form', 'property_visit', 'office_visit', 'manual_create'];
 
-// Stages a user may select by hand in a stage dropdown. `pending_verification`
-// is system-only (entered automatically when a Sale/Rental is submitted, 400
-// otherwise), so it is never offered as a manual option. `closed` is a
-// legitimate manual action for admins and assigned agents.
-export const MANUAL_STAGES = STAGES.filter((s) => s !== 'pending_verification');
+// Hand-settable stages per role. `pending_verification` is system-only
+// (entered automatically when a Sale/Rental is submitted, 400 otherwise),
+// so it is never offered as a manual option. `closed` is admin-only - the
+// agent's manual terminal outcome is `lost`.
+export const ADMIN_MANUAL_STAGES = STAGES.filter((s) => s !== 'pending_verification');
+export const AGENT_MANUAL_STAGES = STAGES.filter((s) => s !== 'pending_verification' && s !== 'closed');
 
 export const SOURCE_META = {
   contact_form: { label: 'Contact Form' },

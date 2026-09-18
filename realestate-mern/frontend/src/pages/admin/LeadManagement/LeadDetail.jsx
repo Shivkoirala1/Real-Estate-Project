@@ -21,7 +21,7 @@ import LeadStatusBadge from '../../../components/LeadManagement/LeadStatusBadge'
 import LeadSourceIcon from '../../../components/LeadManagement/LeadSourceIcon';
 import SubmitSaleModal from '../../../components/LeadManagement/SubmitSaleModal';
 import SubmitRentalModal from '../../../components/LeadManagement/SubmitRentalModel';
-import { MANUAL_STAGES, STAGE_META, PRIORITIES, CATEGORIES } from '../../../utils/leadConstants';
+import { ADMIN_MANUAL_STAGES, AGENT_MANUAL_STAGES, STAGE_META, PRIORITIES, CATEGORIES } from '../../../utils/leadConstants';
 import { timeAgo } from '../../../utils/format';
 
 // Single lead view: contact info + pipeline controls on the left, activity
@@ -273,7 +273,7 @@ const LeadDetail = () => {
                 }
                 className="input-field text-sm"
               >
-                {MANUAL_STAGES.map((s) => (
+                {(user?.role === 'admin' ? ADMIN_MANUAL_STAGES : AGENT_MANUAL_STAGES).map((s) => (
                   <option key={s} value={s}>
                     {STAGE_META[s].label}
                   </option>

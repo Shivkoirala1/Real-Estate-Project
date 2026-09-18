@@ -8,7 +8,7 @@ import {
 import { useToast } from '../../context/ToastContext';
 import LeadStatusBadge from '../../components/LeadManagement/LeadStatusBadge';
 import LeadSourceIcon from '../../components/LeadManagement/LeadSourceIcon';
-import { STAGES, MANUAL_STAGES, STAGE_META } from '../../utils/leadConstants';
+import { STAGES, AGENT_MANUAL_STAGES, STAGE_META } from '../../utils/leadConstants';
 import { timeAgo } from '../../utils/format';
 
 // Agent's personal lead queue - "My Leads". Shows assigned leads with quick
@@ -167,7 +167,7 @@ const MyLeads = () => {
                       onChange={(e) => changeStage(lead, e.target.value)}
                       className="input-field text-xs py-1.5 w-40"
                     >
-                      {MANUAL_STAGES.map((s) => (
+                      {AGENT_MANUAL_STAGES.map((s) => (
                         <option key={s} value={s}>
                           {STAGE_META[s].label}
                         </option>

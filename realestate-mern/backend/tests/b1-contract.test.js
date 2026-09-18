@@ -127,28 +127,34 @@ describe('B1.8 seeder carries no legacy /uploads references', () => {
   });
 });
 
-describe('B1.10 manual lead close + close notifications', () => {
+describe('B1.10 manual lead close + lost notifications', () => {
   const src = read('controllers/leadController.js');
   const model = read('models/Lead.js');
-  it('agents may close (only pending_verification is hand-blocked)', () => {
+  it('agents cannot close (only pending_verification and agent-close are hand-blocked)', () => {
     assert.match(src, /newStage === 'pending_verification'/);
-    assert.ok(!src.includes('Agents cannot close a lead directly'), 'old agent-close block remains');
+    assert.match(src, /newStage === 'closed' && !isAdmin/);
+    assert.ok(!src.includes('Agents cannot close a lead directly. Submit a Sale'), 'stale message remains');
   });
-  it('close notifies the other party with a dedicated type, no generic dup', () => {
+  it('agent lost notifies admins; admin close notifies the agent; no cross-talk', () => {
+    assert.match(src, /newStage === 'lost' && !isAdmin/);
     assert.match(src, /type: 'lead_closed'/);
-    assert.match(src, /role: 'admin'/);
     const notif = read('models/Notification.js');
     assert.ok(notif.includes("'lead_closed'"), 'lead_closed missing from Notification enum');
   });
-  it('manual stage options exclude the system stage and include closed', () => {
+  it('manual stage options are role-based and exclude the system stage', () => {
     const consts = read(path.join(FRONT, 'utils/leadConstants.js'));
-    assert.match(consts, /MANUAL_STAGES = STAGES\.filter\(\(s\) => s !== 'pending_verification'\)/);
-    for (const f of ['pages/admin/LeadManagement/LeadDetail.jsx', 'pages/admin/LeadManagement/LeadList.jsx', 'pages/agent/MyLeads.jsx']) {
-      assert.ok(read(path.join(FRONT, f)).includes('MANUAL_STAGES'), `${f} still offers system stages`);
+    assert.match(consts, /ADMIN_MANUAL_STAGES = STAGES\.filter\(\(s\) => s !== 'pending_verification'\)/);
+    assert.match(consts, /AGENT_MANUAL_STAGES = STAGES\.filter\(\(s\) => s !== 'pending_verification' && s !== 'closed'\)/);
+    assert.ok(!/export const MANUAL_STAGES/.test(consts), 'unscoped MANUAL_STAGES export remains');
+    const detail = read(path.join(FRONT, 'pages/admin/LeadManagement/LeadDetail.jsx'));
+    assert.ok(detail.includes("user?.role === 'admin' ? ADMIN_MANUAL_STAGES : AGENT_MANUAL_STAGES"), 'detail dropdown not role-based');
+    for (const f of ['pages/admin/LeadManagement/LeadList.jsx', 'pages/agent/MyLeads.jsx']) {
+      const body = read(path.join(FRONT, f));
+      assert.ok(body.includes('MANUAL_STAGES'), `${f} missing role-scoped stage list`);
     }
   });
-  it('close model comment matches the new rule', () => {
-    assert.ok(!model.includes('Agents can no longer set a lead directly to'), 'stale model comment remains');
+  it('close model comment matches the corrected rule', () => {
+    assert.ok(model.includes('Agents cannot set a lead directly to'), 'corrected model comment missing');
   });
 });
 
