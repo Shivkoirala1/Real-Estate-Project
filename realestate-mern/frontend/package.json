@@ -113,6 +113,7 @@
     "scheduler": "^0.23.2",
     "semver": "^6.3.1",
     "set-cookie-parser": "^2.7.2",
+    "socket.io-client": "^4.8.3",
     "source-map-js": "^1.2.1",
     "sucrase": "^3.35.1",
     "supports-preserve-symlinks-flag": "^1.0.0",

@@ -10,6 +10,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useConversations } from '../../context/ConversationContext';
+import { connectSocket, onSocketConnect } from '../../services/socket';
 import { timeAgo, imageUrl } from '../../utils/format';
 
 const PAGE_SIZE = 15;
@@ -131,6 +132,12 @@ const Conversations = () => {
   const debounceRef = useRef(null);
   const messagesRef = useRef(null);
   const textareaRef = useRef(null);
+  // Refs so socket handlers (subscribed per open thread) always see fresh
+  // values without re-subscribing on every render.
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
+  const loadListRef = useRef(null);
+  const openThreadRef = useRef(null);
 
   const viewerSide = useCallback(
     (conv) => {
@@ -233,6 +240,63 @@ const Conversations = () => {
     setActiveId(null);
     setActive(null);
   };
+
+  loadListRef.current = loadList;
+  openThreadRef.current = openThread;
+
+  // Live thread (Phase 9): join the open thread's room for instant message
+  // and status delivery. REST stays authoritative — history loads via
+  // openThread, and every (re)connect rejoins + reloads history to cover
+  // missed events. Polling is untouched (Phase 10 owns removal).
+  useEffect(() => {
+    if (!activeId) return undefined;
+    const s = connectSocket();
+    if (!s) return undefined;
+    const roomId = activeId;
+    s.emit('conversation.join', { conversationId: roomId });
+
+    const onMessage = (payload) => {
+      if (!payload || payload.conversationId !== activeIdRef.current) return;
+      const msg = payload.message;
+      if (!msg || !msg._id) return;
+      setActive((prev) => {
+        if (!prev || String(prev._id) !== String(payload.conversationId)) return prev;
+        if ((prev.messages || []).some((m) => String(m._id) === String(msg._id))) return prev;
+        return { ...prev, messages: [...(prev.messages || []), msg] };
+      });
+      // Keep badge/list truthful while viewing: the count and inbox preview
+      // refresh through existing REST paths.
+      refreshUnreadCount();
+      if (loadListRef.current) loadListRef.current();
+    };
+    const onStatus = (payload) => {
+      if (!payload || payload.conversationId !== activeIdRef.current) return;
+      if (typeof payload.isActive !== 'boolean') return;
+      const { conversationId, isActive } = payload;
+      setActive((prev) =>
+        prev && String(prev._id) === String(conversationId) ? { ...prev, isActive } : prev
+      );
+      setConversations((prev) =>
+        prev.map((c) => (String(c._id) === String(conversationId) ? { ...c, isActive } : c))
+      );
+    };
+    s.on('v1.conversation.message', onMessage);
+    s.on('v1.conversation.status', onStatus);
+    const offConnect = onSocketConnect(() => {
+      const id = activeIdRef.current;
+      if (!id) return;
+      const sock = connectSocket();
+      if (sock) sock.emit('conversation.join', { conversationId: id });
+      if (openThreadRef.current) openThreadRef.current(id);
+    });
+    return () => {
+      s.emit('conversation.leave', { conversationId: roomId });
+      s.off('v1.conversation.message', onMessage);
+      s.off('v1.conversation.status', onStatus);
+      offConnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
 
   useEffect(() => {
     const el = messagesRef.current;

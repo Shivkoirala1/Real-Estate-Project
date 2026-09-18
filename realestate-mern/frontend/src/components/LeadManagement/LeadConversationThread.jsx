@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { startConversation, getConversationById, addMessageToConversation, closeConversation } from '../../services/conversationService';
+import { connectSocket, onSocketConnect } from '../../services/socket';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { timeAgo } from '../../utils/format';
@@ -27,6 +28,11 @@ const LeadConversationThread = ({ lead, onChange }) => {
   );
 
   const threadIdsKey = useMemo(() => threads.map((t) => t._id).join(','), [threads]);
+
+  // onChange reloads the lead (REST truth); keep a ref so socket handlers
+  // below never capture a stale closure.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   useEffect(() => {
     let active = true;
@@ -65,6 +71,49 @@ const LeadConversationThread = ({ lead, onChange }) => {
     };
     // Re-fetch when the summary set changes (initial mount + every
     // loadLead() refresh after reply/start/close).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadIdsKey]);
+
+  // Live threads (Phase 9): join every visible thread room for instant
+  // message delivery. History stays REST-owned (effect above); incoming
+  // messages append locally with _id dedupe. Status changes (close/reopen)
+  // alter thread chrome, so resync summaries through REST onChange.
+  // Reconnect rejoins all rooms and resyncs to cover missed events.
+  useEffect(() => {
+    if (threads.length === 0) return undefined;
+    const s = connectSocket();
+    if (!s) return undefined;
+    const ids = threads.map((t) => t._id);
+    ids.forEach((id) => s.emit('conversation.join', { conversationId: id }));
+
+    const onMessage = (payload) => {
+      if (!payload || !payload.message || !payload.message._id) return;
+      const id = payload.conversationId;
+      setBodies((prev) => {
+        const cur = prev[id];
+        // REST load owns threads that aren't ready (loading/forbidden/error).
+        if (!cur || cur.status !== 'ready') return prev;
+        if (cur.messages.some((m) => String(m._id) === String(payload.message._id))) return prev;
+        return { ...prev, [id]: { ...cur, messages: [...cur.messages, payload.message] } };
+      });
+    };
+    const onStatus = (payload) => {
+      if (!payload || typeof payload.isActive !== 'boolean') return;
+      if (onChangeRef.current) onChangeRef.current();
+    };
+    s.on('v1.conversation.message', onMessage);
+    s.on('v1.conversation.status', onStatus);
+    const offConnect = onSocketConnect(() => {
+      const sock = connectSocket();
+      if (sock) ids.forEach((id) => sock.emit('conversation.join', { conversationId: id }));
+      if (onChangeRef.current) onChangeRef.current();
+    });
+    return () => {
+      ids.forEach((id) => s.emit('conversation.leave', { conversationId: id }));
+      s.off('v1.conversation.message', onMessage);
+      s.off('v1.conversation.status', onStatus);
+      offConnect();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadIdsKey]);
 

@@ -1,15 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import api from '../utils/axios';
 import { useAuth } from './AuthContext';
+import { connectSocket, onSocketConnect } from '../services/socket';
 
 const ConversationContext = createContext(null);
-
-const POLL_INTERVAL = 30000; // 30s - keeps the conversations badge fresh
 
 export const ConversationProvider = ({ children }) => {
   const { user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
-  const pollRef = useRef(null);
 
   const refreshUnreadCount = useCallback(async () => {
     if (!user) {
@@ -20,22 +18,42 @@ export const ConversationProvider = ({ children }) => {
       const { data } = await api.get('/conversations/unread-count');
       setUnreadCount(data?.unreadCount || 0);
     } catch (err) {
-      // silent fail - polling will retry
+      // silent fail - the next realtime event or reconnect resync recovers
     }
   }, [user]);
 
+  // Initial REST load on login; logout resets the badge. Live updates arrive
+  // via the realtime subscription below (polling removed in Phase 10).
   useEffect(() => {
     if (!user) {
       setUnreadCount(0);
-      if (pollRef.current) clearInterval(pollRef.current);
-      return undefined;
+      return;
     }
-
     refreshUnreadCount();
-    pollRef.current = setInterval(refreshUnreadCount, POLL_INTERVAL);
-    return () => clearInterval(pollRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // Realtime badge (Phase 9): the server pushes the authoritative count
+  // whenever conversation unread state changes. REST resync runs on every
+  // (re)connect to cover missed events.
+  useEffect(() => {
+    if (!user) return;
+    const s = connectSocket();
+    if (!s) return undefined;
+    const onUnread = (payload) => {
+      if (payload && typeof payload.unreadCount === 'number') {
+        setUnreadCount(payload.unreadCount);
+      }
+    };
+    s.on('v1.conversation.unread', onUnread);
+    const offConnect = onSocketConnect(() => {
+      refreshUnreadCount();
+    });
+    return () => {
+      s.off('v1.conversation.unread', onUnread);
+      offConnect();
+    };
+  }, [user, refreshUnreadCount]);
 
   return (
     <ConversationContext.Provider value={{ unreadCount, refreshUnreadCount }}>

@@ -8,6 +8,7 @@ import {
   forgotPassword as forgotPasswordRequest,
   resetPassword as resetPasswordRequest,
 } from '../services/authService';
+import { connectSocket, disconnectSocket } from '../services/socket';
 
 const AuthContext = createContext(null);
 
@@ -17,6 +18,8 @@ export const AuthProvider = ({ children }) => {
 
   // logout must be declared BEFORE useEffect so it can be referenced in the catch block
   const logout = () => {
+    // Tear down realtime first so no events arrive mid-wipe.
+    disconnectSocket();
     // Clear both storages first to ensure a clean state
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -41,6 +44,7 @@ export const AuthProvider = ({ children }) => {
         }
       } catch (err) {
         // Token is invalid or expired — clear it
+        disconnectSocket();
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         sessionStorage.removeItem('token');
@@ -53,6 +57,16 @@ export const AuthProvider = ({ children }) => {
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Realtime lifecycle: one socket while a user is set. connectSocket() is
+  // idempotent (StrictMode-safe) and recreates the socket when the stored
+  // token changes (e.g. login as a different account). Teardown on logout
+  // is handled by logout() above; the effect cleanup intentionally keeps
+  // the connection across StrictMode remounts.
+  useEffect(() => {
+    if (!user) return;
+    connectSocket();
+  }, [user]);
 
   const login = async (email, password, rememberMe = false) => {
     const data = await loginUser(email, password);

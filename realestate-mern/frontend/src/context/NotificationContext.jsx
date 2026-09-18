@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import {
   getNotifications,
   getUnreadCount,
@@ -7,17 +7,15 @@ import {
   deleteNotification as deleteNotificationRequest,
 } from '../services/notificationService';
 import { useAuth } from './AuthContext';
+import { connectSocket, onSocketConnect } from '../services/socket';
 
 const NotificationContext = createContext(null);
-
-const POLL_INTERVAL = 20000; // 20s - keeps the bell fresh without needing a websocket
 
 export const NotificationProvider = ({ children }) => {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
-  const pollRef = useRef(null);
 
   const fetchNotifications = useCallback(async (filter = 'all') => {
     if (!user) return;
@@ -27,7 +25,7 @@ export const NotificationProvider = ({ children }) => {
       setNotifications(data.notifications);
       setUnreadCount(data.unreadCount);
     } catch (err) {
-      // silent fail - polling will try again shortly
+      // silent fail - the next realtime event or reconnect resync recovers
     } finally {
       setLoading(false);
     }
@@ -83,15 +81,36 @@ export const NotificationProvider = ({ children }) => {
     if (!user) {
       setNotifications([]);
       setUnreadCount(0);
-      if (pollRef.current) clearInterval(pollRef.current);
       return;
     }
 
+    // Initial REST load on login. Live updates arrive via the realtime
+    // subscription below (polling removed in Phase 10).
     refreshUnreadCount();
-    pollRef.current = setInterval(refreshUnreadCount, POLL_INTERVAL);
-    return () => clearInterval(pollRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // Realtime badge (Phase 9): the server pushes the authoritative count on
+  // every new notification. REST resync runs on every (re)connect to cover
+  // missed events.
+  useEffect(() => {
+    if (!user) return;
+    const s = connectSocket();
+    if (!s) return undefined;
+    const onUnread = (payload) => {
+      if (payload && typeof payload.unreadCount === 'number') {
+        setUnreadCount(payload.unreadCount);
+      }
+    };
+    s.on('v1.notification.unread', onUnread);
+    const offConnect = onSocketConnect(() => {
+      refreshUnreadCount();
+    });
+    return () => {
+      s.off('v1.notification.unread', onUnread);
+      offConnect();
+    };
+  }, [user, refreshUnreadCount]);
 
   return (
     <NotificationContext.Provider
