@@ -54,6 +54,21 @@ try {
   console.error('EMI reminder scheduler not started:', err.message);
 }
 
+// Lead follow-up overdue reminders, daily 09:00 (staggered after the EMI
+// 08:00 run). Same defensive pattern - never crash boot over a scheduler
+// problem; LEAD_REMINDERS_ENABLED=false skips scheduling (used by tests).
+try {
+  if (process.env.LEAD_REMINDERS_ENABLED !== 'false') {
+    const cron = require('node-cron');
+    const { runLeadFollowupReminders } = require('./utils/leadFollowupReminders');
+    cron.schedule('0 9 * * *', () => {
+      runLeadFollowupReminders().catch((err) => console.error('Lead follow-up reminder job failed:', err.message));
+    });
+  }
+} catch (err) {
+  console.error('Lead follow-up reminder scheduler not started:', err.message);
+}
+
 // Data lifecycle: cold-storage archival (weekly) and hard-delete retention
 // (nightly) for old/settled records. Both are dry-run-tested via the admin
 // API before relying on the schedule; see utils/archival.js and

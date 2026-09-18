@@ -110,6 +110,7 @@ async function main() {
     env: {
       ...process.env, MONGO_URI: uri, PORT: '5057', NODE_ENV: 'test',
       BREVO_API_KEY: '', EMI_REMINDERS_ENABLED: 'false',
+      LEAD_REMINDERS_ENABLED: 'false',
       DATA_LIFECYCLE_JOBS_ENABLED: 'false',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -217,6 +218,7 @@ async function main() {
   await runB4({ tAdmin, tFiling, tLead, tBuyer, f });
   await runPM({ tAdmin, f });
   await runSliceB({ tAdmin, tFiling, tBuyer, f });
+  await runLeadReminders({ f });
 
   const fails = results.filter((x) => !x.pass);
   console.log(`\nB1+B2+B3+B4+B6+PM+SliceB live matrix: ${results.length - fails.length}/${results.length} pass`);
@@ -677,6 +679,41 @@ async function runB4({ tAdmin, tFiling, tLead, tBuyer, f }) {
   check('B6 legacy total/page/pages absent', !('total' in (r.json || {})) && !('page' in (r.json || {})) && !('pages' in (r.json || {})), `keys=${Object.keys(r.json || {})}`);
   check('B6 canonical pagination complete', r.json.pagination?.page === 1 && r.json.pagination?.limit === 5 && typeof r.json.pagination?.total === 'number' && typeof r.json.pagination?.totalPages === 'number', JSON.stringify(r.json.pagination));
   check('B6 count retained', typeof r.json.count === 'number', '');
+}
+
+// ---- Lead follow-up overdue reminders (generator invoked in-process) ----
+async function runLeadReminders({ f }) {
+  const Lead = require('../models/Lead');
+  const Notification = require('../models/Notification');
+  const { runLeadFollowupReminders } = require('../utils/leadFollowupReminders');
+
+  const yesterday = new Date(Date.now() - 864e5);
+  const tomorrow = new Date(Date.now() + 864e5);
+  const tag = Math.random().toString(36).slice(2);
+  const mk = (over) => Lead.create({
+    name: 'Rem', email: `rem-${tag}-${Math.random().toString(36).slice(2)}@t.co`,
+    phone: '9800000003', property: f.property._id, ...over,
+  });
+  const assigned = await mk({ name: 'RemAssigned', assignedAgent: f.leadAgent._id, nextFollowUp: yesterday });
+  const unassigned = await mk({ name: 'RemUnassigned', assignedAgent: null, nextFollowUp: yesterday });
+  const future = await mk({ name: 'RemFuture', assignedAgent: f.leadAgent._id, nextFollowUp: tomorrow });
+  const closed = await mk({ name: 'RemClosed', assignedAgent: f.leadAgent._id, nextFollowUp: yesterday, stage: 'closed' });
+  const ids = [assigned._id, unassigned._id, future._id, closed._id];
+
+  const out1 = await runLeadFollowupReminders();
+  check('LR generator runs + sees both overdue leads', !!out1 && out1.overdueLeads === 2 && out1.notificationsCreated === 2, JSON.stringify(out1));
+  const nAgent = await Notification.findOne({ recipient: f.leadAgent._id, type: 'lead_followup_due', lead: assigned._id }).lean();
+  check('LR assignee notified with deep link', !!nAgent && nAgent.link === `/dashboard/lead-management/leads/${assigned._id}`, nAgent ? nAgent.link : 'none');
+  const nAdmin = await Notification.findOne({ recipient: f.admin._id, type: 'lead_followup_due', lead: unassigned._id }).lean();
+  check('LR unassigned lead alerts admin', !!nAdmin, 'none');
+  check('LR future follow-up ignored', (await Notification.countDocuments({ type: 'lead_followup_due', lead: future._id })) === 0, '');
+  check('LR closed lead ignored', (await Notification.countDocuments({ type: 'lead_followup_due', lead: closed._id })) === 0, '');
+
+  const out2 = await runLeadFollowupReminders();
+  check('LR re-run dedups (zero new)', !!out2 && out2.notificationsCreated === 0, JSON.stringify(out2));
+
+  await Notification.deleteMany({ type: 'lead_followup_due', lead: { $in: ids } });
+  await Lead.deleteMany({ _id: { $in: ids } });
 }
 
 // ---- Slice A fixtures: property-management lifecycle ----

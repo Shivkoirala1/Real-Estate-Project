@@ -126,3 +126,30 @@ describe('B1.8 seeder carries no legacy /uploads references', () => {
     assert.ok(!src.includes('"/uploads/'), 'stale /uploads/ seed path still present');
   });
 });
+
+describe('B1.9 lead follow-up overdue reminder generator', () => {
+  const src = read('utils/leadFollowupReminders.js');
+  const server = read('server.js');
+  it('matches the established overdue definition', () => {
+    assert.match(src, /nextFollowUp: \{ \$ne: null, \$lt:/);
+    assert.match(src, /stage: \{ \$nin: \['closed', 'lost'\] \}/);
+  });
+  it('notifies assignee, falls back to admins, dedups per day, never throws', () => {
+    assert.match(src, /assignedAgent/);
+    assert.match(src, /role: 'admin'/);
+    assert.match(src, /type: 'lead_followup_due'/);
+    assert.match(src, /Notification\.exists/);
+    assert.match(src, /catch \(err\)/);
+  });
+  it('server schedules it daily behind its own flag', () => {
+    assert.match(server, /LEAD_REMINDERS_ENABLED/);
+    assert.match(server, /runLeadFollowupReminders/);
+    assert.match(server, /0 9 \* \* \*/);
+  });
+  it('frontend bell renders the new type', () => {
+    const bell = read(path.join(FRONT, 'components/NotificationBell.jsx'));
+    const page = read(path.join(FRONT, 'pages/user/Notifications.jsx'));
+    assert.ok(bell.includes('lead_followup_due'), 'bell missing lead_followup_due icon/tint');
+    assert.ok(page.includes('lead_followup_due'), 'notifications page missing lead_followup_due label');
+  });
+});
