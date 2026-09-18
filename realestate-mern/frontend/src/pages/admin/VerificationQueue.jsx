@@ -488,7 +488,7 @@ const VerificationQueue = () => {
                         <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">{activeType.personLabel}</p>
                         <p className="text-sm font-medium text-navy flex items-center gap-2 flex-wrap">
                           {deal.person?.name || '—'}
-                          {deal.person?.user && (
+                          {deal.person?.registered && (
                             <span className="status-badge bg-sage-light text-sage" title="Has a registered account">
                               Registered
                             </span>

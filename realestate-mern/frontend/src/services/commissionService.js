@@ -16,8 +16,8 @@ import api from '../utils/axios';
  *   pagination: { page, limit, total, totalPages },
  *   totals: { totalPaidAmount, pendingAmount, paidCount, pendingCount }
  * }
- * Each record populates property (title slug media.coverImage status),
- * agent (name email) and sale (agreedPrice paymentType submittedAt).
+ * Each record populates property (title slug media.coverImage status) and
+ * agent (name email). Amounts are denormalized on the record itself.
  */
 export const getCommissions = async (params = {}) => {
   const { data } = await api.get('/commissions', { params });

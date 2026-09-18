@@ -73,17 +73,17 @@ const ManageUsers = () => {
     const confirmed = await confirm({
       title: 'Reset this password?',
       message:
-        "The user's password will be replaced with a temporary one, which you'll need to share with them.",
-      confirmLabel: 'Yes, reset it',
+        "The user will be emailed a single-use reset code (expires in 15 minutes) to set a new password.",
+      confirmLabel: 'Yes, send it',
       cancelLabel: 'No, cancel',
     });
 
     if (!confirmed) return;
 
     try {
-      const data = await resetUserPassword(id);
+      await resetUserPassword(id);
 
-      showToast(`Temporary password: ${data.tempPassword}`);
+      showToast('Reset code sent to the user\u2019s email (expires in 15 minutes)');
     } catch (err) {
       showToast('Failed to reset password', 'error');
     }

@@ -134,9 +134,4 @@ export const cancelVisit = async (id) => {
   );
 
   return data;
-};
-
-export const getAgents = async () => {
-  const { data } = await api.get("/users/agents");
-  return data;
-}
+};

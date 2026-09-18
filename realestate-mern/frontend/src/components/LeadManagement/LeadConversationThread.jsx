@@ -1,18 +1,22 @@
-import React, { useMemo, useState } from 'react';
-import { startConversation, addMessageToConversation, closeConversation } from '../../services/conversationService';
+import React, { useEffect, useMemo, useState } from 'react';
+import { startConversation, getConversationById, addMessageToConversation, closeConversation } from '../../services/conversationService';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { timeAgo } from '../../utils/format';
 
-// Unified conversation thread attached to a lead. Renders every thread linked
-// to the lead (lead.conversationThreads) with a reply box; admins/agents can
-// also open a new thread when the lead is tied to a registered user.
+// Unified conversation thread attached to a lead. The lead payload carries
+// thread SUMMARIES only (no messages[]); bodies load on demand per thread via
+// GET /api/conversations/:id, which enforces participant-or-admin auth.
+// Threads the viewer can't open (403) render their summary with an explicit
+// fallback instead of failing silently.
 const LeadConversationThread = ({ lead, onChange }) => {
   const { showToast } = useToast();
   const { user } = useAuth();
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [starting, setStarting] = useState(false);
+  // threadId -> { status: 'loading' | 'ready' | 'forbidden' | 'error', messages: [] }
+  const [bodies, setBodies] = useState({});
 
   const threads = useMemo(
     () =>
@@ -21,6 +25,48 @@ const LeadConversationThread = ({ lead, onChange }) => {
         .sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt)),
     [lead.conversationThreads]
   );
+
+  const threadIdsKey = useMemo(() => threads.map((t) => t._id).join(','), [threads]);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (threads.length === 0) {
+        if (active) setBodies({});
+        return;
+      }
+      if (active) {
+        setBodies((prev) => {
+          const next = {};
+          for (const t of threads) {
+            next[t._id] = prev[t._id] && prev[t._id].status === 'ready'
+              ? prev[t._id]
+              : { status: 'loading', messages: [] };
+          }
+          return next;
+        });
+      }
+      const settled = await Promise.all(
+        threads.map(async (t) => {
+          try {
+            const data = await getConversationById(t._id);
+            return [t._id, { status: 'ready', messages: data.conversation?.messages || [] }];
+          } catch (err) {
+            const code = err.response?.status;
+            return [t._id, { status: code === 403 ? 'forbidden' : 'error', messages: [] }];
+          }
+        })
+      );
+      if (active) setBodies(Object.fromEntries(settled));
+    };
+    load();
+    return () => {
+      active = false;
+    };
+    // Re-fetch when the summary set changes (initial mount + every
+    // loadLead() refresh after reply/start/close).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadIdsKey]);
 
   const isAdmin = user?.role === 'admin';
 
@@ -86,7 +132,8 @@ const LeadConversationThread = ({ lead, onChange }) => {
         </p>
       ) : (
         threads.map((thread) => {
-          const messages = thread.messages || [];
+          const body = bodies[thread._id] || { status: 'loading', messages: [] };
+          const messages = body.messages;
           // "Owner" side aligns right for admins/agents viewing the pipeline
           const viewerSide = isAdmin || thread.owner?._id === user?._id ? 'owner' : 'inquirer';
           return (
@@ -109,7 +156,16 @@ const LeadConversationThread = ({ lead, onChange }) => {
               </div>
 
               <div className="space-y-3 mb-3 max-h-72 overflow-y-auto pr-1">
-                {messages.map((m) => {
+                {body.status === 'loading' ? (
+                  <p className="text-sm text-slate-muted">Loading messages…</p>
+                ) : body.status === 'forbidden' ? (
+                  <p className="text-sm text-slate-muted">
+                    You don&apos;t have access to the messages in this thread — contact an admin or the thread owner.
+                  </p>
+                ) : body.status === 'error' ? (
+                  <p className="text-sm text-slate-muted">Couldn&apos;t load messages. Try again later.</p>
+                ) : (
+                  messages.map((m) => {
                   const isMine = m.side === viewerSide;
                   return (
                     <div
@@ -133,7 +189,8 @@ const LeadConversationThread = ({ lead, onChange }) => {
                       </div>
                     </div>
                   );
-                })}
+                  })
+                )}
               </div>
 
               {thread.isActive && (

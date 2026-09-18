@@ -47,21 +47,24 @@ export default function BlogForm() {
         const data = await getBlogById(params.id);
         if (!isMounted) return;
 
+        // Envelope-compatible: detail endpoint nests under `blog`.
+        const doc = data.blog ?? data;
+
         // convert tags array to comma-separated string for the form input
         
-        let tagString = Array.isArray(data.tags)
-  ? data.tags.join(", ")
+        let tagString = Array.isArray(doc.tags)
+  ? doc.tags.join(", ")
   : "";
 
         setForm({
-          title: data.title ?? "",
-          body: data.body ?? "",
+          title: doc.title ?? "",
+          body: doc.body ?? "",
           tags: (tagString ?? ""),
-          status: data.status ?? "draft",
+          status: doc.status ?? "draft",
         });
         
-        if (data.coverImage) {
-          setExistingCoverUrl(data.coverImage);
+        if (doc.coverImage) {
+          setExistingCoverUrl(doc.coverImage);
         }
       } catch (err) {
         console.error("Failed to load blog:", err);

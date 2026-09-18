@@ -100,15 +100,17 @@ const ManageProperties = ({ showHeader = true }) => {
 
         const data = await getProperties(params);
         const fetchedProps = data.properties || [];
-        const totalDocs = data.total ?? fetchedProps.length;
+        // Canonical pagination envelope (B6: legacy flat total/pages/page removed).
+        const pag = data.pagination || {};
+        const totalDocs = pag.total ?? fetchedProps.length;
         const totalPagesCount =
-          data.pages ?? Math.ceil(totalDocs / PAGE_SIZE) ?? 1;
+          pag.totalPages ?? Math.ceil(totalDocs / PAGE_SIZE) ?? 1;
 
         setProperties(fetchedProps);
         setPagination({
           total: totalDocs,
           totalPages: totalPagesCount,
-          page: data.page || page,
+          page: pag.page || page,
           hasPreviousPage: page > 1,
           hasNextPage: page < totalPagesCount,
         });
@@ -385,7 +387,7 @@ const ManageProperties = ({ showHeader = true }) => {
                         <select
                           value={p.status}
                           onChange={(e) => handleStatusChange(p, e.target.value)}
-                          disabled={p.status === "sold" || p.status === "rented" || (user?.role === "agent" && p.listedBy._id !== user._id)}
+                          disabled={p.status === "sold" || p.status === "rented" || (user?.role === "agent" && p.listedBy?._id !== user._id)}
                           title={
                             p.status === "sold"
                               ? "Sold is final and cannot be changed"
@@ -424,7 +426,7 @@ const ManageProperties = ({ showHeader = true }) => {
                             const cannotEdit =
                               p.status === "sold" ||
                               (user?.role === "agent" &&
-                                p.listedBy._id !== user._id);
+                                p.listedBy?._id !== user._id);
                             if (cannotEdit) {
                               e.preventDefault();
                               e.stopPropagation();
@@ -432,7 +434,7 @@ const ManageProperties = ({ showHeader = true }) => {
                           }}
                           className={`text-white px-3 py-1.5 rounded-sm text-sm ${
                             p.status === "sold" ||
-                            (user?.role === "agent" && p.listedBy._id !== user._id)
+                            (user?.role === "agent" && p.listedBy?._id !== user._id)
                               ? "bg-blue-300 cursor-not-allowed"
                               : "bg-blue-600 hover:underline"
                           }`}
@@ -443,12 +445,12 @@ const ManageProperties = ({ showHeader = true }) => {
                         <button
                           disabled={
                             p.status === "sold" ||
-                            (user?.role === "agent" && p.listedBy._id !== user._id)
+                            (user?.role === "agent" && p.listedBy?._id !== user._id)
                           }
                           onClick={() => handleDelete(p)}
                           className={`text-white px-3 py-1.5 rounded-sm text-sm ${
                             p.status === "sold" ||
-                            (user?.role === "agent" && p.listedBy._id !== user._id)
+                            (user?.role === "agent" && p.listedBy?._id !== user._id)
                               ? "bg-red-300 cursor-not-allowed"
                               : "bg-red-600 hover:underline"
                           }`}

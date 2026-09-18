@@ -36,7 +36,9 @@ const PropertyListing = () => {
       try {
         const data = await getProperties(searchParams.toString());
         setProperties(data.properties);
-        setMeta({ total: data.total, pages: data.pages, page: data.page });
+        // Canonical pagination envelope (B6: legacy flat total/pages/page removed).
+        const pag = data.pagination || {};
+        setMeta({ total: pag.total ?? 0, pages: pag.totalPages ?? 1, page: pag.page ?? 1 });
       } catch (err) {
         setProperties([]);
         setError(err.response?.data?.message || 'Failed to load properties. Please try again.');

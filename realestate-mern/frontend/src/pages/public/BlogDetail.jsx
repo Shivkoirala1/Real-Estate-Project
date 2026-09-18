@@ -25,7 +25,7 @@ const BlogDetail = () => {
       setNotFound(false);
       try {
         const data = await getBlogBySlug(slug);
-        if (isMounted) setBlog(data);
+        if (isMounted) setBlog(data.blog ?? data);
       } catch (err) {
         if (isMounted) setNotFound(true);
         console.error("Failed to load blog:", err);
