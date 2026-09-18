@@ -18,6 +18,7 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const blogRoutes = require('./routes/blogRoutes');
+const heroSlideRoutes = require('./routes/heroSlideRoutes');
 const visitRoutes = require('./routes/visitRoutes');
 const propertyManagementRoutes = require('./routes/propertyManagementRoutes');
 const managementServiceRoutes = require('./routes/managementServiceRoutes');
@@ -131,6 +132,7 @@ app.use('/api/visits', visitRoutes);
 app.use('/api/property-management', propertyManagementRoutes);
 app.use('/api/management-services', managementServiceRoutes);
 app.use('/api/blogs', blogRoutes);
+app.use('/api/hero-slides', heroSlideRoutes);
 
 // Unified lead management module
 app.use('/api/leads', leadRoutes);

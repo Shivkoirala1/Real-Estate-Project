@@ -116,6 +116,11 @@ const adminNavGroups = [
         end: true,
       },
       {
+        label: 'Hero Slides',
+        to: '/dashboard/admin/hero-slides',
+        end: true,
+      },
+      {
         label: 'Property Categories',
         to: '/dashboard/admin/categories',
       },

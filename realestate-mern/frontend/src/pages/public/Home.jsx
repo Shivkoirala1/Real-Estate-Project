@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getProperties } from '../../services/propertyService';
+import { getHeroSlides } from '../../services/heroSlideService';
+import HeroCarousel from '../../components/hero/HeroCarousel';
 import { getPropertyTypes } from '../../services/categoryService';
 import SearchFilterBar from '../../components/SearchFilterBar';
 import PropertyCard from '../../components/PropertyCard';
@@ -10,6 +12,7 @@ const Home = () => {
   const [featured, setFeatured] = useState([]);
   const [latest, setLatest] = useState([]);
   const [types, setTypes] = useState([]);
+  const [heroSlides, setHeroSlides] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -20,15 +23,19 @@ const Home = () => {
         // allSettled so one failing request (e.g. no featured properties yet)
         // doesn't wipe out the others, and a real failure is still reported
         // instead of silently rendering an empty page.
-        const [featuredRes, latestRes, typesRes] = await Promise.allSettled([
+        const [featuredRes, latestRes, typesRes, heroRes] = await Promise.allSettled([
           getProperties({ featured: true, limit: 3 }),
           getProperties({ limit: 6 }),
           getPropertyTypes(),
+          getHeroSlides(),
         ]);
 
         if (featuredRes.status === 'fulfilled') setFeatured(featuredRes.value.properties);
         if (latestRes.status === 'fulfilled') setLatest(latestRes.value.properties);
         if (typesRes.status === 'fulfilled') setTypes(typesRes.value.propertyTypes);
+        // Hero carousel is strictly additive: a failed/empty feed leaves the
+        // static hero below as the fallback, never a broken homepage.
+        if (heroRes.status === 'fulfilled') setHeroSlides(heroRes.value.slides ?? []);
 
         if (latestRes.status === 'rejected') {
           setError(latestRes.reason?.response?.data?.message || 'Failed to load properties.');
@@ -42,8 +49,15 @@ const Home = () => {
 
   return (
     <div>
-      {/* Hero */}
-      <section className="relative overflow-hidden">
+      {/* Hero: admin-managed carousel when slides exist, static hero as fallback.
+          Mobile replaces the static hero with the carousel; on large screens
+          the carousel overlays the static hero's bottom-right corner. */}
+      {heroSlides.length > 0 && (
+        <div className="md:hidden">
+          <HeroCarousel slides={heroSlides} layout="full" />
+        </div>
+      )}
+      <section className={`relative overflow-hidden ${heroSlides.length > 0 ? "hidden md:block" : ""}`}>
         {/* Aerial photo of Kathmandu - free-to-use under the Unsplash License
             (Photo by Sujitabh Chaudhary). Swap this URL for your own hero
             photo any time; everything else adapts automatically. */}
@@ -71,6 +85,12 @@ const Home = () => {
             घर, जग्गा र व्यावसायिक सम्पत्ति — विश्वसनीय बिक्रीका लागि एउटै ठेगाना।
           </p>
         </div>
+
+        {heroSlides.length > 0 && (
+          <div className="absolute bottom-8 right-5 lg:right-8 w-[360px] max-w-[38%] z-10">
+            <HeroCarousel slides={heroSlides} layout="card" />
+          </div>
+        )}
       </section>
 
       <div className="max-w-7xl mx-auto px-5 md:px-8">

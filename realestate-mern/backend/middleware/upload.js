@@ -94,6 +94,61 @@ const uploadPaymentSlip = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per file
 });
 
+// Hero-slide media (admin-managed homepage carousel).
+//
+// Images reuse the property-style image pipeline. Videos need an explicit
+// `resource_type: 'video'` store — the default CloudinaryStorage is
+// image-only, which is why no existing upload path accepts video files.
+// A single storage with per-file params routes thumbnails/images to the
+// image pipeline and video files to the video pipeline.
+const heroStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    if (file.fieldname === 'thumbnail' || file.mimetype.startsWith('image/')) {
+      return {
+        folder: 'shram-sewa/hero-slides/images',
+        allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
+      };
+    }
+    return {
+      folder: 'shram-sewa/hero-slides/videos',
+      resource_type: 'video',
+      allowed_formats: ['mp4', 'webm', 'mov'],
+    };
+  },
+});
+
+// `media` accepts one image or one video; `thumbnail` accepts one image
+// (loading/poster frame, recommended for video slides).
+const heroFileFilter = (req, file, cb) => {
+  if (file.fieldname === 'thumbnail') {
+    if (file.mimetype.startsWith('image/')) return cb(null, true);
+    const err = new Error('Only PNG, JPG, WEBP or GIF image files are allowed for thumbnails');
+    err.statusCode = 400;
+    return cb(err, false);
+  }
+  if (file.fieldname === 'media') {
+    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
+      return cb(null, true);
+    }
+    const err = new Error('Only image (JPG, PNG, WEBP, GIF) or video (MP4, WebM, MOV) files are allowed for hero media');
+    err.statusCode = 400;
+    return cb(err, false);
+  }
+  const err = new Error(`Unexpected file field: ${file.fieldname}`);
+  err.statusCode = 400;
+  return cb(err, false);
+};
+
+// 50MB cap covers video; images are additionally capped to 10MB in the
+// controller (consistent with property photos) with best-effort cleanup.
+const uploadHero = multer({
+  storage: heroStorage,
+  fileFilter: heroFileFilter,
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
+
 module.exports = upload;
 module.exports.verification = uploadVerification;
 module.exports.paymentSlip = uploadPaymentSlip;
+module.exports.hero = uploadHero;

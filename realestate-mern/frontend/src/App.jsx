@@ -51,6 +51,8 @@ import BlogForm from "./pages/admin/BlogForm";
 import ManageUsers from "./pages/admin/ManageUsers";
 import ManageCategories from "./pages/admin/ManageCategories";
 import BlogManagement from "./pages/admin/ManageBlogs";
+import ManageHeroSlides from "./pages/admin/ManageHeroSlides";
+import HeroSlideForm from "./pages/admin/HeroSlideForm";
 import Inquiries from "./pages/admin/RevampedInquiries";
 import Visits from "./pages/admin/Visits";
 import EmiPlans from "./pages/admin/EmiPlans";
@@ -536,6 +538,36 @@ function App() {
               <ProtectedRoute roles={["admin"]}>
                 <DashboardLayout>
                   <BlogForm />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin/hero-slides"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <ManageHeroSlides />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin/hero-slides/new"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <HeroSlideForm />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin/hero-slides/:id/edit"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <HeroSlideForm />
                 </DashboardLayout>
               </ProtectedRoute>
             }
