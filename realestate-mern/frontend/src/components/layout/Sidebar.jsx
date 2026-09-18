@@ -47,6 +47,14 @@ const adminNavGroups = [
         end: true,
       },
       {
+        label: 'Management Requests',
+        to: '/dashboard/admin/property-management',
+      },
+      {
+        label: 'Management Services',
+        to: '/dashboard/admin/management-services',
+      },
+      {
         label: 'Review Dashboard',
         to: '/dashboard/admin/reviews',
       },

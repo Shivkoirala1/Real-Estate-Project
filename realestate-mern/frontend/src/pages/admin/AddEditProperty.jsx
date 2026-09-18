@@ -11,6 +11,8 @@ import {
   createProperty,
   updateProperty,
 } from '../../services/propertyService';
+import { getManagementServices } from '../../services/managementService';
+import { createWithProperty } from '../../services/propertyManagementService';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmContext';
@@ -132,11 +134,31 @@ const AddEditProperty = () => {
   const [newCityName, setNewCityName] = useState('');
   const [addCityError, setAddCityError] = useState('');
   const [savingCity, setSavingCity] = useState(false);
+  // Management-purpose wizard state (create mode, saleType === 'management'):
+  // selected catalogue services + optional owner note, submitted together
+  // with the property in one wizard operation.
+  const [mgmtServices, setMgmtServices] = useState([]);
+  const [mgmtServiceOptions, setMgmtServiceOptions] = useState([]);
+  const [mgmtNote, setMgmtNote] = useState('');
 
   useEffect(() => {
     getPropertyTypes().then((data) => setPropertyTypes(data.propertyTypes));
     getDistricts().then((data) => setDistricts(data.districts));
   }, []);
+
+  // Management service catalogue (active only) for the wizard's services step.
+  useEffect(() => {
+    if (form.saleType !== 'management' || isEdit) return;
+    let active = true;
+    getManagementServices()
+      .then((data) => {
+        if (active) setMgmtServiceOptions(data.services || []);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [form.saleType, isEdit]);
 
   useEffect(() => {
     if (form.location.district) {
@@ -187,6 +209,8 @@ const AddEditProperty = () => {
   }, [id, isEdit]);
 
   const updateField = (field, value) => setForm((f) => ({ ...f, [field]: value }));
+  const toggleMgmtService = (name) =>
+    setMgmtServices((prev) => (prev.includes(name) ? prev.filter((s) => s !== name) : [...prev, name]));
   const updateLocation = (field, value) => setForm((f) => ({ ...f, location: { ...f.location, [field]: value } }));
   const updateDetails = (field, value) => setForm((f) => ({ ...f, details: { ...f.details, [field]: value } }));
 
@@ -306,10 +330,12 @@ const AddEditProperty = () => {
   const validateForm = () => {
     const next = {};
     const isLand = category === 'land';
+    // Management-purpose properties skip marketing-only requirements.
+    const isManagement = form.saleType === 'management';
 
     if (!form.title.trim()) {
       next.title = 'Title is required';
-    } else if (form.title.trim().length < 10) {
+    } else if (!isManagement && form.title.trim().length < 10) {
       next.title = 'Title should be at least 10 characters so buyers know what they’re looking at';
     } else if (form.title.trim().length > 120) {
       next.title = 'Title is too long - keep it under 120 characters';
@@ -317,7 +343,7 @@ const AddEditProperty = () => {
 
     if (!form.description.trim()) {
       next.description = 'Description is required';
-    } else if (form.description.trim().length < 30) {
+    } else if (!isManagement && form.description.trim().length < 30) {
       next.description = 'Description should be at least 30 characters - give buyers something to go on';
     }
 
@@ -330,12 +356,16 @@ const AddEditProperty = () => {
       }
     }
 
-    if (form.price === '' || form.price === null) {
-      next.price = 'Price is required';
-    } else if (Number(form.price) <= 0) {
-      next.price = 'Price must be greater than 0';
-    } else if (Number(form.price) > 100_000_000_000) {
-      next.price = 'That price looks too high - please double-check it';
+    if (!isManagement) {
+      if (form.price === '' || form.price === null) {
+        next.price = 'Price is required';
+      } else if (Number(form.price) <= 0) {
+        next.price = 'Price must be greater than 0';
+      } else if (Number(form.price) > 100_000_000_000) {
+        next.price = 'That price looks too high - please double-check it';
+      }
+    } else if (form.price !== '' && form.price !== null && Number(form.price) < 0) {
+      next.price = 'Price cannot be negative';
     }
 
     if (!form.location.province) next.province = 'Select a province';
@@ -397,8 +427,13 @@ const AddEditProperty = () => {
       }
     }
 
-    if (!coverImage && !currentCoverImage) {
+    if (!coverImage && !currentCoverImage && !isManagement) {
       next.coverImage = 'Please add a cover image for this property';
+    }
+
+    // Management wizard: at least one active service must be selected.
+    if (isManagement && !isEdit && mgmtServices.length === 0) {
+      next.mgmtServices = 'Select at least one management service';
     }
 
     return next;
@@ -417,18 +452,44 @@ const AddEditProperty = () => {
     }
     setFieldErrors({});
 
+    // Management wizard: one user-facing operation — property + request are
+    // created atomically server-side (POST /with-property).
+    const isMgmtWizard = !isEdit && form.saleType === 'management';
     const confirmed = await confirm({
-      title: isEdit ? 'Save these changes?' : 'Post this property?',
+      title: isEdit ? 'Save these changes?' : isMgmtWizard ? 'Submit management request?' : 'Post this property?',
       message: isEdit
         ? 'Do you want to save the changes to this listing? Buyers browsing the site will see the updated details right away.'
-        : 'Do you want to submit this property listing? It will go live on the site once submitted.',
-      confirmLabel: isEdit ? 'Yes, save changes' : 'Yes, post it',
+        : isMgmtWizard
+          ? 'This registers your property for management and sends the request to the admin in one step. The selected services cannot be changed afterwards.'
+          : 'Do you want to submit this property listing? It will go live on the site once submitted.',
+      confirmLabel: isEdit ? 'Yes, save changes' : isMgmtWizard ? 'Yes, submit request' : 'Yes, post it',
       cancelLabel: 'No, go back',
     });
     if (!confirmed) return;
 
     setSaving(true);
     try {
+      if (isMgmtWizard) {
+        const location = { ...form.location };
+        if (!location.district) delete location.district;
+        if (!location.city) delete location.city;
+        if (!location.mapLocation?.lat || !location.mapLocation?.lng) delete location.mapLocation;
+        await createWithProperty({
+          property: {
+            title: form.title,
+            description: form.description,
+            propertyType: form.propertyType,
+            location,
+            details: form.details,
+            video: form.video,
+          },
+          services: mgmtServices,
+          ...(mgmtNote.trim() ? { note: mgmtNote.trim() } : {}),
+        });
+        showToast('Property registered and management requested');
+        navigate(user?.role === 'admin' ? '/dashboard/admin/property-management' : '/my-properties/management');
+        return;
+      }
       const fd = new FormData();
       fd.append('title', form.title);
       fd.append('description', form.description);
@@ -527,6 +588,34 @@ const AddEditProperty = () => {
         </div>
       </div>
 
+      {/* Property purpose: sale / rent listing, or management registration.
+          Shown on create only — edits switch via the Sale Type dropdown. */}
+      {!isEdit && (
+        <div className="bg-white border border-navy/10 rounded-sm p-6 mb-10">
+          <h2 className="text-lg font-semibold text-navy mb-1">What is this property for?</h2>
+          <p className="text-sm text-slate-muted mb-4">Listings go public; management registers the property for management services instead.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl">
+            {[
+              { value: 'sale', label: 'For Sale', hint: 'Market the property to buyers' },
+              { value: 'rent', label: 'For Rent', hint: 'Market the property to tenants' },
+              { value: 'management', label: 'Management', hint: 'Request management services' },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { updateField('saleType', opt.value); clearFieldError('saleType'); }}
+                className={`px-4 py-3 rounded-sm border text-sm font-medium text-left transition-colors ${
+                  form.saleType === opt.value ? 'border-brass bg-brass-light/20 text-navy' : 'border-navy/15 text-slate-ink hover:border-navy/30'
+                }`}
+              >
+                {opt.label}
+                <span className="block text-xs font-normal text-slate-muted mt-0.5">{opt.hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-10">
         {/* Basic Information */}
         <section className="bg-white border border-navy/10 rounded-sm p-6">
@@ -571,12 +660,13 @@ const AddEditProperty = () => {
               <select className="input-field" value={form.saleType} onChange={(e) => updateField('saleType', e.target.value)}>
                 <option value="sale">For Sale</option>
                 <option value="rent">For Rent</option>
+                <option value="management">Management only (not listed for sale/rent)</option>
               </select>
             </div>
             <div>
               <label className="label-field">Price</label>
               <input
-                required
+                required={form.saleType !== 'management'}
                 type="number"
                 min="0"
                 className={`input-field ${errorInputClass(fieldErrors.price)}`}
@@ -966,8 +1056,68 @@ const AddEditProperty = () => {
           </div>
         </section>
 
+        {/* Management wizard steps: services + note + review. Create-mode,
+            management purpose only — edits use the management request pages. */}
+        {!isEdit && form.saleType === 'management' && (
+          <>
+            <section className="bg-white border border-navy/10 rounded-sm p-6">
+              <h2 className="text-lg font-semibold text-navy mb-1">Management services</h2>
+              <p className="text-sm text-slate-muted mb-4">Select the services you want the admin to manage for this property.</p>
+              {mgmtServiceOptions.length === 0 ? (
+                <p className="text-sm text-slate-muted">Loading services...</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {mgmtServiceOptions.map((s) => (
+                    <label key={s._id} className="flex items-start gap-2.5 border border-navy/15 rounded-sm px-3 py-2.5 text-sm cursor-pointer hover:border-navy/30">
+                      <input
+                        type="checkbox"
+                        checked={mgmtServices.includes(s.name)}
+                        onChange={() => toggleMgmtService(s.name)}
+                        className="accent-brass mt-0.5"
+                      />
+                      <span>
+                        <span className="block font-medium text-navy">{s.name}</span>
+                        {s.description && <span className="block text-xs text-slate-muted">{s.description}</span>}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {fieldErrors.mgmtServices && <p className="text-xs text-brick mt-2">{fieldErrors.mgmtServices}</p>}
+              <div className="mt-4">
+                <label htmlFor="mgmt-note" className="label-field">Note for the admin (optional)</label>
+                <textarea
+                  id="mgmt-note"
+                  rows={3}
+                  value={mgmtNote}
+                  onChange={(e) => setMgmtNote(e.target.value)}
+                  placeholder="Anything the admin should know about this property..."
+                  className="input-field resize-none"
+                />
+              </div>
+            </section>
+
+            <section className="bg-white border border-navy/10 rounded-sm p-6">
+              <h2 className="text-lg font-semibold text-navy mb-4">Review</h2>
+              <dl className="text-sm space-y-2">
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-muted">Property</dt>
+                  <dd className="text-navy font-medium text-right">{form.title || '—'}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-muted">Services ({mgmtServices.length})</dt>
+                  <dd className="text-navy font-medium text-right">{mgmtServices.length ? mgmtServices.join(', ') : '—'}</dd>
+                </div>
+                <p className="text-xs text-slate-muted pt-2">
+                  Submitting registers the property and sends the management request in one step. The selected services cannot be changed afterwards.
+                </p>
+              </dl>
+            </section>
+          </>
+        )}
+
         <button disabled={saving} type="submit" className="btn-primary px-8">
-          {saving ? 'Saving...' : isEdit ? 'Update Property' : 'Add Property'}
+          {saving ? 'Saving...' : isEdit ? 'Update Property' : form.saleType === 'management' ? 'Submit Management Request' : 'Add Property'}
         </button>
       </form>
     </div>

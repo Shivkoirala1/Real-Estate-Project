@@ -61,9 +61,14 @@ import DataArchives from "./pages/admin/DataArchives";
 import ReviewManagement from "./pages/admin/ReviewManagement";
 import ManageAgents from "./pages/admin/ManageAgents";
 import Analytics from "./pages/admin/Analytics";
+import MyManagementRequests from "./pages/user/MyManagementRequests";
+import MyManagementRequestDetail from "./pages/user/MyManagementRequestDetail";
 import LeadDashboard from "./pages/admin/LeadManagement/LeadDashboard";
 import LeadDetail from "./pages/admin/LeadManagement/LeadDetail";
 import ContactFormDetail from "./pages/admin/LeadManagement/ContactFormDetail";
+import ManagementDashboard from "./pages/admin/PropertyManagement/ManagementDashboard";
+import ManagementRequestDetail from "./pages/admin/PropertyManagement/ManagementRequestDetail";
+import ManageServices from "./pages/admin/PropertyManagement/ManageServices";
 
 function App() {
   return (
@@ -145,6 +150,26 @@ function App() {
               <ProtectedRoute>
                 <MyPropertiesLayout>
                   <Inquiries />
+                </MyPropertiesLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-properties/management"
+            element={
+              <ProtectedRoute>
+                <MyPropertiesLayout>
+                  <MyManagementRequests />
+                </MyPropertiesLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-properties/management/:id"
+            element={
+              <ProtectedRoute>
+                <MyPropertiesLayout>
+                  <MyManagementRequestDetail />
                 </MyPropertiesLayout>
               </ProtectedRoute>
             }
@@ -351,6 +376,36 @@ function App() {
               <ProtectedRoute roles={["admin"]}>
                 <DashboardLayout>
                   <AddEditProperty />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin/property-management"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <ManagementDashboard />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin/property-management/:id"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <ManagementRequestDetail />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin/management-services"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <ManageServices />
                 </DashboardLayout>
               </ProtectedRoute>
             }

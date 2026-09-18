@@ -28,6 +28,8 @@ const typeMeta = {
   conversation_message: { label: 'Message', tint: 'bg-sage-light text-sage' },
   conversation_followup: { label: 'Follow-up', tint: 'bg-navy/10 text-navy' },
   management_request_submitted: { label: 'Management request', tint: 'bg-brass-light/25 text-brass-dark' },
+  management_request_accepted: { label: 'Request accepted', tint: 'bg-sage-light text-sage' },
+  management_request_declined: { label: 'Request declined', tint: 'bg-brick-light text-brick' },
   management_request_approved: { label: 'Request approved', tint: 'bg-sage-light text-sage' },
   management_request_rejected: { label: 'Request rejected', tint: 'bg-brick-light text-brick' },
   management_agent_assigned: { label: 'Agent assigned', tint: 'bg-navy/10 text-navy' },

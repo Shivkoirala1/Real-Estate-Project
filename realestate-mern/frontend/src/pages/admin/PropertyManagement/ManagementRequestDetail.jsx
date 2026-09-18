@@ -3,20 +3,18 @@ import { Link, useParams } from 'react-router-dom';
 import {
   getManagementRequestById,
   getActivities,
-  approveRequest,
-  rejectRequest,
-  updateStatus,
+  acceptRequest,
+  declineRequest,
   terminateManagement,
+  approveTermination,
   requestTermination,
   addActivity,
-  serviceLabel,
 } from '../../../services/propertyManagementService';
 import { useAuth } from '../../../context/AuthContext';
 import { useToast } from '../../../context/ToastContext';
 import { useConfirm } from '../../../context/ConfirmContext';
 import ManagementStatusBadge from '../../../components/PropertyManagement/ManagementStatusBadge';
 import ManagementActivityTimeline from '../../../components/PropertyManagement/ManagementActivityTimeline';
-import AssignAgentModal from './AssignAgentModal';
 
 const ACTIVITY_PAGE_SIZE = 20;
 
@@ -38,19 +36,19 @@ const sameId = (a, b) => {
 };
 
 const REASON_META = {
-  reject: {
-    title: 'Reject this management request?',
-    label: 'Rejection reason *',
-    placeholder: 'Tell the owner why this request cannot be approved...',
-    confirmLabel: 'Reject request',
+  decline: {
+    title: 'Decline this management request?',
+    label: 'Decline reason *',
+    placeholder: 'Tell the owner why this request cannot be accepted...',
+    confirmLabel: 'Decline request',
     dialog: {
-      title: 'Reject this management request?',
-      message: 'The owner will see the rejection reason and their request returns to them.',
-      confirmLabel: 'Yes, reject it',
+      title: 'Decline this management request?',
+      message: 'The owner will see the decline reason. This decision cannot be undone.',
+      confirmLabel: 'Yes, decline it',
       tone: 'danger',
     },
-    toast: 'Management request rejected',
-    failToast: 'Failed to reject request',
+    toast: 'Management request declined',
+    failToast: 'Failed to decline request',
   },
   terminate: {
     title: 'Terminate this management?',
@@ -59,7 +57,7 @@ const REASON_META = {
     confirmLabel: 'Terminate management',
     dialog: {
       title: 'Terminate this management?',
-      message: 'The management will be terminated and the assigned agent released. This cannot be undone.',
+      message: 'The management will be terminated immediately. This cannot be undone.',
       confirmLabel: 'Yes, terminate it',
       tone: 'danger',
     },
@@ -68,12 +66,12 @@ const REASON_META = {
   },
   request_termination: {
     title: 'Request termination of this management?',
-    label: 'Reason *',
+    label: 'Reason (optional)',
     placeholder: 'Why do you want to end this management arrangement?',
     confirmLabel: 'Send request',
     dialog: {
       title: 'Request termination?',
-      message: 'Your reason is sent to the admin, who makes the final decision. This cannot be undone from your side.',
+      message: 'Your reason is sent to the admin, who makes the final decision. Once submitted, you cannot reverse this request.',
       confirmLabel: 'Yes, send it',
       tone: 'danger',
     },
@@ -82,8 +80,9 @@ const REASON_META = {
   },
 };
 
-// Shared reason mini-modal used by reject / terminate / request-termination.
-const ReasonModal = ({ meta, value, error, submitting, onChange, onSubmit, onClose }) => {
+// Shared reason mini-modal used by decline / terminate / request-termination.
+// request_termination reason is optional; decline/terminate require one.
+const ReasonModal = ({ meta, optional, value, error, submitting, onChange, onSubmit, onClose }) => {
   // Close on Escape, consistent with the other management modals.
   useEffect(() => {
     const onKey = (e) => {
@@ -136,9 +135,8 @@ const ReasonModal = ({ meta, value, error, submitting, onChange, onSubmit, onClo
   );
 };
 
-// ROLE-AWARE detail page for one management request — shared by the admin
-// dashboard, the agent dashboard and the owner area. Capabilities are decided
-// from useAuth() + the populated request (owner / assignedAgent ids).
+// ROLE-AWARE detail page for one management request. Capabilities are decided
+// from useAuth() + the populated request owner id.
 const ManagementRequestDetail = () => {
   const { id } = useParams();
   const { user } = useAuth();
@@ -161,11 +159,9 @@ const ManagementRequestDetail = () => {
   const [noteBusy, setNoteBusy] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const [reasonModal, setReasonModal] = useState(null); // 'reject' | 'terminate' | 'request_termination'
+  const [reasonModal, setReasonModal] = useState(null); // 'decline' | 'terminate' | 'request_termination'
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState('');
-
-  const [assignOpen, setAssignOpen] = useState(false);
 
   const loadRequest = useCallback(async () => {
     try {
@@ -210,52 +206,49 @@ const ManagementRequestDetail = () => {
   // ---------- role flags ----------
   const isAdmin = user?.role === 'admin';
   const isOwner = sameId(request?.owner, user?._id);
-  const isAssignedAgent = sameId(request?.assignedAgent, user?._id);
   const backLink = isAdmin
     ? '/dashboard/admin/property-management'
-    : isAssignedAgent
-      ? '/dashboard/agent/properties/managed'
-      : isOwner
-        ? '/my-properties/management'
-        : null;
-  const canAddNote = isAdmin || isOwner || isAssignedAgent;
+    : isOwner
+      ? '/my-properties/management'
+      : null;
+  const canAddNote = isAdmin || isOwner;
 
   // ---------- lifecycle handlers ----------
-  const handleApprove = async () => {
+  const handleAccept = async () => {
     const ok = await confirm({
-      title: 'Approve this management request?',
-      message: 'The request enters the management pipeline and an agent can then be assigned.',
-      confirmLabel: 'Approve',
+      title: 'Accept this management request?',
+      message: 'The request becomes active immediately. This decision cannot be undone.',
+      confirmLabel: 'Accept',
       cancelLabel: 'Cancel',
     });
     if (!ok) return;
     setBusy(true);
     try {
-      await approveRequest(id);
-      showToast('Management request approved');
+      await acceptRequest(id);
+      showToast('Management request accepted - now active');
       await refreshAll();
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to approve request', 'error');
+      showToast(err.response?.data?.message || 'Failed to accept request', 'error');
     } finally {
       setBusy(false);
     }
   };
 
-  const handleStart = async () => {
+  const handleApproveTermination = async () => {
     const ok = await confirm({
-      title: 'Start management now?',
-      message: 'The request moves from approved to active.',
-      confirmLabel: 'Start management',
+      title: 'Approve this termination?',
+      message: 'The management will be terminated immediately. This cannot be undone.',
+      confirmLabel: 'Approve termination',
       cancelLabel: 'Cancel',
     });
     if (!ok) return;
     setBusy(true);
     try {
-      await updateStatus(id, 'active');
-      showToast('Management started');
+      await approveTermination(id);
+      showToast('Termination approved - management terminated');
       await refreshAll();
     } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to start management', 'error');
+      showToast(err.response?.data?.message || 'Failed to approve termination', 'error');
     } finally {
       setBusy(false);
     }
@@ -280,7 +273,8 @@ const ManagementRequestDetail = () => {
   const submitReason = async () => {
     const kind = reasonModal;
     if (!kind) return;
-    if (!reason.trim()) {
+    const needsReason = kind !== 'request_termination';
+    if (needsReason && !reason.trim()) {
       setReasonError('A reason is required');
       return;
     }
@@ -289,7 +283,7 @@ const ManagementRequestDetail = () => {
     if (!ok) return;
     setBusy(true);
     try {
-      if (kind === 'reject') await rejectRequest(id, reason.trim());
+      if (kind === 'decline') await declineRequest(id, reason.trim());
       else if (kind === 'terminate') await terminateManagement(id, reason.trim());
       else if (kind === 'request_termination') await requestTermination(id, reason.trim());
       showToast(meta.toast);
@@ -375,8 +369,6 @@ const ManagementRequestDetail = () => {
   const property = request.property || {};
   const owner = request.owner || {};
   const services = request.services || [];
-  const hasAdvancedAssign =
-    isAdmin && ['pending_review', 'rejected', 'terminated'].includes(request.status);
 
   return (
     <div>
@@ -425,43 +417,17 @@ const ManagementRequestDetail = () => {
               </div>
 
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">Assigned agent</p>
-                {request.assignedAgent ? (
-                  <>
-                    <p className="text-sm font-medium text-navy">{request.assignedAgent.name}</p>
-                    {request.assignedAgent.email && (
-                      <p className="text-xs text-slate-muted mt-0.5">{request.assignedAgent.email}</p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-sm text-slate-muted">Unassigned</p>
-                )}
-              </div>
-
-              <div>
                 <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">Requested</p>
                 <p className="text-sm font-medium text-navy">{formatDate(request.createdAt)}</p>
               </div>
 
-              <div>
-                <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">Preferred start</p>
-                <p className="text-sm font-medium text-navy">{formatDate(request.preferredStartDate)}</p>
-              </div>
-
-              {request.reviewedAt && (
+              {request.decidedAt && (
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">Reviewed</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">Decided</p>
                   <p className="text-sm font-medium text-navy">
-                    {formatDate(request.reviewedAt)}
-                    {request.reviewedBy?.name ? ` by ${request.reviewedBy.name}` : ''}
+                    {formatDate(request.decidedAt)}
+                    {request.decidedBy?.name ? ` by ${request.decidedBy.name}` : ''}
                   </p>
-                </div>
-              )}
-
-              {request.startedAt && (
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">Started</p>
-                  <p className="text-sm font-medium text-navy">{formatDate(request.startedAt)}</p>
                 </div>
               )}
 
@@ -485,83 +451,76 @@ const ManagementRequestDetail = () => {
                       key={s}
                       className="text-xs font-medium bg-navy/10 text-navy px-2.5 py-1 rounded-sm"
                     >
-                      {serviceLabel(s)}
+                      {s}
                     </span>
                   ))
                 )}
               </div>
             </div>
 
-            {/* Owner notes */}
-            {request.ownerNotes && (
+            {/* Owner note */}
+            {request.note && (
               <div className="border-t border-navy/5 pt-4 mt-4">
-                <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">Owner notes</p>
-                <p className="text-sm text-slate-ink whitespace-pre-line">{request.ownerNotes}</p>
+                <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">Owner note</p>
+                <p className="text-sm text-slate-ink whitespace-pre-line">{request.note}</p>
               </div>
             )}
 
-            {/* Rejection reason */}
-            {request.status === 'rejected' && request.rejectionReason && (
+            {/* Decline reason */}
+            {request.status === 'declined' && request.decisionReason && (
               <div className="bg-brick-light border border-brick/20 rounded-sm px-4 py-3 mt-4 text-sm text-brick">
-                <span className="font-medium">Rejection reason:</span> {request.rejectionReason}
-                {request.reviewedBy?.name && (
+                <span className="font-medium">Decline reason:</span> {request.decisionReason}
+                {request.decidedBy?.name && (
                   <span className="text-brick/80">
-                    {' '}— reviewed by {request.reviewedBy.name}
+                    {' '}— decided by {request.decidedBy.name}
                   </span>
                 )}
               </div>
             )}
 
-            {/* Termination reason */}
-            {request.status === 'terminated' && request.terminationReason && (
+            {/* Termination reasons */}
+            {['termination_pending', 'terminated'].includes(request.status) && request.terminationReason && (
+              <div className="bg-parchment border border-navy/10 rounded-sm px-4 py-3 mt-4 text-sm text-slate-ink">
+                <span className="font-medium">Owner termination reason:</span> {request.terminationReason}
+              </div>
+            )}
+            {request.status === 'terminated' && request.terminatedReason && (
               <div className="bg-brick-light border border-brick/20 rounded-sm px-4 py-3 mt-4 text-sm text-brick">
-                <span className="font-medium">Termination reason:</span> {request.terminationReason}
+                <span className="font-medium">Termination reason:</span> {request.terminatedReason}
+                {request.terminatedBy?.name && (
+                  <span className="text-brick/80">
+                    {' '}— terminated by {request.terminatedBy.name}
+                  </span>
+                )}
               </div>
             )}
           </div>
 
-          {/* Actions — admin */}
-          {isAdmin && request.status === 'pending_review' && (
+          {/* Actions — admin: pending → Accept / Decline */}
+          {isAdmin && request.status === 'pending' && (
             <div className="bg-white border border-navy/10 rounded-sm shadow-card p-5 flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={handleApprove}
+                onClick={handleAccept}
                 disabled={busy}
                 className="btn-primary text-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {busy ? 'Working...' : 'Approve'}
+                {busy ? 'Working...' : 'Accept'}
               </button>
               <button
                 type="button"
-                onClick={() => openReason('reject')}
+                onClick={() => openReason('decline')}
                 disabled={busy}
                 className="border border-brick text-brick text-sm font-medium px-5 py-2.5 rounded-sm hover:bg-brick-light transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Reject
+                Decline
               </button>
             </div>
           )}
 
-          {isAdmin && ['approved', 'active'].includes(request.status) && (
+          {/* Actions — admin: active → Terminate */}
+          {isAdmin && request.status === 'active' && (
             <div className="bg-white border border-navy/10 rounded-sm shadow-card p-5 flex flex-wrap gap-3">
-              {request.status === 'approved' && (
-                <button
-                  type="button"
-                  onClick={handleStart}
-                  disabled={busy}
-                  className="btn-primary text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {busy ? 'Working...' : 'Start Management'}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setAssignOpen(true)}
-                disabled={busy}
-                className="btn-secondary text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                Assign / Reassign Agent
-              </button>
               <button
                 type="button"
                 onClick={() => openReason('terminate')}
@@ -573,22 +532,22 @@ const ManagementRequestDetail = () => {
             </div>
           )}
 
-          {/* Actions — assigned agent */}
-          {isAssignedAgent && request.status === 'approved' && (
+          {/* Actions — admin: termination_pending → Approve Termination */}
+          {isAdmin && request.status === 'termination_pending' && (
             <div className="bg-white border border-navy/10 rounded-sm shadow-card p-5 flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={handleStart}
+                onClick={handleApproveTermination}
                 disabled={busy}
                 className="btn-primary text-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {busy ? 'Working...' : 'Start Management'}
+                {busy ? 'Working...' : 'Approve Termination'}
               </button>
             </div>
           )}
 
-          {/* Actions — owner */}
-          {isOwner && ['approved', 'active'].includes(request.status) && (
+          {/* Actions — owner: active → Request Termination (only lifecycle action) */}
+          {isOwner && !isAdmin && request.status === 'active' && (
             <div className="bg-white border border-navy/10 rounded-sm shadow-card p-5 flex flex-wrap gap-3">
               <button
                 type="button"
@@ -597,22 +556,6 @@ const ManagementRequestDetail = () => {
                 className="btn-secondary text-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Request Termination
-              </button>
-            </div>
-          )}
-
-          {/* Advanced row — assign is allowed for admins regardless of status,
-              kept out of the primary action row for non-pipeline statuses. */}
-          {hasAdvancedAssign && (
-            <div className="border-t border-dashed border-navy/15 pt-4">
-              <p className="text-xs uppercase tracking-wide text-slate-muted mb-2">Advanced</p>
-              <button
-                type="button"
-                onClick={() => setAssignOpen(true)}
-                disabled={busy}
-                className="btn-secondary text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                Assign / Reassign Agent
               </button>
             </div>
           )}
@@ -662,28 +605,17 @@ const ManagementRequestDetail = () => {
         </div>
       </div>
 
-      {/* Reason mini-modal (reject / terminate / request termination) */}
+      {/* Reason mini-modal (decline / terminate / request termination) */}
       {reasonModal && (
         <ReasonModal
           meta={REASON_META[reasonModal]}
+          optional={reasonModal === 'request_termination'}
           value={reason}
           error={reasonError}
           submitting={busy}
           onChange={handleReasonChange}
           onSubmit={submitReason}
           onClose={closeReason}
-        />
-      )}
-
-      {/* Assign / reassign agent */}
-      {assignOpen && (
-        <AssignAgentModal
-          request={request}
-          onClose={() => setAssignOpen(false)}
-          onAssigned={(updated) => {
-            if (updated) setRequest(updated);
-            loadActivities();
-          }}
         />
       )}
     </div>

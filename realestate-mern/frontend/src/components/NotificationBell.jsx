@@ -182,6 +182,20 @@ const typeIcon = {
       <path d="M14 2v6h6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+  management_request_accepted: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 2v6h6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 15l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  management_request_declined: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 2v6h6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 12l4 4m0-4l-4 4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   management_request_approved: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" strokeLinecap="round" strokeLinejoin="round" />
@@ -258,6 +272,8 @@ const iconTint = {
   conversation_message: 'bg-sage-light text-sage',
   conversation_followup: 'bg-navy/10 text-navy',
   management_request_submitted: 'bg-brass-light/25 text-brass-dark',
+  management_request_accepted: 'bg-sage-light text-sage',
+  management_request_declined: 'bg-brick-light text-brick',
   management_request_approved: 'bg-sage-light text-sage',
   management_request_rejected: 'bg-brick-light text-brick',
   management_agent_assigned: 'bg-navy/10 text-navy',

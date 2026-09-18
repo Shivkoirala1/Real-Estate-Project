@@ -45,6 +45,9 @@ const LeadDetail = () => {
   // modal switch - a bare id string carries no saleType.
   const property = lead?.property && typeof lead.property === 'object' ? lead.property : null;
   const isRentalProperty = property?.saleType === 'rent';
+  // Management-purpose properties are never sale/rent-filed - hide both
+  // filing actions instead of falling into the sale branch by default.
+  const isManagementProperty = property?.saleType === 'management';
 
 
   const loadLead = useCallback(async () => {
@@ -159,7 +162,7 @@ const LeadDetail = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {lead.stage === 'negotiation' && lead.property && (
+          {lead.stage === 'negotiation' && lead.property && !isManagementProperty && (
             <button
               onClick={() => setSaleModalOpen(true)}
               className="btn-gold text-sm"
@@ -393,7 +396,7 @@ const LeadDetail = () => {
         {/* Right: conversations */}
         <LeadConversationThread lead={lead} onChange={loadLead} />
       </div>
-{isRentalProperty ? (
+{!isManagementProperty && (isRentalProperty ? (
   <SubmitRentalModal
     lead={lead} property={property}
     open={saleModalOpen} onClose={() => setSaleModalOpen(false)}
@@ -405,7 +408,7 @@ const LeadDetail = () => {
     open={saleModalOpen} onClose={() => setSaleModalOpen(false)}
     onSuccess={async () => { setSaleModalOpen(false); await loadLead(); }}
   />
-)}
+))}
     </div>
   );
 };

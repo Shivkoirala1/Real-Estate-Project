@@ -1,23 +1,20 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getManagementRequests,
-  MANAGEMENT_SERVICES,
 } from '../../../services/propertyManagementService';
-import { getAgents } from '../../../services/agentService';
+import { getManagementServices } from '../../../services/managementService';
 import ManagementRequestCard from '../../../components/PropertyManagement/ManagementRequestCard';
 
 const PAGE_SIZE = 10;
 
 const STATUS_TABS = [
   { value: '', label: 'All' },
-  { value: 'pending_review', label: 'Pending Review' },
-  { value: 'approved', label: 'Approved' },
+  { value: 'pending', label: 'Pending' },
   { value: 'active', label: 'Active' },
-  { value: 'rejected', label: 'Rejected' },
+  { value: 'declined', label: 'Declined' },
+  { value: 'termination_pending', label: 'Termination pending' },
   { value: 'terminated', label: 'Terminated' },
 ];
-
-const agentLabel = (a) => a?.name || a?.user?.name || a?.email || a?.user?.email || 'Unnamed agent';
 
 // Admin queue for owner-filed management requests (status tabs + filters +
 // server pagination, mirroring SalesVerification / ManageProperties).
@@ -30,7 +27,6 @@ const ManagementDashboard = () => {
   const [error, setError] = useState('');
 
   const [status, setStatus] = useState('');
-  const [agentFilter, setAgentFilter] = useState('');
   const [service, setService] = useState('');
   const [sort, setSort] = useState('newest');
   const [from, setFrom] = useState('');
@@ -41,8 +37,6 @@ const ManagementDashboard = () => {
   const [search, setSearch] = useState('');
   const debounceRef = useRef(null);
 
-  const [agents, setAgents] = useState([]);
-
   // Clear any pending debounce timer on unmount.
   useEffect(
     () => () => {
@@ -51,13 +45,13 @@ const ManagementDashboard = () => {
     []
   );
 
-  // Agent options for the assignedAgent filter (silent failure: the dropdown
-  // just stays empty).
+  // Service options come from the admin-managed catalogue (active only).
+  const [serviceOptions, setServiceOptions] = useState([]);
   useEffect(() => {
     let active = true;
-    getAgents({ limit: 100 })
+    getManagementServices()
       .then((data) => {
-        if (active) setAgents(data.agents || []);
+        if (active) setServiceOptions(data.services || []);
       })
       .catch(() => {});
     return () => {
@@ -71,7 +65,6 @@ const ManagementDashboard = () => {
     try {
       const data = await getManagementRequests({
         status: status || undefined,
-        assignedAgent: agentFilter || undefined,
         service: service || undefined,
         search: search || undefined,
         from: from || undefined,
@@ -96,7 +89,7 @@ const ManagementDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [status, agentFilter, service, search, from, to, sort, page]);
+  }, [status, service, search, from, to, sort, page]);
 
   useEffect(() => {
     load();
@@ -115,10 +108,6 @@ const ManagementDashboard = () => {
   // Every filter change resets the page to 1.
   const handleStatusChange = (value) => {
     setStatus(value);
-    setPage(1);
-  };
-  const handleAgentChange = (e) => {
-    setAgentFilter(e.target.value);
     setPage(1);
   };
   const handleServiceChange = (e) => {
@@ -152,7 +141,7 @@ const ManagementDashboard = () => {
         <p className="eyebrow mb-2">Admin</p>
         <h1 className="text-3xl mb-1">Property Management</h1>
         <p className="text-sm text-slate-muted">
-          Review owner requests, assign agents and oversee every managed property.
+          Review owner requests and oversee every managed property.
         </p>
       </div>
 
@@ -213,30 +202,15 @@ const ManagementDashboard = () => {
         </div>
 
         <select
-          value={agentFilter}
-          onChange={handleAgentChange}
-          aria-label="Filter by assigned agent"
-          className="input-field lg:max-w-[12rem]"
-        >
-          <option value="">All agents</option>
-          <option value="unassigned">Unassigned</option>
-          {agents.map((a) => (
-            <option key={a._id} value={a._id}>
-              {agentLabel(a)}
-            </option>
-          ))}
-        </select>
-
-        <select
           value={service}
           onChange={handleServiceChange}
           aria-label="Filter by service"
           className="input-field lg:max-w-[12rem]"
         >
           <option value="">All services</option>
-          {MANAGEMENT_SERVICES.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
+          {serviceOptions.map((s) => (
+            <option key={s._id} value={s.name}>
+              {s.name}
             </option>
           ))}
         </select>
