@@ -10,13 +10,13 @@ cloudinary.config({
 });
 
 // Property photos storage (cover image + gallery)
-const propertyStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: 'shram-sewa/properties', // folder name inside your Cloudinary account
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
-  },
-});
+    const propertyStorage = new CloudinaryStorage({
+      cloudinary,
+      params: {
+        folder: 'youth-real-estate/properties', // folder name inside your Cloudinary account
+        allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
+      },
+    });
 
 // Property photos (cover image + gallery). Images only - video for a
 // listing is handled as a separate URL field (e.g. a YouTube link), never
@@ -43,7 +43,7 @@ const upload = multer({
 const verificationStorage = new CloudinaryStorage({
   cloudinary,
   params: {
-    folder: 'shram-sewa/verification',
+    folder: 'youth-real-estate/verification',
     allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
   },
 });
@@ -71,7 +71,7 @@ const uploadVerification = multer({
 const paymentSlipStorage = new CloudinaryStorage({
   cloudinary,
   params: {
-    folder: 'shram-sewa/emi-payment-slips',
+    folder: 'youth-real-estate/emi-payment-slips',
     allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
   },
 });
@@ -106,12 +106,12 @@ const heroStorage = new CloudinaryStorage({
   params: async (req, file) => {
     if (file.fieldname === 'thumbnail' || file.mimetype.startsWith('image/')) {
       return {
-        folder: 'shram-sewa/hero-slides/images',
+        folder: 'youth-real-estate/hero-slides/images',
         allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
       };
     }
     return {
-      folder: 'shram-sewa/hero-slides/videos',
+      folder: 'youth-real-estate/hero-slides/videos',
       resource_type: 'video',
       allowed_formats: ['mp4', 'webm', 'mov'],
     };

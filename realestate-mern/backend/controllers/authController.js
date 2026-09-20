@@ -9,6 +9,7 @@ const { awardReward } = require('../utils/rewards');
 const normalizeEmail = (email = '') => email.toLowerCase().trim();
 
 const sendVerificationEmail = async (user) => {
+  try {
   const { code, hash } = generateCode();
   user.emailVerificationCodeHash = hash;
   user.emailVerificationExpires = new Date(Date.now() + CODE_TTL_MS);
@@ -20,6 +21,9 @@ const sendVerificationEmail = async (user) => {
     text: `Your verification code is ${code}. It expires in 15 minutes.`,
     html: `<p>Hi ${user.name},</p><p>Your Youth Real Estate email verification code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px;">${code}</p><p>This code expires in 15 minutes. If you didn't create this account, you can ignore this email.</p>`,
   });
+} catch (error) {
+  return { delivered: false, error };
+}
 };
 
 // @desc    Register a new user (public - requires selfie + citizenship photo for verification)
@@ -72,7 +76,7 @@ const register = asyncHandler(async (req, res) => {
     referredBy,
   });
 
-  await sendVerificationEmail(user);
+  const emailResult = await sendVerificationEmail(user);
 
   // Deliberately no token/user returned here - the account can't be used to
   // sign in until the emailed code is confirmed via /auth/verify-email.
@@ -80,7 +84,9 @@ const register = asyncHandler(async (req, res) => {
     success: true,
     requiresVerification: true,
     email: user.email,
-    message: 'Registration submitted. Check your email for a 6-digit verification code to activate your account.',
+    message: emailResult.delivered
+      ? 'Registration submitted. Check your email for a 6-digit verification code to activate your account.'
+      : 'Registration submitted. Failed to send verification email.',
   });
 });
 
