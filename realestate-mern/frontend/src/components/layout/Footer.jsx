@@ -8,7 +8,7 @@ import MapView from '../MapView';
 // (M77H+F5M, Itahari) — Itahari Ward No. 6, Koshi Province 56705.
 const OFFICE = {
   address: 'Itahari Ward No. 6, Itahari, Koshi Province',
-  phone: '+977 1-4567890',
+  phone: '+977 982‑6031844',
   email: 'youthrealestate6@gmail.com',
   lat: 26.6637,
   lng: 87.2779,
