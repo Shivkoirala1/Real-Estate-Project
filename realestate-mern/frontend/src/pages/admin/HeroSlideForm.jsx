@@ -6,12 +6,17 @@ import {
   updateHeroSlide,
 } from "../../services/heroSlideService";
 import { getProperties, getPropertyByIdorSlug } from "../../services/propertyService";
+import { nepaliInputToUTC, utcToNepaliInputLocal } from "../../utils/timeConverter";
 
+// Stored instants are UTC; the datetime-local inputs show and accept Nepal
+// wall time. Converting on both ends (instead of passing the raw input
+// value through) keeps "start now" meaning now rather than 5:45 in the
+// future on a UTC server.
 const toInputDateTime = (iso) => {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toISOString().slice(0, 16);
+  return utcToNepaliInputLocal(d);
 };
 
 export default function HeroSlideForm() {
@@ -182,8 +187,8 @@ export default function HeroSlideForm() {
       ctaLabel: form.ctaLabel,
       ctaActionType: form.ctaActionType,
       ctaActionValue: form.ctaEnabled ? form.ctaActionValue : "",
-      startAt: form.startAt || "",
-      endAt: form.endAt || "",
+      startAt: form.startAt ? nepaliInputToUTC(form.startAt) : "",
+      endAt: form.endAt ? nepaliInputToUTC(form.endAt) : "",
       displayOrder: form.displayOrder === "" ? undefined : form.displayOrder,
       duration: form.duration,
       status,
@@ -491,6 +496,7 @@ export default function HeroSlideForm() {
       {/* D. Schedule */}
       <section className="space-y-4">
         <h2 className="font-display text-xl text-navy">Schedule</h2>
+        <p className="text-sm text-slate-muted -mt-2">Times are Nepal time (NPT). Leave blank for no bound.</p>
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
             <label className="block mb-2 font-medium text-navy">Start date/time (optional)</label>
