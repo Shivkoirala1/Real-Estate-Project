@@ -16,7 +16,7 @@ const { awardReward } = require('../utils/rewards');
 const sanitizeLocation = (location) => {
   if (!location || typeof location !== 'object') return location;
   const cleaned = { ...location };
-  ['province', 'district', 'municipality', 'wardNumber', 'locality', 'streetAddress', 'nearbyLandmark'].forEach(
+  ['province', 'district', 'municipality', 'wardNumber', 'locality', 'streetAddress', 'nearbyLandmark', 'mapLink'].forEach(
     (field) => {
       if (typeof cleaned[field] === 'string') cleaned[field] = cleaned[field].trim();
     }

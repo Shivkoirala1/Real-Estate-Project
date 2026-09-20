@@ -66,6 +66,15 @@ const validatePropertyInput = (data, category = 'building', purpose = 'listing')
       errors.push('Both latitude and longitude are required when pinning a map location');
     }
   }
+  // Optional Google Maps link — any http(s) URL is accepted (share links
+  // come as maps.app.goo.gl, google.com/maps, etc.), but it must at least
+  // be a well-formed absolute URL so the detail-page button never 404s.
+  {
+    const mapLink = typeof location.mapLink === 'string' ? location.mapLink.trim() : '';
+    if (mapLink && !/^https?:\/\/\S+$/.test(mapLink)) {
+      errors.push('Map link must be a valid URL starting with http(s)://');
+    }
+  }
 
   // ---- Land area: required for every listing (a house sits on land too),
   // but for a Land listing it's the single most important number. ----
@@ -77,6 +86,12 @@ const validatePropertyInput = (data, category = 'building', purpose = 'listing')
 
   if (details.roadFrontage !== undefined && details.roadFrontage !== '' && Number(details.roadFrontage) < 0) {
     errors.push('Road frontage (mukh) cannot be negative');
+  }
+
+  // Road type is optional for every category; when provided it must be one
+  // of the known surface types.
+  if (details.roadType && !['pitched', 'gravel', 'interlocked-tiles'].includes(details.roadType)) {
+    errors.push('Invalid road type selected');
   }
 
   if (isLand) {

@@ -45,6 +45,9 @@ const propertySchema = new mongoose.Schema(
         lat: { type: Number, min: -90, max: 90 },
         lng: { type: Number, min: -180, max: 180 },
       },
+      // Optional Google Maps share link (e.g. https://maps.app.goo.gl/…),
+      // kept alongside the embedded Leaflet pin for one-tap directions.
+      mapLink: { type: String, default: '', trim: true },
     },
 
     details: {
@@ -65,6 +68,14 @@ const propertySchema = new mongoose.Schema(
       parkingSpaces: { type: Number, default: 0 },
       facingDirection: { type: String, default: '' },
       roadAccess: { type: String, default: '' },
+      // Surface material of the access road (optional). Kept separate from
+      // the free-text roadAccess ("13 ft blacktopped") so it stays
+      // filterable; roadAccess keeps width/condition detail.
+      roadType: {
+        type: String,
+        enum: ['', 'pitched', 'gravel', 'interlocked-tiles'],
+        default: '',
+      },
       // "Mukh" - the width of the land facing the road, a detail Nepali land
       // buyers routinely ask about (e.g. "20 feet mukh").
       roadFrontage: { type: Number, default: 0 },

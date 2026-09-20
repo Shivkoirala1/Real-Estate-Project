@@ -26,6 +26,8 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\d{10}$/;
 
 // Returns an array of [label, value] pairs for the property specifications table
+const ROAD_TYPE_LABELS = { pitched: 'Pitched', gravel: 'Gravel', 'interlocked-tiles': 'Interlocked Tiles' };
+
 const specRows = (property) => {
   const d = property.details || {};
   return [
@@ -37,6 +39,7 @@ const specRows = (property) => {
     ["Parking Spaces", d.parkingSpaces || "—"],
     ["Facing Direction", d.facingDirection || "—"],
     ["Road Access", d.roadAccess || "—"],
+    ["Road Type", ROAD_TYPE_LABELS[d.roadType] || "—"],
     [
       "Mukh (Road Frontage)",
       d.roadFrontage ? `${d.roadFrontage} ${d.roadFrontageUnit || "ft"}` : "—",
@@ -449,6 +452,16 @@ const PropertyDetail = () => {
               </p>
             </div>
             <div className="mx-2 grid sm:flex gap-2 flex-shrink-0">
+              {property.location?.mapLink && (
+                <a
+                  href={property.location.mapLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary text-sm"
+                >
+                  Google Maps ↗
+                </a>
+              )}
               {property.media?.video && (
                 <a
                   href={property.media.video}

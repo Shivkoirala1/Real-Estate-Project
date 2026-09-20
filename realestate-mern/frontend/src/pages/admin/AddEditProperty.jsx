@@ -72,6 +72,7 @@ const initialState = {
     streetAddress: '',
     nearbyLandmark: '',
     mapLocation: { lat: '', lng: '' },
+    mapLink: '',
   },
   details: {
     landArea: '',
@@ -85,6 +86,7 @@ const initialState = {
     parkingSpaces: '',
     facingDirection: '',
     roadAccess: '',
+    roadType: '',
     roadFrontage: '',
     roadFrontageUnit: 'ft',
     waterSupply: false,
@@ -177,6 +179,7 @@ const AddEditProperty = () => {
               lat: p.location?.mapLocation?.lat ?? '',
               lng: p.location?.mapLocation?.lng ?? '',
             },
+            mapLink: p.location?.mapLink || '',
           },
           details: {
             ...initialState.details,
@@ -338,6 +341,12 @@ const AddEditProperty = () => {
         next.mapLocation = 'Provide both latitude and longitude, or leave the map pin unset';
       } else if (latSet && lngSet && (Number(lat) < -90 || Number(lat) > 90 || Number(lng) < -180 || Number(lng) > 180)) {
         next.mapLocation = 'Map coordinates are out of range';
+      }
+    }
+    {
+      const mapLink = (form.location.mapLink || '').trim();
+      if (mapLink && !/^https?:\/\/\S+$/.test(mapLink)) {
+        next.mapLink = 'Map link must be a valid URL starting with http(s)://';
       }
     }
 
@@ -751,6 +760,21 @@ const AddEditProperty = () => {
             onChange={handleMapPick}
           />
           {fieldErrors.mapLocation && <p className="text-xs text-brick mt-2">{fieldErrors.mapLocation}</p>}
+          <div className="mt-4">
+            <label htmlFor="prop-map-link" className="label-field">Google Maps link <span className="text-slate-muted text-xs font-normal">(optional — share link for directions)</span></label>
+            <input
+              id="prop-map-link"
+              type="url"
+              inputMode="url"
+              className={`input-field ${fieldErrors.mapLink ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
+              value={form.location.mapLink}
+              onChange={(e) => { updateLocation('mapLink', e.target.value); clearFieldError('mapLink'); }}
+              placeholder="e.g. https://maps.app.goo.gl/…"
+            />
+            {fieldErrors.mapLink
+              ? <p className="text-xs text-brick mt-1">{fieldErrors.mapLink}</p>
+              : <p className="text-xs text-slate-muted mt-1">Paste the location's Google Maps share link — buyers get a one-tap directions button.</p>}
+          </div>
         </section>
 
         {/* Property Details - genuinely different fields depending on category */}
@@ -891,6 +915,15 @@ const AddEditProperty = () => {
             <div>
               <label className="label-field">Road Access</label>
               <input className="input-field" value={form.details.roadAccess} onChange={(e) => updateDetails('roadAccess', e.target.value)} placeholder="e.g. 13 ft blacktopped" />
+            </div>
+            <div>
+              <label className="label-field">Road Type <span className="text-slate-muted text-xs font-normal">(optional)</span></label>
+              <select className="input-field" value={form.details.roadType} onChange={(e) => updateDetails('roadType', e.target.value)}>
+                <option value="">Not specified</option>
+                <option value="pitched">Pitched</option>
+                <option value="gravel">Gravel</option>
+                <option value="interlocked-tiles">Interlocked Tiles</option>
+              </select>
             </div>
             <div>
               <label className="label-field">Mukh (Road Frontage)</label>
