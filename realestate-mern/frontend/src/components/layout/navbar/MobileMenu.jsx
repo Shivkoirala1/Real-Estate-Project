@@ -49,6 +49,19 @@ const MobileMenu = ({
         </>
       ) : (
         <>
+          <Link to="/profile" className="flex items-center gap-3" onClick={onClose}>
+            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-brass font-semibold text-navy">
+              {(user.avatar || user.selfiePhoto) ? (
+                <img src={user.avatar || user.selfiePhoto} alt="" className="h-full w-full object-cover" />
+              ) : (
+                user.name?.trim()?.charAt(0)?.toUpperCase() || "?"
+              )}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium text-ivory/85">{user.name}</span>
+              <span className="block truncate text-xs text-ivory/50">{user.email}</span>
+            </span>
+          </Link>
           {verified ? (
             <Link to={propertyPostPath} className={mobileActionClass} onClick={onClose}>
               + Post a Property

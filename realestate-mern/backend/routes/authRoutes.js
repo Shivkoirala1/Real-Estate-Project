@@ -21,6 +21,10 @@ const verificationUpload = upload.verification.fields([
   { name: 'selfiePhoto', maxCount: 1 },
   { name: 'citizenshipPhotoFront', maxCount: 1 },
   { name: 'citizenshipPhotoBack', maxCount: 1 },
+  // Profile photo: accepted on the same endpoint so the account page can
+  // update it with one request. Handled separately in updateProfile — it
+  // never affects verification status (unlike the identity documents).
+  { name: 'avatar', maxCount: 1 },
 ]);
 
 router.post('/register', verificationUpload, register);

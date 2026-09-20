@@ -136,6 +136,26 @@ export const changePassword = async (
 };
 
 /**
+ * Send a 6-digit verification code to the logged-in user's saved phone number
+ * POST /api/auth/send-phone-otp
+ */
+export const sendPhoneOtp = async () => {
+  const response = await api.post("/auth/send-phone-otp");
+
+  return response.data;
+};
+
+/**
+ * Confirm the SMS'd 6-digit code and mark the phone as verified
+ * POST /api/auth/verify-phone
+ */
+export const verifyPhone = async (code) => {
+  const response = await api.post("/auth/verify-phone", { code });
+
+  return response.data;
+};
+
+/**
  * Logout user
  * POST /api/auth/logout
  */

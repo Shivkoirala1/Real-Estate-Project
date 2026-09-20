@@ -412,6 +412,9 @@ const updateProfile = asyncHandler(async (req, res) => {
   if (files.selfiePhoto) user.selfiePhoto = files.selfiePhoto[0].path;
   if (files.citizenshipPhotoFront) user.citizenshipPhotoFront = files.citizenshipPhotoFront[0].path;
   if (files.citizenshipPhotoBack) user.citizenshipPhotoBack = files.citizenshipPhotoBack[0].path;
+  // A profile-photo change is cosmetic only — unlike identity documents, it
+  // never sends the account back to pending review.
+  if (files.avatar) user.avatar = files.avatar[0].path;
   if (files.selfiePhoto || files.citizenshipPhotoFront || files.citizenshipPhotoBack) {
     user.verificationStatus = 'pending';
   }

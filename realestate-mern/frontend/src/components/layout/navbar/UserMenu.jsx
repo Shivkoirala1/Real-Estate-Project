@@ -19,6 +19,8 @@ const UserMenu = ({ unreadCount = 0 }) => {
   if (!user) return null;
 
   const avatarInitial = user.name?.trim()?.charAt(0)?.toUpperCase() || "?";
+  // Profile photo first, identity selfie as fallback, initial as last resort.
+  const avatarSrc = user.avatar || user.selfiePhoto;
   const navItems = getAccountNavItems(user, {
     conversations: conversationUnreadCount,
     notifications: unreadCount,
@@ -32,11 +34,12 @@ const UserMenu = ({ unreadCount = 0 }) => {
         onClick={toggle}
         aria-expanded={open}
         aria-haspopup="menu"
+        aria-label="Account menu"
         className="flex items-center gap-2 text-sm text-ivory/90 transition-colors hover:text-brass"
       >
         <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-brass font-semibold text-navy">
-          {user.selfiePhoto ? (
-            <img src={user.selfiePhoto} alt="" className="h-full w-full object-cover" />
+          {avatarSrc ? (
+            <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
           ) : (
             avatarInitial
           )}
@@ -56,8 +59,24 @@ const UserMenu = ({ unreadCount = 0 }) => {
         <div
           role="menu"
           aria-label="Account menu"
-          className="absolute right-0 mt-3 w-56 rounded-sm border border-navy/10 bg-white py-2 text-navy shadow-lifted"
+          className="absolute right-0 mt-3 w-64 rounded-sm border border-navy/10 bg-white py-2 text-navy shadow-lifted"
         >
+          <Link to="/profile" onClick={close} role="menuitem" className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-parchment">
+            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-brass font-semibold text-navy">
+              {avatarSrc ? (
+                <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
+              ) : (
+                avatarInitial
+              )}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold">{user.name}</span>
+              <span className="block truncate text-xs text-slate-muted">{user.email}</span>
+            </span>
+          </Link>
+
+          <div className="my-1 border-t border-navy/10" aria-hidden="true" />
+
           {navItems.map(({ id, to, label, badgeCount, badgeVariant }) => (
             <Link key={id} to={to} onClick={close} className={menuLinkClass} role="menuitem">
               <span>{label}</span>
