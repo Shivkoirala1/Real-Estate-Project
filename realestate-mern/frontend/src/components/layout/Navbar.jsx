@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
+import { FiHome, FiGrid, FiRepeat, FiFileText, FiInfo, FiLogIn } from 'react-icons/fi';
 
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
@@ -20,26 +21,27 @@ const publicNavItems = [
     label: 'Home',
     to: '/',
     end: true,
+    icon: FiHome,
   },
   {
     label: 'Properties',
     to: '/properties',
+    icon: FiGrid,
   },
   {
     label: 'Land Converter',
     to: '/land-converter',
+    icon: FiRepeat,
   },
   {
     label: 'Blog',
     to: '/blogs',
+    icon: FiFileText,
   },
   {
     label: 'About',
     to: '/about',
-  },
-  {
-    label: 'Contact',
-    to: '/contact',
+    icon: FiInfo,
   },
 ];
 
@@ -96,14 +98,17 @@ const Navbar = () => {
           aria-label="Main navigation"
           className="hidden items-center gap-8 md:flex"
         >
-          {publicNavItems.map(({ label, to, end }) => (
+          {publicNavItems.map(({ label, to, end, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
               className={navLinkClass}
             >
-              {label}
+              <span className="inline-flex items-center gap-1.5">
+                {Icon && <Icon size={15} aria-hidden="true" />}
+                {label}
+              </span>
             </NavLink>
           ))}
         </nav>
@@ -116,7 +121,10 @@ const Navbar = () => {
                 to="/login"
                 className={simpleLinkClass}
               >
-                Sign in
+                <span className="inline-flex items-center gap-1.5">
+                  <FiLogIn size={15} aria-hidden="true" />
+                  Sign in
+                </span>
               </Link>
 
               <Link

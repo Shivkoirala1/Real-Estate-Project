@@ -7,6 +7,7 @@ import { getPropertyTypes } from '../../services/categoryService';
 import SearchFilterBar from '../../components/SearchFilterBar';
 import PropertyCard from '../../components/PropertyCard';
 import PropertyCategories from '../../components/PropertyCategories';
+import { openContactModal } from '../../utils/contactModal';
 
 const Home = () => {
   const [featured, setFeatured] = useState([]);
@@ -164,7 +165,7 @@ const Home = () => {
           <p className="text-ivory/70 mb-6 leading-relaxed">
             Get in touch with our agent team and we'll help you list, price, and market your property.
           </p>
-          <Link to="/contact" className="btn-gold">Contact us</Link>
+          <button type="button" onClick={openContactModal} className="btn-gold">Contact us</button>
         </div>
       </section>
     </div>

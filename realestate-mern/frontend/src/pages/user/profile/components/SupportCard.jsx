@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { openContactModal } from '../../../../utils/contactModal';
 
 // Secondary card: route to support. Deliberately quiet next to account and
 // security actions.
@@ -9,7 +9,7 @@ const SupportCard = () => (
     <p className="text-sm text-slate-muted leading-relaxed mb-3">
       Questions about your account or a listing? Our team is happy to help.
     </p>
-    <Link to="/contact" className="text-sm text-brass hover:underline font-medium">Contact support →</Link>
+    <button type="button" onClick={openContactModal} className="text-sm text-brass hover:underline font-medium">Contact support →</button>
   </div>
 );
 

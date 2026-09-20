@@ -34,9 +34,12 @@ const MobileMenu = ({
 
   return (
     <nav id={id} aria-label="Mobile navigation" className="flex flex-col gap-4 bg-navy-dark px-5 pb-5 md:hidden">
-      {publicNavItems.map(({ label, to, end }) => (
+      {publicNavItems.map(({ label, to, end, icon: Icon }) => (
         <NavLink key={to} to={to} end={end} className={mobileNavLinkClass} onClick={onClose}>
-          {label}
+          <span className="inline-flex items-center gap-2">
+            {Icon && <Icon size={15} aria-hidden="true" />}
+            {label}
+          </span>
         </NavLink>
       ))}
 

@@ -13,8 +13,9 @@ L.Icon.Default.mergeOptions({
 });
 
 // Read-only map showing exactly where a property is located, for buyers
-// viewing the property detail page.
-const MapView = ({ lat, lng, title }) => {
+// viewing the property detail page. Also reused for the office location in
+// the footer (pass a smaller heightClass there so it never dominates).
+const MapView = ({ lat, lng, title, heightClass = 'h-72' }) => {
   if (lat === undefined || lat === null || lng === undefined || lng === null) {
     return null;
   }
@@ -22,7 +23,7 @@ const MapView = ({ lat, lng, title }) => {
   const position = [Number(lat), Number(lng)];
 
   return (
-    <div className="relative z-0 isolate h-72 rounded-sm overflow-hidden border border-navy/15">
+    <div className={`relative z-0 isolate ${heightClass} rounded-sm overflow-hidden border border-navy/15`}>
       <MapContainer center={position} zoom={15} style={{ height: '100%', width: '100%' }} scrollWheelZoom={false}>
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

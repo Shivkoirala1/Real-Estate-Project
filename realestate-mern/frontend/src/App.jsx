@@ -4,6 +4,9 @@ import { Routes, Route } from "react-router-dom";
 // Components
 import Navbar from "./components/layout/Navbar";
 import Footer from "./components/layout/Footer";
+import FloatingContactButton from "./components/contact/FloatingContactButton";
+import ContactModalHost from "./components/contact/ContactModalHost";
+import FloatingSocials from "./components/FloatingSocials";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PostGate from "./components/PostGate";
 import DashboardLayout from "./components/layout/DashboardLayout";
@@ -18,7 +21,6 @@ import Register from "./pages/public/Register";
 import VerifyEmail from "./pages/public/VerifyEmail";
 import ForgotPassword from "./pages/public/ForgotPassword";
 import ResetPassword from "./pages/public/ResetPassword";
-import Contact from "./pages/public/Contact";
 import About from "./pages/public/About";
 import LandConverter from "./pages/public/LandConverter";
 import BlogList from "./pages/public/BlogList";
@@ -83,7 +85,6 @@ function App() {
           <Route path="/properties" element={<PropertyListing />} />
           <Route path="/properties/:id" element={<PropertyDetail />} />
           <Route path="/about" element={<About />} />
-          <Route path="/contact" element={<Contact />} />
           <Route path="/blogs" element={<BlogList />} />
           <Route path="/blogs/:slug" element={<BlogDetail />} />
           <Route path="/land-converter" element={<LandConverter />} />
@@ -638,6 +639,9 @@ function App() {
         </Routes>
       </main>
       <Footer />
+      <FloatingSocials />
+      <FloatingContactButton />
+      <ContactModalHost />
     </div>
   );
 }
