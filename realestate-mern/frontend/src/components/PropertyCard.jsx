@@ -4,6 +4,9 @@ import { formatPrice, imageUrl } from '../utils/format';
 import StatusBadge from './StatusBadge';
 
 const PropertyCard = ({ property }) => {
+  const loc = property.location || {};
+  const place = loc.locality || loc.municipality || '';
+  const district = loc.district || '';
   return (
     <Link
       to={`/properties/${property.slug || property._id}`}
@@ -27,8 +30,8 @@ const PropertyCard = ({ property }) => {
       <div className="p-4">
         <p className="font-display text-lg text-navy leading-snug mb-1 line-clamp-1">{property.title}</p>
         <p className="text-sm text-slate-muted mb-3 line-clamp-1">
-          {property.location?.city?.name || property.location?.municipality || ''}
-          {property.location?.district?.name ? `, ${property.location.district.name}` : ''}
+          {place}
+          {district ? `, ${district}` : ''}
         </p>
         <div className="flex items-center gap-4 text-xs text-slate-ink border-t border-navy/10 pt-3">
           {!!property.details?.bedrooms && <span>{property.details.bedrooms} Beds</span>}

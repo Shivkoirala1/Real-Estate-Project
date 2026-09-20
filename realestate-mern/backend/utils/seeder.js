@@ -1,5 +1,6 @@
-// Seeds the database with an initial admin account, sample property types,
-// districts and cities so the app is usable immediately after setup.
+// Seeds the database with fixed demo accounts, property types, districts
+// (from the canonical backend/data/nepalGeography.js dataset) and sample
+// properties so the app is usable immediately after setup.
 // Run with: npm run seed
 
 const path = require('path');
@@ -10,50 +11,40 @@ const mongoose = require('mongoose');
 const connectDB = require('../config/db');
 const User = require('../models/User');
 const Property = require('../models/Property');
-const { PropertyType, District, City } = require('../models/Category');
-const { PROVINCES, DISTRICTS } = require('./nepalGeoData');
+const { PropertyType, District } = require('../models/Category');
+const { PROVINCES, DISTRICTS } = require('../data/nepalGeography');
 
 const run = async () => {
   await connectDB();
 
-  // --- Admin user ---
-  const adminEmail = 'admin@realestate.com';
-  const existingAdmin = await User.findOne({ email: adminEmail });
-  if (!existingAdmin) {
-    await User.create({
-      name: 'System Administrator',
-      email: adminEmail,
-      password: 'Admin@123',
-      role: 'admin',
-      verificationStatus: 'verified',
-      verifiedAt: new Date(),
-      isEmailVerified: true,
-    });
-    console.log(`Admin created -> email: ${adminEmail} / password: Admin@123`);
-  } else {
-    console.log('Admin user already exists, skipping.');
-  }
-
-  // --- Sample verified user (demonstrates a user who can post properties) ---
-  const sampleEmail = 'user@realestate.com';
-  const existingSample = await User.findOne({ email: sampleEmail });
-  if (!existingSample) {
-    await User.create({
-      name: 'Sample Verified User',
-      email: sampleEmail,
-      password: 'User@123',
-      role: 'user',
-      // NOTE (legacy uploads deprecation): verification photos upload to
-      // Cloudinary at runtime; the old local placeholder files never existed
-      // on disk, so seed with empty strings (schema defaults) instead.
-      selfiePhoto: '',
-      citizenshipPhotoFront: '',
-      citizenshipPhotoBack: '',
-      verificationStatus: 'verified',
-      verifiedAt: new Date(),
-      isEmailVerified: true,
-    });
-    console.log(`Verified sample user created -> email: ${sampleEmail} / password: User@123`);
+  // --- Demo accounts with fixed IDs (stable across re-seeds and
+  // environments). Matched by _id first so re-running never duplicates;
+  // falls back to the existing email owner if one is already present.
+  const seedUsers = [
+    { _id: '6aaf97c407df8101d6a10909', name: 'System Admin', email: 'admin@realestate.com', password: 'Admin@123', role: 'admin' },
+    { _id: '6aafa5e778cdf6823d2af56a', name: 'Test Agent', email: 'agent@realestate.com', password: 'Agent@123', role: 'agent' },
+    { _id: '6aafb9bd836b4b140a02bbae', name: 'Test User', email: 'user@realestate.com', password: 'User@123', role: 'user' },
+  ];
+  const listers = [];
+  for (const u of seedUsers) {
+    let doc = await User.findById(u._id);
+    if (!doc) {
+      doc = await User.findOne({ email: u.email });
+      if (!doc) {
+        doc = await User.create({
+          ...u,
+          verificationStatus: 'verified',
+          verifiedAt: new Date(),
+          isEmailVerified: true,
+        });
+        console.log(`User created -> ${u.name} / email: ${u.email}`);
+      } else {
+        console.log(`User ${u.email} already exists (different _id), reusing it.`);
+      }
+    } else {
+      console.log(`User ${u.name} already exists, skipping.`);
+    }
+    listers.push(doc._id);
   }
 
   // --- Property Types --- "Land" is the only one that gets the practical
@@ -63,43 +54,33 @@ const run = async () => {
     { name: 'Apartment', category: 'building' },
     { name: 'Land', category: 'land' },
     { name: 'Commercial Space', category: 'building' },
-    { name: 'Villa', category: 'building' },
-    { name: 'Traditional Nepali Home', category: 'building' },
+    { name: 'Agricultural Land', category: 'land' },
+    { name: 'Residential Plot', category: 'land' },
   ];
   for (const { name, category } of propertyTypes) {
     await PropertyType.updateOne({ name }, { name, category }, { upsert: true });
   }
   console.log('Property types seeded.');
 
-  // --- Districts & Cities: the complete, official set of Nepal's 7
-  // provinces and 77 districts (backend/utils/nepalGeoData.js), not just a
-  // handful of sample entries. This is what lets the Add Property form
-  // offer a real province -> district -> city picker instead of free text,
-  // so no made-up locations can be saved.
-  for (const [districtName, { province, cities }] of Object.entries(DISTRICTS)) {
-    const district = await District.findOneAndUpdate(
+  // --- Districts: the canonical Province -> District -> Municipality
+  // dataset (backend/data/nepalGeography.js). Only districts seed here —
+  // properties reference district/municipality names directly, so no
+  // legacy City documents are created.
+  for (const [districtName, { province }] of Object.entries(DISTRICTS)) {
+    await District.findOneAndUpdate(
       { name: districtName },
       { name: districtName, province },
       { upsert: true, new: true }
     );
-    for (const cityName of cities) {
-      await City.updateOne(
-        { name: cityName, district: district._id },
-        { name: cityName, district: district._id },
-        { upsert: true }
-      );
-    }
   }
-  console.log(`Districts and cities seeded (${Object.keys(DISTRICTS).length} districts across ${PROVINCES.length} provinces).`);
+  console.log(`Districts seeded (${Object.keys(DISTRICTS).length} districts across ${PROVINCES.length} provinces).`);
 
   // --- Sample Properties (so the feed isn't empty after setup) ---
-  const existingPropertyCount = await Property.countDocuments();
-  if (existingPropertyCount === 0) {
-    const seller = await User.findOne({ email: sampleEmail });
+  // Title-keyed: only missing samples are created, so re-running tops up a
+  // partial seed (e.g. after a crash) without duplicating existing rows.
+  {
     const allTypes = await PropertyType.find();
-    const allCities = await City.find().populate('district');
     const typeByName = (name) => allTypes.find((t) => t.name === name)?._id;
-    const cityByName = (name) => allCities.find((c) => c.name === name);
 
     const sampleProperties = [
       {
@@ -109,8 +90,9 @@ const run = async () => {
         saleType: 'sale',
         price: 25000000,
         negotiable: true,
-        cityName: 'Kathmandu',
-        municipality: 'Kathmandu Metropolitan City',
+        district: 'Kathmandu',
+        locality: 'Kathmandu',
+        municipality: 'Kathmandu',
         wardNumber: '10',
         streetAddress: 'Baneshwor Marg',
         details: { landArea: 4, landAreaUnit: 'aana', builtUpArea: 2800, bedrooms: 4, bathrooms: 3, floors: 3, parkingSpaces: 2, facingDirection: 'East', roadAccess: '13 ft blacktopped', waterSupply: true, electricity: true, internetAvailability: true, furnishedStatus: 'semi-furnished', constructionYear: 2019 },
@@ -125,8 +107,9 @@ const run = async () => {
         saleType: 'sale',
         price: 9500000,
         negotiable: false,
-        cityName: 'Lalitpur',
-        municipality: 'Lalitpur Metropolitan City',
+        district: 'Lalitpur',
+        locality: 'Lalitpur',
+        municipality: 'Lalitpur',
         wardNumber: '5',
         streetAddress: 'Jawalakhel',
         details: { builtUpArea: 1150, bedrooms: 2, bathrooms: 2, floors: 1, parkingSpaces: 1, facingDirection: 'North', roadAccess: '10 ft', waterSupply: true, electricity: true, internetAvailability: true, furnishedStatus: 'fully-furnished', constructionYear: 2021 },
@@ -141,8 +124,9 @@ const run = async () => {
         saleType: 'sale',
         price: 6000000,
         negotiable: true,
-        cityName: 'Bhaktapur',
-        municipality: 'Bhaktapur Municipality',
+        district: 'Bhaktapur',
+        locality: 'Bhaktapur',
+        municipality: 'Bhaktapur',
         wardNumber: '3',
         streetAddress: 'Suryabinayak',
         details: { landArea: 6, landAreaUnit: 'aana', roadAccess: '16 ft blacktopped', facingDirection: 'South', waterSupply: false, electricity: true, internetAvailability: false },
@@ -157,8 +141,9 @@ const run = async () => {
         saleType: 'sale',
         price: 18000000,
         negotiable: true,
-        cityName: 'Biratnagar',
-        municipality: 'Biratnagar Metropolitan City',
+        district: 'Morang',
+        locality: 'Biratnagar',
+        municipality: 'Biratnagar',
         wardNumber: '2',
         streetAddress: 'Main Road',
         details: { builtUpArea: 2200, floors: 1, parkingSpaces: 3, roadAccess: '30 ft', waterSupply: true, electricity: true, internetAvailability: true, furnishedStatus: 'unfurnished' },
@@ -168,12 +153,13 @@ const run = async () => {
       {
         title: 'Elegant Villa with Private Garden, Kathmandu',
         description: 'Spacious villa featuring high ceilings, a private garden, and a rooftop terrace with panoramic valley views.',
-        propertyType: typeByName('Villa'),
+        propertyType: typeByName('House'), // Villa lives under House (building)
         saleType: 'sale',
         price: 45000000,
         negotiable: false,
-        cityName: 'Kathmandu',
-        municipality: 'Kathmandu Metropolitan City',
+        district: 'Kathmandu',
+        locality: 'Kathmandu',
+        municipality: 'Kathmandu',
         wardNumber: '4',
         streetAddress: 'Budhanilkantha',
         details: { landArea: 8, landAreaUnit: 'aana', builtUpArea: 4500, bedrooms: 5, bathrooms: 5, floors: 3, parkingSpaces: 3, facingDirection: 'East', roadAccess: '20 ft blacktopped', waterSupply: true, electricity: true, internetAvailability: true, furnishedStatus: 'fully-furnished', constructionYear: 2022 },
@@ -188,8 +174,9 @@ const run = async () => {
         saleType: 'sale',
         price: 5200000,
         negotiable: true,
-        cityName: 'Kirtipur',
-        municipality: 'Kirtipur Municipality',
+        district: 'Kathmandu',
+        locality: 'Kirtipur',
+        municipality: 'Kirtipur',
         wardNumber: '1',
         streetAddress: 'Nayabazar',
         details: { builtUpArea: 650, bedrooms: 1, bathrooms: 1, floors: 1, parkingSpaces: 0, facingDirection: 'West', roadAccess: '8 ft', waterSupply: true, electricity: true, internetAvailability: false, furnishedStatus: 'unfurnished', constructionYear: 2016 },
@@ -203,8 +190,9 @@ const run = async () => {
         saleType: 'sale',
         price: 13500000,
         negotiable: true,
-        cityName: 'Godawari',
-        municipality: 'Godawari Municipality',
+        district: 'Lalitpur',
+        locality: 'Godawari',
+        municipality: 'Godawari',
         wardNumber: '9',
         streetAddress: 'Godawari Road',
         details: { landArea: 5, landAreaUnit: 'aana', builtUpArea: 2100, bedrooms: 3, bathrooms: 2, floors: 2, parkingSpaces: 2, facingDirection: 'South', roadAccess: '12 ft gravel', waterSupply: true, electricity: true, internetAvailability: true, furnishedStatus: 'semi-furnished', constructionYear: 2015 },
@@ -218,8 +206,9 @@ const run = async () => {
         saleType: 'sale',
         price: 11800000,
         negotiable: false,
-        cityName: 'Madhyapur Thimi',
-        municipality: 'Madhyapur Thimi Municipality',
+        district: 'Bhaktapur',
+        locality: 'Madhyapur Thimi',
+        municipality: 'Madhyapur Thimi',
         wardNumber: '6',
         streetAddress: 'Sallaghari',
         details: { builtUpArea: 1600, bedrooms: 3, bathrooms: 2, floors: 2, parkingSpaces: 1, facingDirection: 'North-East', roadAccess: '10 ft', waterSupply: true, electricity: true, internetAvailability: true, furnishedStatus: 'fully-furnished', constructionYear: 2020 },
@@ -233,8 +222,9 @@ const run = async () => {
         saleType: 'sale',
         price: 32000000,
         negotiable: true,
-        cityName: 'Lalitpur',
-        municipality: 'Lalitpur Metropolitan City',
+        district: 'Lalitpur',
+        locality: 'Lalitpur',
+        municipality: 'Lalitpur',
         wardNumber: '11',
         streetAddress: 'Satdobato',
         details: { landArea: 10, landAreaUnit: 'aana', roadAccess: '40 ft blacktopped', facingDirection: 'South-West', waterSupply: true, electricity: true, internetAvailability: false },
@@ -249,8 +239,9 @@ const run = async () => {
         saleType: 'sale',
         price: 9800000,
         negotiable: true,
-        cityName: 'Biratnagar',
-        municipality: 'Biratnagar Metropolitan City',
+        district: 'Morang',
+        locality: 'Biratnagar',
+        municipality: 'Biratnagar',
         wardNumber: '14',
         streetAddress: 'Rani Mills Road',
         details: { landArea: 6, landAreaUnit: 'aana', builtUpArea: 1900, bedrooms: 3, bathrooms: 2, floors: 1, parkingSpaces: 2, facingDirection: 'East', roadAccess: '14 ft', waterSupply: true, electricity: true, internetAvailability: true, furnishedStatus: 'semi-furnished', constructionYear: 2017 },
@@ -260,12 +251,13 @@ const run = async () => {
       {
         title: 'Traditional Newari Home Near Bhaktapur Durbar Square',
         description: 'A beautifully preserved traditional Newari house with hand-carved wooden windows, brick facade, and a courtyard, just a short walk from Bhaktapur Durbar Square. Full of heritage character with modern plumbing and wiring already in place.',
-        propertyType: typeByName('Traditional Nepali Home'),
+        propertyType: typeByName('House'), // Traditional homes live under House (building)
         saleType: 'sale',
         price: 21000000,
         negotiable: true,
-        cityName: 'Bhaktapur',
-        municipality: 'Bhaktapur Municipality',
+        district: 'Bhaktapur',
+        locality: 'Bhaktapur',
+        municipality: 'Bhaktapur',
         wardNumber: '7',
         streetAddress: 'Durbar Square Road',
         details: { landArea: 3, landAreaUnit: 'aana', builtUpArea: 2400, bedrooms: 4, bathrooms: 2, floors: 3, parkingSpaces: 0, facingDirection: 'East', roadAccess: '8 ft cobblestone', waterSupply: true, electricity: true, internetAvailability: true, furnishedStatus: 'semi-furnished', constructionYear: 1985 },
@@ -276,12 +268,13 @@ const run = async () => {
       {
         title: 'Heritage Newari House, Patan Durbar Area, Lalitpur',
         description: 'Classic Newari-style residence with traditional tiled roofing and intricately carved wooden struts, located in the historic core of Patan. Ideal for a boutique guesthouse or a family who values heritage architecture.',
-        propertyType: typeByName('Traditional Nepali Home'),
+        propertyType: typeByName('House'), // Traditional homes live under House (building)
         saleType: 'sale',
         price: 26500000,
         negotiable: false,
-        cityName: 'Lalitpur',
-        municipality: 'Lalitpur Metropolitan City',
+        district: 'Lalitpur',
+        locality: 'Lalitpur',
+        municipality: 'Lalitpur',
         wardNumber: '15',
         streetAddress: 'Mangal Bazaar',
         details: { landArea: 4, landAreaUnit: 'aana', builtUpArea: 3100, bedrooms: 5, bathrooms: 3, floors: 3, parkingSpaces: 1, facingDirection: 'North', roadAccess: '10 ft', waterSupply: true, electricity: true, internetAvailability: true, furnishedStatus: 'unfurnished', constructionYear: 1978 },
@@ -295,8 +288,9 @@ const run = async () => {
         saleType: 'sale',
         price: 38000000,
         negotiable: true,
-        cityName: 'Pokhara',
-        municipality: 'Pokhara Metropolitan City',
+        district: 'Kaski',
+        locality: 'Pokhara',
+        municipality: 'Pokhara',
         wardNumber: '6',
         streetAddress: 'Lakeside Road',
         details: { landArea: 9, landAreaUnit: 'aana', roadAccess: '20 ft blacktopped', facingDirection: 'North-West', waterSupply: true, electricity: true, internetAvailability: true },
@@ -311,8 +305,9 @@ const run = async () => {
         saleType: 'sale',
         price: 4200000,
         negotiable: true,
-        cityName: 'Pokhara',
-        municipality: 'Pokhara Metropolitan City',
+        district: 'Kaski',
+        locality: 'Pokhara',
+        municipality: 'Pokhara',
         wardNumber: '24',
         streetAddress: 'Hemja',
         details: { landArea: 15, landAreaUnit: 'ropani', roadAccess: '6 ft gravel', facingDirection: 'South', waterSupply: true, electricity: false, internetAvailability: false },
@@ -326,8 +321,9 @@ const run = async () => {
         saleType: 'sale',
         price: 8800000,
         negotiable: true,
-        cityName: 'Kirtipur',
-        municipality: 'Kirtipur Municipality',
+        district: 'Kathmandu',
+        locality: 'Kirtipur',
+        municipality: 'Kirtipur',
         wardNumber: '2',
         streetAddress: 'Panga',
         details: { landArea: 4.5, landAreaUnit: 'aana', roadAccess: '13 ft blacktopped', facingDirection: 'East', waterSupply: true, electricity: true, internetAvailability: true },
@@ -337,12 +333,13 @@ const run = async () => {
       {
         title: 'Stone & Timber Hill House, Godawari',
         description: 'A Pahadi-style hill house built from local stone and timber, set on a terraced slope with panoramic views over the valley. Combines traditional hill construction with a modern interior fit-out.',
-        propertyType: typeByName('Traditional Nepali Home'),
+        propertyType: typeByName('House'), // Traditional homes live under House (building)
         saleType: 'sale',
         price: 15800000,
         negotiable: true,
-        cityName: 'Godawari',
-        municipality: 'Godawari Municipality',
+        district: 'Lalitpur',
+        locality: 'Godawari',
+        municipality: 'Godawari',
         wardNumber: '4',
         streetAddress: 'Bhardev Marg',
         details: { landArea: 7, landAreaUnit: 'aana', builtUpArea: 1700, bedrooms: 3, bathrooms: 2, floors: 2, parkingSpaces: 1, facingDirection: 'South-East', roadAccess: '10 ft gravel', waterSupply: true, electricity: true, internetAvailability: false, furnishedStatus: 'semi-furnished', constructionYear: 2012 },
@@ -352,12 +349,13 @@ const run = async () => {
       {
         title: 'Terai-Style Home with Wide Veranda, Biratnagar',
         description: 'Single-storey Terai-style home with a wide covered veranda, high ceilings for natural cooling, and a spacious plot ideal for a kitchen garden. A classic Madhesh-region layout close to the city center.',
-        propertyType: typeByName('Traditional Nepali Home'),
+        propertyType: typeByName('House'), // Traditional homes live under House (building)
         saleType: 'sale',
         price: 11200000,
         negotiable: true,
-        cityName: 'Biratnagar',
-        municipality: 'Biratnagar Metropolitan City',
+        district: 'Morang',
+        locality: 'Biratnagar',
+        municipality: 'Biratnagar',
         wardNumber: '5',
         streetAddress: 'Traffic Chowk Road',
         details: { landArea: 8, landAreaUnit: 'aana', builtUpArea: 1850, bedrooms: 3, bathrooms: 2, floors: 1, parkingSpaces: 2, facingDirection: 'South', roadAccess: '16 ft blacktopped', waterSupply: true, electricity: true, internetAvailability: true, furnishedStatus: 'unfurnished', constructionYear: 2009 },
@@ -366,12 +364,10 @@ const run = async () => {
       },
     ];
 
-    // Approximate city-center coordinates for the seed data's map pins. A real
-    // listing's owner would drop a precise pin (now easy via "Use my current
-    // location" on the Add/Edit Property form), but seed data needs *some*
-    // coordinate so these properties satisfy the same map-location requirement
-    // enforced on every real submission.
-    const CITY_COORDINATES = {
+    // Approximate locality-center coordinates for the seed data's map pins.
+    // A real listing's owner drops a precise pin on the Add/Edit Property
+    // form; seed data just needs a plausible coordinate per locality.
+    const LOCALITY_COORDINATES = {
       Kathmandu: { lat: 27.7172, lng: 85.3240 },
       Kirtipur: { lat: 27.6764, lng: 85.2775 },
       Lalitpur: { lat: 27.6588, lng: 85.3247 },
@@ -382,8 +378,18 @@ const run = async () => {
       Pokhara: { lat: 28.2096, lng: 83.9856 },
     };
 
+    let created = 0;
     for (const item of sampleProperties) {
-      const cityDoc = cityByName(item.cityName);
+      // Province is derived from the canonical dataset — never hardcoded —
+      // so a mistyped district fails loudly instead of seeding bad data.
+      // Same for the property type: fail here with the sample title rather
+      // than a cryptic mongoose validation error three lines later.
+      if (!item.propertyType) throw new Error(`Seeder: unknown property type for "${item.title}"`);
+      if (await Property.exists({ title: item.title })) {
+        continue;
+      }
+      const province = DISTRICTS[item.district]?.province;
+      if (!province) throw new Error(`Seeder: unknown district "${item.district}" for "${item.title}"`);
       await Property.create({
         title: item.title,
         description: item.description,
@@ -394,13 +400,13 @@ const run = async () => {
         negotiable: item.negotiable,
         location: {
           country: 'Nepal',
-          province: cityDoc?.district?.province || '',
-          district: cityDoc?.district?._id,
-          city: cityDoc?._id,
+          province,
+          district: item.district,
           municipality: item.municipality,
+          locality: item.locality,
           wardNumber: item.wardNumber,
           streetAddress: item.streetAddress,
-          mapLocation: CITY_COORDINATES[item.cityName] || undefined,
+          mapLocation: LOCALITY_COORDINATES[item.locality] || undefined,
         },
         details: item.details,
         media: {
@@ -409,12 +415,12 @@ const run = async () => {
         },
         status: item.status,
         isFeatured: !!item.isFeatured,
-        listedBy: seller._id,
+        // Spread listings across the demo admin / agent / user accounts.
+        listedBy: listers[Math.floor(Math.random() * listers.length)],
       });
+      created += 1;
     }
-    console.log(`${sampleProperties.length} sample properties seeded.`);
-  } else {
-    console.log('Properties already exist, skipping sample property seeding.');
+    console.log(`Sample properties seeded (${created} new, ${sampleProperties.length - created} already present).`);
   }
 
   console.log('Seeding complete.');

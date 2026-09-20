@@ -8,15 +8,19 @@ const { notifyMany } = require('../utils/notify');
 const { effectiveCommissionPercentage, estimatedCommissionAmount } = require('../utils/commission');
 const { awardReward } = require('../utils/rewards');
 
-// Empty-string values for ObjectId-ref fields (e.g. a poster leaving the
-// district/city dropdown unselected) previously crashed property creation
-// with a Mongoose CastError. This strips them out so the field is simply
-// omitted instead of sent as an invalid value.
+// Normalizes incoming location payloads (which may arrive as JSON strings
+// via multipart/form-data) to the canonical shape
+// (Province -> District -> Municipality + flexible detail fields).
+// Trims string fields; drops an incomplete map pin (only one axis) so a
+// half-filled picker can't save a misleading coordinate.
 const sanitizeLocation = (location) => {
   if (!location || typeof location !== 'object') return location;
   const cleaned = { ...location };
-  if (cleaned.district === '') delete cleaned.district;
-  if (cleaned.city === '') delete cleaned.city;
+  ['province', 'district', 'municipality', 'wardNumber', 'locality', 'streetAddress', 'nearbyLandmark'].forEach(
+    (field) => {
+      if (typeof cleaned[field] === 'string') cleaned[field] = cleaned[field].trim();
+    }
+  );
   if (cleaned.mapLocation) {
     const { lat, lng } = cleaned.mapLocation;
     if (lat === '' || lat === undefined || lat === null || lng === '' || lng === undefined || lng === null) {
@@ -71,8 +75,9 @@ const getProperties = asyncHandler(async (req, res) => {
   const {
     keyword,
     propertyType,
-    city,
+    province,
     district,
+    municipality,
     minPrice,
     maxPrice,
     bedrooms,
@@ -101,8 +106,13 @@ const getProperties = asyncHandler(async (req, res) => {
     query.$or = [{ title: regex }, { description: regex }];
   }
   if (propertyType) query.propertyType = propertyType;
-  if (city) query['location.city'] = city;
-  if (district) query['location.district'] = district;
+  // Canonical admin-area filters are plain names (case-insensitive exact
+  // match). Locality/street text is deliberately NOT an exact filter — it
+  // stays in the free-text keyword search.
+  const exactName = (value) => ({ $regex: `^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' });
+  if (province) query['location.province'] = exactName(province);
+  if (district) query['location.district'] = exactName(district);
+  if (municipality) query['location.municipality'] = exactName(municipality);
   if (status) query.status = status;
   if (saleType) query.saleType = saleType;
   if (featured) query.isFeatured = featured === 'true';
@@ -128,14 +138,13 @@ const getProperties = asyncHandler(async (req, res) => {
   // Card DTO: whitelist only list-rendered fields (description, images[],
   // full details/location, views/shares stay in the detail endpoint).
   // Keyword search still matches title+description at the DB level.
-  const CARD_SELECT = '_id slug title price currency negotiable status saleType commissionPercentage media.coverImage location.city location.district location.municipality details.bedrooms details.bathrooms details.landArea details.landAreaUnit propertyType createdAt';
+  // Location fields are plain strings now (no District/City populates).
+  const CARD_SELECT = '_id slug title price currency negotiable status saleType commissionPercentage media.coverImage location.province location.district location.municipality location.locality details.bedrooms details.bathrooms details.landArea details.landAreaUnit propertyType createdAt';
 
   const [properties, total] = await Promise.all([
     Property.find(query)
       .select(CARD_SELECT)
       .populate('propertyType', 'name defaultCommissionPercentage')
-      .populate('location.city', 'name')
-      .populate('location.district', 'name')
       .populate('listedBy', 'name')
       .sort(sortOption)
       .skip(skip)
@@ -176,8 +185,6 @@ const getProperty = asyncHandler(async (req, res) => {
     : 'name selfiePhoto verificationStatus createdAt';
   const property = await Property.findOne(query)
     .populate('propertyType', 'name category defaultCommissionPercentage')
-    .populate('location.city', 'name')
-    .populate('location.district', 'name')
     .populate('listedBy', listedBySelect);
 
   if (!property) {
@@ -567,11 +574,9 @@ const getFavorites = asyncHandler(async (req, res) => {
   // cards, never as full documents.
   const user = await User.findById(req.user._id).populate({
     path: 'favorites',
-    select: '_id slug title price currency negotiable status saleType media.coverImage location.city location.district location.municipality details.bedrooms details.bathrooms details.landArea details.landAreaUnit propertyType createdAt',
+    select: '_id slug title price currency negotiable status saleType media.coverImage location.province location.district location.municipality location.locality details.bedrooms details.bathrooms details.landArea details.landAreaUnit propertyType createdAt',
     populate: [
       { path: 'propertyType', select: 'name' },
-      { path: 'location.city', select: 'name' },
-      { path: 'location.district', select: 'name' },
       { path: 'listedBy', select: 'name' },
     ],
   });

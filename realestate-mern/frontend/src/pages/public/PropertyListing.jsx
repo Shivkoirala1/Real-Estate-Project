@@ -11,8 +11,9 @@ import PropertyCard from '../../components/PropertyCard';
 const LISTING_FILTERS = [
   'saleType',
   'propertyType',
-  'city',
+  'province',
   'district',
+  'municipality',
   'minPrice',
   'maxPrice',
   'bedrooms',

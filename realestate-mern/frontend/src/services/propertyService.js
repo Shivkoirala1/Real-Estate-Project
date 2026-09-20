@@ -9,7 +9,7 @@ import api from "../utils/axios";
  * - a pre-built query string (e.g. "propertyType=abc&sort=price_low")
  *
  * Supported query parameters:
- * - keyword, saleType, propertyType, district, city
+ * - keyword, saleType, propertyType, province, district, municipality
  * - minPrice, maxPrice, bedrooms, bathrooms
  * - featured, sort, page, limit
  */

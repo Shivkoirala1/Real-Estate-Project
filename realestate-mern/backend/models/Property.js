@@ -26,17 +26,24 @@ const propertySchema = new mongoose.Schema(
       default: null,
     },
 
+    // Canonical location: Province -> District -> Municipality, with
+    // flexible per-property detail (ward / locality-tole / street /
+    // landmark / map pin). Province, district and (where verified data
+    // exists) municipality are controlled reference data (see
+    // backend/data/nepalGeography.js); everything below is free-text
+    // describing this specific property.
     location: {
       country: { type: String, default: 'Nepal' },
-      province: { type: String, default: '' },
-      district: { type: mongoose.Schema.Types.ObjectId, ref: 'District' },
-      city: { type: mongoose.Schema.Types.ObjectId, ref: 'City' },
-      municipality: { type: String, default: '' },
-      wardNumber: { type: String, default: '' },
-      streetAddress: { type: String, default: '' },
+      province: { type: String, required: [true, 'Province is required'], trim: true },
+      district: { type: String, required: [true, 'District is required'], trim: true },
+      municipality: { type: String, default: '', trim: true },
+      wardNumber: { type: String, default: '', trim: true },
+      locality: { type: String, default: '', trim: true },
+      streetAddress: { type: String, default: '', trim: true },
+      nearbyLandmark: { type: String, default: '', trim: true },
       mapLocation: {
-        lat: { type: Number },
-        lng: { type: Number },
+        lat: { type: Number, min: -90, max: 90 },
+        lng: { type: Number, min: -180, max: 180 },
       },
     },
 

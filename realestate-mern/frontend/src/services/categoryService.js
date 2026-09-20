@@ -71,7 +71,7 @@ export const createCity = async (payload) => {
 
 /**
  * Find an existing city by name+district or create it if missing.
- * Used by the listing form's inline "add city" flow.
+ * Legacy admin helper (the listing form no longer uses a city picker).
  * POST /api/categories/cities/find-or-create
  *
  * payload: { name, district }

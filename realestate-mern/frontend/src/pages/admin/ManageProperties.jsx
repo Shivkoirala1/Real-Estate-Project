@@ -33,7 +33,7 @@ const STATUS_FILTER_OPTIONS = [
 const LISTING_FILTERS = {
   admin: [
     "propertyType",
-    "city",
+    "province",
     "district",
     "minPrice",
     "maxPrice",
@@ -44,7 +44,7 @@ const LISTING_FILTERS = {
   ],
   agent: [
     "propertyType",
-    "city",
+    "province",
     "district",
     "minPrice",
     "maxPrice",

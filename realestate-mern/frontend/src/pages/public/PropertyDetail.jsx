@@ -442,9 +442,9 @@ const PropertyDetail = () => {
                 {property.location?.municipality
                   ? `${property.location.municipality}, `
                   : ""}
-                {property.location?.city?.name || ""}
-                {property.location?.district?.name
-                  ? `, ${property.location.district.name}`
+                {property.location?.locality || ""}
+                {property.location?.district
+                  ? `, ${property.location.district}`
                   : ""}
               </p>
             </div>
@@ -533,12 +533,15 @@ const PropertyDetail = () => {
             <p className="text-sm text-slate-ink mb-3">
               {[
                 property.location?.streetAddress,
+                property.location?.locality,
                 property.location?.municipality,
                 property.location?.wardNumber
                   ? `Ward ${property.location.wardNumber}`
                   : null,
-                property.location?.city?.name,
-                property.location?.district?.name,
+                property.location?.nearbyLandmark
+                  ? `Near ${property.location.nearbyLandmark}`
+                  : null,
+                property.location?.district,
                 property.location?.province,
               ]
                 .filter(Boolean)

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getPropertyTypes, getDistricts, getCities } from '../services/categoryService';
+import { getPropertyTypes } from '../services/categoryService';
+import { NEPAL_PROVINCES, getDistrictsByProvince } from '../utils/nepalGeography';
 import {useAuth} from "../context/AuthContext";
 
 export const SALE_TYPE_OPTIONS = [
@@ -22,11 +23,17 @@ export const STATUS_OPTIONS = [
 // Every field the bar knows how to render. Consumers opt into whichever
 // subset they need via the `filters` prop instead of the bar always
 // rendering every possible field.
+//
+// Geography follows the canonical Province -> District -> Municipality
+// hierarchy (see utils/nepalGeography.js). `city` was removed: it is no
+// longer a canonical location field (legacy alias only, still accepted by
+// the API for old bookmarked URLs but not offered as a filter).
 export const FILTER_KEYS = [
   'saleType',
   'propertyType',
+  'province',
   'district',
-  'city',
+  'municipality',
   'minPrice',
   'maxPrice',
   'bedrooms',
@@ -37,9 +44,9 @@ export const FILTER_KEYS = [
 
 // Fields shown inline in the primary row (alongside keyword + Search button)
 // when rendered as a <select>.
-const PRIMARY_FILTERS = ['propertyType', 'district', 'city'];
+const PRIMARY_FILTERS = ['propertyType', 'province', 'district'];
 // Fields tucked behind the "More filters" toggle.
-const ADVANCED_FILTERS = ['minPrice', 'maxPrice', 'bedrooms', 'bathrooms'];
+const ADVANCED_FILTERS = ['municipality', 'minPrice', 'maxPrice', 'bedrooms', 'bathrooms'];
 
 const emptyForm = (searchParams) =>
   FILTER_KEYS.concat('keyword').reduce((acc, key) => {
@@ -104,8 +111,6 @@ const SearchFilterBar = ({
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [propertyTypes, setPropertyTypes] = useState([]);
-  const [districts, setDistricts] = useState([]);
-  const [cities, setCities] = useState([]);
   const [showMore, setShowMore] = useState(false);
   const [form, setForm] = useState(() => emptyForm(searchParams));
 
@@ -130,32 +135,24 @@ const SearchFilterBar = ({
     if (hasFilter('propertyType')) {
       getPropertyTypes().then((data) => setPropertyTypes(data.propertyTypes));
     }
-    if (hasFilter('district')) {
-      getDistricts().then((data) => setDistricts(data.districts));
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const districtValue = isControlled ? values.district : form.district;
-  // Cities depend on the selected district
-  useEffect(() => {
-    if (hasFilter('city')) {
-      getCities(districtValue || undefined).then((data) => setCities(data.cities));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [districtValue]);
-
   const getValue = (key) => (isControlled ? values[key] ?? '' : form[key] ?? '');
+
+  // Province scopes the district list, so changing it invalidates the
+  // current district selection. Municipality is free-text and unaffected.
+  const districtOptions = getDistrictsByProvince(getValue('province'));
 
   const setValue = (key, val) => {
     if (isControlled) {
       onChange && onChange(key, val);
+      if (key === 'province') onChange && onChange('district', '');
       return;
     }
-    if (key === 'district') {
-      // Changing district invalidates any previously selected city from a
-      // different district.
-      setForm({ ...form, district: val, city: '' });
+    if (key === 'province') {
+      // Changing province invalidates any district from another province.
+      setForm({ ...form, province: val, district: '' });
     } else {
       setForm({ ...form, [key]: val });
     }
@@ -210,23 +207,31 @@ const SearchFilterBar = ({
             ))}
           </select>
         );
+      case 'province':
+        return (
+          <select key={key} name="province" value={getValue('province')} onChange={handleChange} className={fieldClass}>
+            <option value="">All Provinces</option>
+            {NEPAL_PROVINCES.map((p) => (
+              <option key={p.number} value={p.name}>{p.name}</option>
+            ))}
+          </select>
+        );
       case 'district':
         return (
           <select key={key} name="district" value={getValue('district')} onChange={handleChange} className={fieldClass}>
             <option value="">All Districts</option>
-            {districts.map((d) => (
-              <option key={d._id} value={d._id}>{d.name}</option>
+            {districtOptions.map((d) => (
+              <option key={d} value={d}>{d}</option>
             ))}
           </select>
         );
-      case 'city':
+      case 'municipality':
         return (
-          <select key={key} name="city" value={getValue('city')} onChange={handleChange} className={fieldClass}>
-            <option value="">All Cities</option>
-            {cities.map((c) => (
-              <option key={c._id} value={c._id}>{c.name}</option>
-            ))}
-          </select>
+          <input
+            key={key}
+            type="text" name="municipality" value={getValue('municipality')} onChange={handleChange}
+            placeholder="Municipality" className={fieldClass}
+          />
         );
       case 'minPrice':
         return (

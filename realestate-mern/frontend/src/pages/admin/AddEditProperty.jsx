@@ -2,9 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   getPropertyTypes,
-  getDistricts,
-  getCities,
-  findOrCreateCity,
 } from '../../services/categoryService';
 import {
   getPropertyByIdorSlug,
@@ -20,7 +17,7 @@ import MapPicker from '../../components/MapPicker';
 import MultiImageUpload from '../../components/MultiImageUpload';
 import LandUnitConverter from '../../components/LandUnitConverter';
 import { SQFT_PER_UNIT } from '../../utils/landUnits';
-import { NEPAL_PROVINCES } from '../../utils/nepalProvinces';
+import { NEPAL_PROVINCES, getDistrictsByProvince, getMunicipalitiesByDistrict, hasVerifiedMunicipalities, isValidDistrict } from '../../utils/nepalGeography';
 
 // Land area unit choices for the dropdown - the two traditional Nepali
 // systems plus standard units. Values match the keys landUnits.js knows how
@@ -69,10 +66,11 @@ const initialState = {
   location: {
     province: '',
     district: '',
-    city: '',
     municipality: '',
     wardNumber: '',
+    locality: '',
     streetAddress: '',
+    nearbyLandmark: '',
     mapLocation: { lat: '', lng: '' },
   },
   details: {
@@ -115,8 +113,6 @@ const AddEditProperty = () => {
   // Commercial Space, Traditional Nepali Home) gets the building form.
   const [category, setCategory] = useState('building');
   const [propertyTypes, setPropertyTypes] = useState([]);
-  const [districts, setDistricts] = useState([]);
-  const [cities, setCities] = useState([]);
   const [coverImage, setCoverImage] = useState(null);
   const [coverPreview, setCoverPreview] = useState(null);
   const [currentCoverImage, setCurrentCoverImage] = useState(''); // existing cover when editing
@@ -130,10 +126,6 @@ const AddEditProperty = () => {
   // these statuses, so the banner explains why they can't be edited here).
   const [loadedStatus, setLoadedStatus] = useState('');
   const [showConverter, setShowConverter] = useState(false);
-  const [addingCity, setAddingCity] = useState(false);
-  const [newCityName, setNewCityName] = useState('');
-  const [addCityError, setAddCityError] = useState('');
-  const [savingCity, setSavingCity] = useState(false);
   // Management-purpose wizard state (create mode, saleType === 'management'):
   // selected catalogue services + optional owner note, submitted together
   // with the property in one wizard operation.
@@ -143,7 +135,6 @@ const AddEditProperty = () => {
 
   useEffect(() => {
     getPropertyTypes().then((data) => setPropertyTypes(data.propertyTypes));
-    getDistricts().then((data) => setDistricts(data.districts));
   }, []);
 
   // Management service catalogue (active only) for the wizard's services step.
@@ -161,14 +152,6 @@ const AddEditProperty = () => {
   }, [form.saleType, isEdit]);
 
   useEffect(() => {
-    if (form.location.district) {
-      getCities(form.location.district).then((data) => setCities(data.cities));
-    } else {
-      setCities([]);
-    }
-  }, [form.location.district]);
-
-  useEffect(() => {
     if (isEdit) {
       getPropertyByIdorSlug(id).then((data) => {
         const p = data.property;
@@ -184,11 +167,12 @@ const AddEditProperty = () => {
           commissionPercentage: p.commissionPercentage ?? '',
           location: {
             province: p.location?.province || '',
-            district: p.location?.district?._id || p.location?.district || '',
-            city: p.location?.city?._id || p.location?.city || '',
+            district: p.location?.district || '',
             municipality: p.location?.municipality || '',
             wardNumber: p.location?.wardNumber || '',
+            locality: p.location?.locality || '',
             streetAddress: p.location?.streetAddress || '',
+            nearbyLandmark: p.location?.nearbyLandmark || '',
             mapLocation: {
               lat: p.location?.mapLocation?.lat ?? '',
               lng: p.location?.mapLocation?.lng ?? '',
@@ -253,59 +237,26 @@ const AddEditProperty = () => {
     clearFieldError('mapLocation');
   };
 
-  // Province -> District -> City are a strict cascade using only the
-  // official Nepal dataset seeded on the backend - no free-text entry - so
-  // a listing can't end up with a made-up location.
+  // Province -> District -> Municipality cascade. Changing province clears
+  // district + municipality; changing district clears municipality. Ward,
+  // locality, street, landmark and the map pin are property-specific detail
+  // and are intentionally preserved across cascade changes.
   const handleProvinceSelect = (value) => {
-    setForm((f) => ({ ...f, location: { ...f.location, province: value, district: '', city: '' } }));
+    setForm((f) => ({ ...f, location: { ...f.location, province: value, district: '', municipality: '' } }));
     clearFieldError('district');
+    clearFieldError('province');
   };
 
   const handleDistrictSelect = (value) => {
-    // Changing district invalidates any previously selected city from a
-    // different district.
-    setForm((f) => ({ ...f, location: { ...f.location, district: value, city: '' } }));
-    setAddingCity(false);
-    setNewCityName('');
-    setAddCityError('');
+    // Changing district invalidates any previously entered municipality.
+    setForm((f) => ({ ...f, location: { ...f.location, district: value, municipality: '' } }));
+    clearFieldError('district');
   };
 
-  const districtsInProvince = form.location.province
-    ? districts.filter((d) => d.province === form.location.province)
-    : districts;
-
-  const handleAddCity = async () => {
-    const name = newCityName.trim();
-    if (!name) {
-      setAddCityError('Please enter a city / town name');
-      return;
-    }
-    if (!form.location.district) {
-      setAddCityError('Select a district first');
-      return;
-    }
-    setSavingCity(true);
-    setAddCityError('');
-    try {
-      const data = await findOrCreateCity({
-        name,
-        district: form.location.district,
-      });
-      setCities((prev) => {
-        if (prev.some((c) => c._id === data.city._id)) return prev;
-        return [...prev, data.city].sort((a, b) => a.name.localeCompare(b.name));
-      });
-      updateLocation('city', data.city._id);
-      clearFieldError('city');
-      setNewCityName('');
-      setAddingCity(false);
-      showToast(data.created ? `"${data.city.name}" added — it'll be available for everyone from now on` : `"${data.city.name}" already existed, selected it`);
-    } catch (err) {
-      setAddCityError(err.response?.data?.message || 'Failed to add city');
-    } finally {
-      setSavingCity(false);
-    }
-  };
+  const districtsInProvince = getDistrictsByProvince(form.location.province);
+  const municipalitiesInDistrict = hasVerifiedMunicipalities(form.location.district)
+    ? getMunicipalitiesByDistrict(form.location.district)
+    : [];
 
   const handleCoverChange = (e) => {
     const file = e.target.files[0];
@@ -369,11 +320,25 @@ const AddEditProperty = () => {
     }
 
     if (!form.location.province) next.province = 'Select a province';
-    if (!form.location.district) next.district = 'Select a district';
-    if (!form.location.city) next.city = 'Select the main place / city';
-
-    if (!form.location.mapLocation?.lat || !form.location.mapLocation?.lng) {
-      next.mapLocation = 'Pin the property\'s location on the map (or use "Use my current location")';
+    if (!form.location.district) {
+      next.district = 'Select a district';
+    } else if (form.location.province && !isValidDistrict(form.location.province, form.location.district)) {
+      next.district = 'This district does not belong to the selected province';
+    }
+    // Municipality is a dropdown where verified data exists for the
+    // district, free-text otherwise. Ward, locality, street and landmark
+    // are always optional free-text.
+    // The map pin is optional; when set, both coordinates must be present
+    // and in range.
+    {
+      const { lat, lng } = form.location.mapLocation || {};
+      const latSet = lat !== '' && lat !== null && lat !== undefined;
+      const lngSet = lng !== '' && lng !== null && lng !== undefined;
+      if ((latSet || lngSet) && !(latSet && lngSet)) {
+        next.mapLocation = 'Provide both latitude and longitude, or leave the map pin unset';
+      } else if (latSet && lngSet && (Number(lat) < -90 || Number(lat) > 90 || Number(lng) < -180 || Number(lng) > 180)) {
+        next.mapLocation = 'Map coordinates are out of range';
+      }
     }
 
     if (form.details.landArea === '' || form.details.landArea === null) {
@@ -471,8 +436,6 @@ const AddEditProperty = () => {
     try {
       if (isMgmtWizard) {
         const location = { ...form.location };
-        if (!location.district) delete location.district;
-        if (!location.city) delete location.city;
         if (!location.mapLocation?.lat || !location.mapLocation?.lng) delete location.mapLocation;
         await createWithProperty({
           property: {
@@ -503,11 +466,9 @@ const AddEditProperty = () => {
       fd.append('commissionPercentage', form.commissionPercentage === '' ? 'null' : form.commissionPercentage);
       fd.append('video', form.video);
 
-      // Omit district/city entirely when unselected (an empty string would
-      // otherwise crash the save with an invalid-ObjectId error server-side).
+      // Province + district are required (validated above); everything
+      // below is optional detail sent as-is. An unset map pin is omitted.
       const location = { ...form.location };
-      if (!location.district) delete location.district;
-      if (!location.city) delete location.city;
       if (!location.mapLocation?.lat || !location.mapLocation?.lng) delete location.mapLocation;
       fd.append('location', JSON.stringify(location));
       fd.append('details', JSON.stringify(form.details));
@@ -743,83 +704,47 @@ const AddEditProperty = () => {
                 disabled={!form.location.province}
               >
                 <option value="">{form.location.province ? 'Select district' : 'Select a province first'}</option>
-                {districtsInProvince.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
+                {districtsInProvince.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
               {fieldErrors.district && <p className="text-xs text-brick mt-1">{fieldErrors.district}</p>}
             </div>
             <div>
-              <label className="label-field">City / Main Place <span className="text-brick">*</span></label>
-              {!addingCity ? (
-                <>
-                  <select
-                    className={`input-field ${errorInputClass(fieldErrors.city)}`}
-                    value={form.location.city}
-                    onChange={(e) => {
-                      if (e.target.value === '__add_new__') {
-                        setAddingCity(true);
-                        setAddCityError('');
-                        return;
-                      }
-                      updateLocation('city', e.target.value);
-                      clearFieldError('city');
-                    }}
-                    disabled={!form.location.district}
-                  >
-                    <option value="">{form.location.district ? 'Select city / main place' : 'Select a district first'}</option>
-                    {cities.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
-                    {form.location.district && <option value="__add_new__">+ Add a new city / town...</option>}
-                  </select>
-                  {fieldErrors.city && <p className="text-xs text-brick mt-1">{fieldErrors.city}</p>}
-                </>
+              <label className="label-field">Municipality / Rural Municipality</label>
+              {municipalitiesInDistrict.length > 0 ? (
+                <select
+                  className="input-field"
+                  value={form.location.municipality}
+                  onChange={(e) => updateLocation('municipality', e.target.value)}
+                >
+                  <option value="">Select municipality</option>
+                  {municipalitiesInDistrict.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
               ) : (
-                <div className="space-y-2">
-                  <div className="flex gap-2">
-                    <input
-                      autoFocus
-                      className={`input-field ${addCityError ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
-                      placeholder="e.g. Dharampur"
-                      value={newCityName}
-                      onChange={(e) => { setNewCityName(e.target.value); setAddCityError(''); }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddCity(); } }}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddCity}
-                      disabled={savingCity}
-                      className="btn-gold text-sm px-4 whitespace-nowrap"
-                    >
-                      {savingCity ? 'Adding...' : 'Add'}
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { setAddingCity(false); setNewCityName(''); setAddCityError(''); }}
-                    className="text-xs text-slate-muted hover:underline"
-                  >
-                    ← Back to city list
-                  </button>
-                  {addCityError && <p className="text-xs text-brick">{addCityError}</p>}
-                  <p className="text-xs text-slate-muted">
-                    This will be saved permanently — everyone posting a property in this district will be able to select it afterward.
-                  </p>
-                </div>
+                <>
+                  <input className="input-field" value={form.location.municipality} onChange={(e) => updateLocation('municipality', e.target.value)} placeholder="e.g. Kathmandu Metropolitan City" />
+                  <p className="text-xs text-slate-muted mt-1">Type the municipality / rural municipality name.</p>
+                </>
               )}
             </div>
             <div>
-              <label className="label-field">Municipality / Ward Locality</label>
-              <input className="input-field" value={form.location.municipality} onChange={(e) => updateLocation('municipality', e.target.value)} placeholder="e.g. Kathmandu Metropolitan City" />
-            </div>
-            <div>
               <label className="label-field">Ward Number</label>
-              <input className="input-field" value={form.location.wardNumber} onChange={(e) => updateLocation('wardNumber', e.target.value)} />
+              <input className="input-field" value={form.location.wardNumber} onChange={(e) => updateLocation('wardNumber', e.target.value)} placeholder="e.g. 16" />
             </div>
             <div>
-              <label className="label-field">Tole Name</label>
-              <input className="input-field" value={form.location.streetAddress} onChange={(e) => updateLocation('streetAddress', e.target.value)} placeholder="e.g. Bishnu Marga Tole" />
+              <label className="label-field">Locality / Tole</label>
+              <input className="input-field" value={form.location.locality} onChange={(e) => updateLocation('locality', e.target.value)} placeholder="e.g. Balaju" />
+            </div>
+            <div>
+              <label className="label-field">Street Address</label>
+              <input className="input-field" value={form.location.streetAddress} onChange={(e) => updateLocation('streetAddress', e.target.value)} placeholder="e.g. Ring Road" />
+            </div>
+            <div>
+              <label className="label-field">Nearby Landmark</label>
+              <input className="input-field" value={form.location.nearbyLandmark} onChange={(e) => updateLocation('nearbyLandmark', e.target.value)} placeholder="e.g. Near Bhatbhateni" />
             </div>
           </div>
 
-          <label className="label-field">Pin the property on the map <span className="text-brick">*</span></label>
+          <label className="label-field">Pin the property on the map <span className="text-slate-muted font-normal">(optional)</span></label>
           <MapPicker
             lat={form.location.mapLocation.lat}
             lng={form.location.mapLocation.lng}

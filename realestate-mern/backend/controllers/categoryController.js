@@ -81,7 +81,13 @@ const updateDistrict = asyncHandler(async (req, res) => {
 });
 
 const deleteDistrict = asyncHandler(async (req, res) => {
-  const inUse = await Property.countDocuments({ 'location.district': req.params.id });
+  // Properties store the district NAME (string), so the guard matches on
+  // the name (case-insensitively).
+  const districtDoc = await District.findById(req.params.id);
+  const districtQuery = districtDoc
+    ? { 'location.district': { $regex: `^${districtDoc.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } }
+    : { 'location.district': req.params.id };
+  const inUse = await Property.countDocuments(districtQuery);
   if (inUse > 0) {
     return res.status(409).json({
       success: false,
@@ -159,7 +165,14 @@ const updateCity = asyncHandler(async (req, res) => {
 });
 
 const deleteCity = asyncHandler(async (req, res) => {
-  const inUse = await Property.countDocuments({ 'location.city': req.params.id });
+  // The City collection is admin-curated reference data only — properties
+  // no longer reference it, so the guard matches the (now historical)
+  // `location.city` string field by name.
+  const cityDoc = await City.findById(req.params.id);
+  const cityQuery = cityDoc
+    ? { 'location.city': { $regex: `^${cityDoc.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } }
+    : { 'location.city': req.params.id };
+  const inUse = await Property.countDocuments(cityQuery);
   if (inUse > 0) {
     return res.status(409).json({
       success: false,

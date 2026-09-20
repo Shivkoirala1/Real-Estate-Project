@@ -1,3 +1,5 @@
+const { isValidLocation } = require('./nepalGeography');
+
 const CURRENT_YEAR = new Date().getFullYear();
 
 // Server-side mirror of the practical validation rules enforced on the
@@ -49,14 +51,19 @@ const validatePropertyInput = (data, category = 'building', purpose = 'listing')
     errors.push('Price cannot be negative');
   }
 
-  if (!location.district) errors.push('District is required');
-  if (!location.city) errors.push('City is required');
-  if (!location.mapLocation || location.mapLocation.lat === undefined || location.mapLocation.lng === undefined) {
-    errors.push('A map location (latitude/longitude) is required');
-  } else {
-    const { lat, lng } = location.mapLocation;
-    if (Number(lat) < -90 || Number(lat) > 90 || Number(lng) < -180 || Number(lng) > 180) {
-      errors.push('Map location coordinates are out of range');
+  // Location: Province -> District strictly validated; municipality
+  // validated against the district's verified reference list (any value
+  // accepted only where the district has no verified list yet); ward /
+  // locality / street / landmark are flexible free-text; map coordinates
+  // are optional but range-checked when provided. There is no `city`
+  // field — locality/tole covers that need.
+  errors.push(...isValidLocation(location, { requireMap: false }));
+  {
+    const map = location.mapLocation;
+    const latPresent = !!map && map.lat !== undefined && map.lat !== null && map.lat !== '';
+    const lngPresent = !!map && map.lng !== undefined && map.lng !== null && map.lng !== '';
+    if ((latPresent || lngPresent) && !(latPresent && lngPresent)) {
+      errors.push('Both latitude and longitude are required when pinning a map location');
     }
   }
 
