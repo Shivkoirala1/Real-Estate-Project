@@ -51,10 +51,6 @@ const adminNavGroups = [
         to: '/dashboard/admin/property-management',
       },
       {
-        label: 'Management Services',
-        to: '/dashboard/admin/management-services',
-      },
-      {
         label: 'Review Dashboard',
         to: '/dashboard/admin/reviews',
       },
@@ -123,6 +119,10 @@ const adminNavGroups = [
       {
         label: 'Property Categories',
         to: '/dashboard/admin/categories',
+      },
+      {
+        label: 'Management Services',
+        to: '/dashboard/admin/management-services',
       },
     ],
   },
