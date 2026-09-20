@@ -85,7 +85,7 @@ const Navbar = () => {
           <div>
           <span>Youth</span>
           <span className="text-brass block">
-           Real Estate
+           Real Estate Pvt. Ltd.
           </span>
           </div>
           </div>

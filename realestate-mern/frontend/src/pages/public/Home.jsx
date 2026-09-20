@@ -93,7 +93,7 @@ const Home = () => {
         )}
       </section>
 
-      <div className="max-w-7xl mx-auto px-5 md:px-8">
+      <div className="max-w-7xl mx-auto px-5 md:px-8 mt-10 md:mt-16">
         <SearchFilterBar />
       </div>
 
