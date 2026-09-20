@@ -47,6 +47,12 @@ match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email']    },
       type: Boolean,
       default: true,
     },
+    // Admin-curated spotlight for the public About page. Only active agents
+    // with this flag appear on GET /api/agents/showcased.
+    isShowcased: {
+      type: Boolean,
+      default: false,
+    },
 
     // Email verification - required before a user can log in at all
     isEmailVerified: {

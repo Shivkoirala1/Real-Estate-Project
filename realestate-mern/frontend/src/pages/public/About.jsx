@@ -1,16 +1,21 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { openContactModal } from '../../utils/contactModal';
+import { getShowcasedAgents } from '../../services/agentService';
 
 const journeySteps = ['Discover', 'Compare', 'Verify', 'Finance', 'Buy', 'Build', 'Manage', 'Grow'];
 
 const promiseValues = ['Trust', 'Transparency', 'Responsibility', 'Innovation', 'Customer Success'];
 
+// `featured` drives the hierarchy: the founder renders as the prominent
+// card, supporters as compact cards. Content unchanged — layout only.
 const leadership = [
   {
     name: 'Yam Kumar Karki',
     initials: 'YK',
     role: 'Founder & CEO',
     tag: 'Real Estate Entrepreneur',
+    featured: true,
     bio: [
       "Yam Kumar Karki is the Founder & CEO of Youth Real Estate Pvt. Ltd., a growing real estate venture focused on building a more trusted, transparent, and customer-focused property ecosystem in Nepal.",
       'With a strong interest in real estate, construction, property development, and entrepreneurship, he is working to bring a more modern approach to the traditional real estate industry.',
@@ -23,6 +28,7 @@ const leadership = [
     initials: 'CB',
     role: 'Developer, Investor & Strategic Supporter',
     tag: 'Youth Real Estate',
+    featured: false,
     bio: [
       'Chudaraj Basnet is associated with Youth Real Estate as a Developer, Investor, and Strategic Supporter.',
       'He contributes to the growth and development of the company by supporting its projects, business opportunities, and long-term vision. His involvement represents a shared commitment to building sustainable opportunities and contributing to the growth of Youth Real Estate.',
@@ -31,6 +37,30 @@ const leadership = [
 ];
 
 const About = () => {
+  // Agents the admin chose to spotlight (public endpoint, safe fields
+  // only). The section hides entirely when none are showcased.
+  const [agents, setAgents] = useState([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    getShowcasedAgents()
+      .then((data) => {
+        if (active) setAgents(data.agents || []);
+      })
+      .catch(() => {
+        if (active) setAgents([]);
+      })
+      .finally(() => {
+        if (active) setAgentsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const [founder, ...supporters] = leadership;
+
   return (
     <div>
       {/* Hero / intro */}
@@ -54,12 +84,12 @@ const About = () => {
       </section>
 
       {/* Journey strip */}
-      <section className="max-w-5xl mx-auto px-5 md:px-8 mb-14">
+      <section className="max-w-5xl mx-auto px-5 md:px-8 mb-16">
         <div className="bg-navy rounded-sm px-6 py-6 md:px-10 md:py-8 flex flex-wrap items-center justify-center gap-x-2 gap-y-3">
           {journeySteps.map((step, i) => (
             <React.Fragment key={step}>
               <span className="text-ivory font-display text-sm md:text-base tracking-wide">{step}</span>
-              {i < journeySteps.length - 1 && <span className="text-brass-light">→</span>}
+              {i < journeySteps.length - 1 && <span className="text-brass-light" aria-hidden="true">→</span>}
             </React.Fragment>
           ))}
         </div>
@@ -107,7 +137,7 @@ const About = () => {
       </section>
 
       {/* Our Promise */}
-      <section className="max-w-5xl mx-auto px-5 md:px-8 mb-20">
+      <section className="max-w-5xl mx-auto px-5 md:px-8 mb-16">
         <p className="eyebrow mb-2">Our promise</p>
         <h2 className="text-3xl mb-8">We believe in doing real estate differently</h2>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
@@ -119,42 +149,87 @@ const About = () => {
         </div>
       </section>
 
-      {/* Leadership */}
-      <section className="bg-parchment/60 py-20">
+      {/* Leadership — hierarchical: featured founder, compact supporters */}
+      <section className="bg-parchment/60 py-16 md:py-20">
         <div className="max-w-5xl mx-auto px-5 md:px-8">
           <p className="eyebrow mb-2">The people behind it</p>
           <h2 className="text-3xl mb-4">Leadership</h2>
-          <p className="text-slate-ink leading-relaxed mb-12 max-w-2xl">
+          <p className="text-slate-ink leading-relaxed mb-10 max-w-2xl">
             Youth Real Estate is led by a small team combining entrepreneurship, investment, development, and
             innovation to create a stronger, more customer-focused real estate ecosystem.
           </p>
 
-          <div className="space-y-8">
-            {leadership.map((person) => (
-              <div key={person.name} className="bg-white border border-navy/10 rounded-sm shadow-card p-8 md:p-10 flex flex-col md:flex-row gap-8">
-                <div className="flex-shrink-0 flex md:flex-col items-center md:items-start gap-4">
-                  <div className="w-24 h-24 md:w-28 md:h-28 rounded-full bg-navy flex items-center justify-center flex-shrink-0">
-                    <span className="font-display text-2xl md:text-3xl text-brass-light">{person.initials}</span>
+          <div className="bg-navy rounded-sm shadow-card p-8 md:p-10 flex flex-col md:flex-row gap-8 mb-6">
+            <div className="flex-shrink-0">
+              <div className="w-28 h-28 md:w-32 md:h-32 rounded-full bg-brass flex items-center justify-center">
+                <span className="font-display text-3xl md:text-4xl text-navy">{founder.initials}</span>
+              </div>
+            </div>
+            <div className="min-w-0">
+              <span className="inline-block text-[11px] font-semibold uppercase tracking-widest text-brass-light border border-brass/40 rounded-sm px-2.5 py-1 mb-3">
+                {founder.role}
+              </span>
+              <p className="font-display text-2xl md:text-3xl text-ivory leading-snug">{founder.name}</p>
+              <p className="text-sm text-ivory/60 mt-1 mb-4">{founder.tag}</p>
+              {founder.bio.map((para, i) => (
+                <p key={i} className="text-sm text-ivory/80 leading-relaxed mb-3 last:mb-0">{para}</p>
+              ))}
+              {founder.quote && (
+                <blockquote className="border-l-2 border-brass pl-4 mt-5 italic text-ivory font-display text-lg leading-snug">
+                  “{founder.quote}”
+                </blockquote>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {supporters.map((person) => (
+              <div key={person.name} className="bg-white border border-navy/10 rounded-sm shadow-card p-6 md:p-8">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-16 h-16 rounded-full bg-navy flex items-center justify-center flex-shrink-0">
+                    <span className="font-display text-xl text-brass-light">{person.initials}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-display text-xl text-navy leading-snug">{person.name}</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-brass mt-0.5">{person.role}</p>
                   </div>
                 </div>
-                <div>
-                  <p className="font-display text-2xl text-navy leading-snug">{person.name}</p>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-brass mb-1">{person.role}</p>
-                  <p className="text-sm text-slate-muted mb-4">{person.tag}</p>
-                  {person.bio.map((para, i) => (
-                    <p key={i} className="text-sm text-slate-ink leading-relaxed mb-3 last:mb-0">{para}</p>
-                  ))}
-                  {person.quote && (
-                    <blockquote className="border-l-2 border-brass pl-4 mt-5 italic text-navy font-display text-lg leading-snug">
-                      “{person.quote}”
-                    </blockquote>
-                  )}
-                </div>
+                <p className="text-xs text-slate-muted mb-3">{person.tag}</p>
+                {person.bio.map((para, i) => (
+                  <p key={i} className="text-sm text-slate-ink leading-relaxed mb-3 last:mb-0">{para}</p>
+                ))}
               </div>
             ))}
           </div>
         </div>
       </section>
+
+      {/* Listing agents — admin-showcased only; hidden when empty */}
+      {!agentsLoading && agents.length > 0 && (
+        <section className="max-w-5xl mx-auto px-5 md:px-8 py-16">
+          <p className="eyebrow mb-2">Talk to a human</p>
+          <h2 className="text-3xl mb-4">Meet our agents</h2>
+          <p className="text-slate-ink leading-relaxed mb-10 max-w-2xl">
+            Our licensed agents help you discover, verify, and close the right property deal.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {agents.map((agent) => (
+              <div key={agent._id} className="bg-white border border-navy/10 rounded-sm shadow-card p-6 text-center hover:border-brass/50 hover:shadow-lifted transition-all">
+                <div className="w-20 h-20 rounded-full bg-navy text-brass-light flex items-center justify-center font-display text-2xl mx-auto mb-4 overflow-hidden">
+                  {agent.avatar ? (
+                    <img src={agent.avatar} alt={agent.name} className="w-full h-full object-cover" />
+                  ) : (
+                    (agent.name || '?').charAt(0).toUpperCase()
+                  )}
+                </div>
+                <p className="font-display text-lg text-navy leading-snug">{agent.name}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-brass mt-1 mb-3">Listing Agent</p>
+                {agent.phone && <p className="text-sm text-slate-muted">{agent.phone}</p>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* CTA */}
       <section className="max-w-5xl mx-auto px-5 md:px-8 py-16 text-center">
@@ -163,9 +238,9 @@ const About = () => {
           Explore verified listings or get in touch with our team — we're here to help you make a better
           property decision.
         </p>
-        <div className="flex items-center justify-center gap-4">
-          <Link to="/properties" className="btn-gold">Browse properties</Link>
-          <Link to="/contact" className="text-sm font-medium text-brass hover:underline">Contact us →</Link>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <Link to="/properties" className="btn-gold w-full sm:w-auto">Browse properties</Link>
+          <button type="button" onClick={openContactModal} className="text-sm font-medium text-brass hover:underline">Contact us →</button>
         </div>
       </section>
     </div>

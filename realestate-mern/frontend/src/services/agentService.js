@@ -72,6 +72,26 @@ export const toggleAgentStatus = async (id) => {
 };
 
 /**
+ * List agents showcased on the public About page (safe fields only).
+ * GET /api/agents/showcased (public)
+ * response: { success, count, agents: [{ _id, name, avatar, phone }] }
+ */
+export const getShowcasedAgents = async () => {
+  const { data } = await api.get('/agents/showcased');
+  return data;
+};
+
+/**
+ * Toggle an agent's About-page showcase flag.
+ * PATCH /api/agents/:id/showcase (admin)
+ * response: { success, agent }
+ */
+export const toggleAgentShowcase = async (id) => {
+  const { data } = await api.patch(`/agents/${id}/showcase`);
+  return data;
+};
+
+/**
  * Delete an agent account.
  * DELETE /api/agents/:id
  * response: { success, message }

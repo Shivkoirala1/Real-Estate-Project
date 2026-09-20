@@ -5,6 +5,7 @@ import {
   createAgent,
   updateAgent,
   toggleAgentStatus,
+  toggleAgentShowcase,
   deleteAgent,
 } from '../../services/agentService';
 import { useToast } from '../../context/ToastContext';
@@ -152,6 +153,7 @@ const ManageAgents = () => {
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(createForm.email.trim())) next.email = 'Enter a valid email address';
     if (!createForm.password) next.password = 'Password is required';
     else if (createForm.password.length < 6) next.password = 'Password must be at least 6 characters';
+    if (createForm.phone.trim() && !/^\d{10}$/.test(createForm.phone.trim())) next.phone = 'Phone must be exactly 10 digits';
     setCreateErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -200,6 +202,7 @@ const ManageAgents = () => {
     const next = {};
     if (!editForm.name.trim()) next.name = 'Name is required';
     if (editForm.password && editForm.password.length < 6) next.password = 'Password must be at least 6 characters';
+    if (editForm.phone.trim() && !/^\d{10}$/.test(editForm.phone.trim())) next.phone = 'Phone must be exactly 10 digits';
     setEditErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -251,6 +254,22 @@ const ManageAgents = () => {
       load();
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to update agent status', 'error');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // ---------- showcase toggle ----------
+  // Controls whether the agent appears on the public About page. No
+  // confirm dialog — flipping a spotlight is instantly reversible.
+  const handleToggleShowcase = async (agent) => {
+    setBusyId(agent._id);
+    try {
+      await toggleAgentShowcase(agent._id);
+      showToast(agent.isShowcased ? 'Agent removed from About page' : 'Agent will now appear on the About page');
+      load();
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update showcase', 'error');
     } finally {
       setBusyId(null);
     }
@@ -415,8 +434,12 @@ const ManageAgents = () => {
                 <div key={agent._id} className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
                   {/* Identity row */}
                   <div className="flex items-start gap-4 mb-3">
-                    <div className="w-11 h-11 rounded-full bg-navy text-ivory flex items-center justify-center font-display text-lg flex-shrink-0">
-                      {(agent.name || '?').charAt(0).toUpperCase()}
+                    <div className="w-11 h-11 rounded-full bg-navy text-ivory flex items-center justify-center font-display text-lg flex-shrink-0 overflow-hidden">
+                      {agent.avatar ? (
+                        <img src={agent.avatar} alt={agent.name} className="w-full h-full object-cover" />
+                      ) : (
+                        (agent.name || '?').charAt(0).toUpperCase()
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -428,6 +451,11 @@ const ManageAgents = () => {
                         >
                           {agent.isActive ? 'Active' : 'Deactivated'}
                         </span>
+                        {agent.isShowcased && (
+                          <span className="status-badge whitespace-nowrap bg-brass/15 text-brass-dark">
+                            ★ Showcased
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm text-slate-muted truncate">{agent.email}</p>
                       <p className="text-sm text-slate-muted">{agent.phone || 'No phone'}</p>
@@ -514,6 +542,19 @@ const ManageAgents = () => {
                       }`}
                     >
                       {busyId === agent._id ? 'Working...' : agent.isActive ? 'Deactivate' : 'Activate'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleShowcase(agent)}
+                      disabled={busyId === agent._id}
+                      title={agent.isShowcased ? 'Remove from the public About page' : 'Show on the public About page'}
+                      className={`text-xs font-medium px-3 py-1.5 rounded-sm border transition-colors disabled:opacity-60 ${
+                        agent.isShowcased
+                          ? 'border-brass bg-brass/10 text-brass-dark hover:bg-brass/20'
+                          : 'border-navy/15 text-slate-ink hover:border-brass/50 hover:text-brass-dark'
+                      }`}
+                    >
+                      {busyId === agent._id ? 'Working...' : agent.isShowcased ? '★ Showcased' : 'Showcase'}
                     </button>
                     <button
                       type="button"
@@ -610,11 +651,15 @@ const ManageAgents = () => {
                 <label className="label-field" htmlFor="ca-phone">Phone</label>
                 <input
                   id="ca-phone"
-                  className="input-field"
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  className={`input-field ${createErrors.phone ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
                   value={createForm.phone}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, phone: e.target.value }))}
-                  placeholder="Optional"
+                  onChange={(e) => setCreateForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, '') }))}
+                  placeholder="Optional — 10 digits"
                 />
+                {createErrors.phone && <p className="text-xs text-brick mt-1">{createErrors.phone}</p>}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -691,10 +736,14 @@ const ManageAgents = () => {
                 <label className="label-field" htmlFor="ea-phone">Phone</label>
                 <input
                   id="ea-phone"
-                  className="input-field"
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  className={`input-field ${editErrors.phone ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
                   value={editForm.phone}
-                  onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                  onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, '') }))}
                 />
+                {editErrors.phone && <p className="text-xs text-brick mt-1">{editErrors.phone}</p>}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

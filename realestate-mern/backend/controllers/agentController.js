@@ -204,6 +204,9 @@ const createAgent = asyncHandler(async (req, res) => {
   if (String(password).length < 6) {
     return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
   }
+  if (phone !== undefined && phone !== null && String(phone).trim() !== '' && !/^\d{10}$/.test(String(phone).trim())) {
+    return res.status(400).json({ success: false, message: 'Phone number must be exactly 10 digits' });
+  }
 
   const normalizedEmail = String(email).toLowerCase().trim();
   const existing = await User.findOne({ email: normalizedEmail });
@@ -378,7 +381,12 @@ const updateAgent = asyncHandler(async (req, res) => {
   }
 
   if (name !== undefined) user.name = name;
-  if (phone !== undefined) user.phone = phone;
+  if (phone !== undefined) {
+    if (phone !== null && String(phone).trim() !== '' && !/^\d{10}$/.test(String(phone).trim())) {
+      return res.status(400).json({ success: false, message: 'Phone number must be exactly 10 digits' });
+    }
+    user.phone = phone;
+  }
   if (typeof isActive === 'boolean') user.isActive = isActive;
   else if (isActive === 'true') user.isActive = true;
   else if (isActive === 'false') user.isActive = false;
@@ -398,6 +406,33 @@ const updateAgent = asyncHandler(async (req, res) => {
 
   // req.body.role / req.body.email are intentionally ignored
 
+  await user.save();
+  res.json({ success: true, agent: user.toSafeObject() });
+});
+
+/**
+ * @desc    List agents showcased on the public About page (safe fields only)
+ * @route   GET /api/agents/showcased
+ * @access  Public
+ */
+const getShowcasedAgents = asyncHandler(async (req, res) => {
+  const agents = await User.find({ role: 'agent', isActive: true, isShowcased: true })
+    .select('_id name avatar phone')
+    .sort({ createdAt: -1 })
+    .lean();
+  res.json({ success: true, count: agents.length, agents });
+});
+
+/**
+ * @desc    Toggle an agent's About-page showcase flag
+ * @route   PATCH /api/agents/:id/showcase
+ * @access  Private (admin)
+ */
+const toggleAgentShowcase = asyncHandler(async (req, res) => {
+  const user = await findAgentOr404(req.params.id, res);
+  if (!user) return;
+
+  user.isShowcased = !user.isShowcased;
   await user.save();
   res.json({ success: true, agent: user.toSafeObject() });
 });
@@ -438,7 +473,9 @@ module.exports = {
   createAgent,
   getAgent,
   getAgentSummary,
+  getShowcasedAgents,
   updateAgent,
   toggleAgentStatus,
+  toggleAgentShowcase,
   deleteAgent,
 };
