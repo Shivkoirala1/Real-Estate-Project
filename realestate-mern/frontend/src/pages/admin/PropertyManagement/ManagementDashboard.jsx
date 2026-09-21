@@ -28,7 +28,7 @@ const ManagementDashboard = () => {
 
   const [status, setStatus] = useState('');
   const [service, setService] = useState('');
-  const [sort, setSort] = useState('newest');
+  const [sort, setSort] = useState('alpha');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
 
@@ -221,6 +221,7 @@ const ManagementDashboard = () => {
           aria-label="Sort requests"
           className="input-field lg:max-w-[10rem]"
         >
+          <option value="alpha">A–Z</option>
           <option value="newest">Newest</option>
           <option value="oldest">Oldest</option>
           <option value="status">Status</option>

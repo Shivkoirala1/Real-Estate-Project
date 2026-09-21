@@ -4,6 +4,7 @@ import { getUsers } from '../../../services/userService';
 import { getProperties } from '../../../services/propertyService';
 import { useToast } from '../../../context/ToastContext';
 import { CATEGORIES, PRIORITIES } from '../../../utils/leadConstants';
+import { isValidOptionalNote, optionalNoteMessage } from '../../../utils/validateNotes';
 
 // Modal for manually creating a lead from the Lead Management dashboard.
 const CreateLeadModal = ({ onClose, onCreated }) => {
@@ -46,6 +47,7 @@ const CreateLeadModal = ({ onClose, onCreated }) => {
       next.email = 'Enter a valid email address';
     if (form.phone && !/^\d{10}$/.test(form.phone.trim()))
       next.phone = 'Phone must be exactly 10 digits';
+    if (!isValidOptionalNote(form.notes)) next.notes = optionalNoteMessage('Notes');
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -209,6 +211,7 @@ const CreateLeadModal = ({ onClose, onCreated }) => {
               onChange={(e) => handleChange('notes', e.target.value)}
               placeholder="Context, budget, requirements..."
             />
+            {errors.notes && <p className="text-xs text-brick mt-1">{errors.notes}</p>}
           </div>
 
           <div className="flex justify-end gap-3 pt-2">

@@ -7,6 +7,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { useConfirm } from "../../context/ConfirmContext";
 import ConvertToLeadModal from "./LeadManagement/ConvertToLeadModal";
+import { isValidOptionalNote, optionalNoteMessage } from "../../utils/validateNotes";
 
 const PAGE_SIZE = 10;
 
@@ -691,6 +692,16 @@ const RescheduleModal = ({ visit, onClose, onReschedule }) => {
 
 const InternalNotesModal = ({ visit, onClose, onSave }) => {
   const [notes, setNotes] = useState(visit?.internalNotes || "");
+  const [error, setError] = useState("");
+
+  const handleSave = () => {
+    if (!isValidOptionalNote(notes)) {
+      setError(optionalNoteMessage('Notes'));
+      return;
+    }
+    setError("");
+    onSave(notes);
+  };
 
   return (
     <Modal title="Internal Notes" onClose={onClose}>
@@ -707,15 +718,20 @@ const InternalNotesModal = ({ visit, onClose, onSave }) => {
       <textarea
         rows={6}
         value={notes}
-        onChange={(e) => setNotes(e.target.value)}
+        onChange={(e) => {
+          setNotes(e.target.value);
+          if (error) setError("");
+        }}
         placeholder="Add coordination notes for admins and agents..."
         className="input-field w-full resize-none"
       />
+      {error && <p className="text-xs text-brick mt-1">{error}</p>}
 
       <ModalActions
         onClose={onClose}
-        onSubmit={() => onSave(notes)}
+        onSubmit={handleSave}
         submitText="Save Notes"
+        disabled={!isValidOptionalNote(notes)}
       />
     </Modal>
   );

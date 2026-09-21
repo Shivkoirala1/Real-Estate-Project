@@ -130,6 +130,10 @@ const getProperties = asyncHandler(async (req, res) => {
   if (sort === 'oldest') sortOption = { createdAt: 1 };
   if (sort === 'price_low') sortOption = { price: 1 };
   if (sort === 'price_high') sortOption = { price: -1 };
+  // Availability-first (status ascending puts `available` first, then
+  // alphabetical by title within each status; case-insensitive via the
+  // collation on the query below).
+  if (sort === 'availability') sortOption = { status: 1, title: 1 };
 
   const pageNum = Math.max(Number(page), 1);
   const limitNum = Math.max(Number(limit), 1);
@@ -146,6 +150,7 @@ const getProperties = asyncHandler(async (req, res) => {
       .select(CARD_SELECT)
       .populate('propertyType', 'name defaultCommissionPercentage')
       .populate('listedBy', 'name')
+      .collation({ locale: 'en', strength: 2 })
       .sort(sortOption)
       .skip(skip)
       .limit(limitNum),

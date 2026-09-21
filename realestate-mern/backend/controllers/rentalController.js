@@ -7,6 +7,12 @@ const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const { notify, notifyMany } = require('../utils/notify');
 const { runWithTransaction, opts } = require('../utils/withTransaction');
+const {
+  isValidRequiredNote,
+  isValidOptionalNote,
+  requiredNoteMessage,
+  optionalNoteMessage,
+} = require('../utils/validateNotes');
 
 // ---------- helpers ----------
 const rentalSortMap = {
@@ -30,12 +36,11 @@ const parseDateParam = (value) => {
 const createRental = asyncHandler(async (req, res) => {
   const {
     leadId,
-    monthlyRent,
-    durationInMonths,
     startDate,
     securityDeposit,
     remarks,
   } = req.body;
+  let { monthlyRent, durationInMonths } = req.body;
   const tenant = req.body.tenant || {};
 
   if (!leadId) {
@@ -90,15 +95,40 @@ const createRental = asyncHandler(async (req, res) => {
   if (!tenant.name || !String(tenant.name).trim()) {
     return res.status(400).json({ success: false, message: 'Tenant name is required' });
   }
-  if (typeof monthlyRent !== 'number' || !Number.isFinite(monthlyRent) || monthlyRent <= 0) {
-    return res
-      .status(400)
-      .json({ success: false, message: 'Monthly rent must be a number greater than 0' });
+  if (!isValidOptionalNote(remarks)) {
+    return res.status(400).json({ success: false, message: optionalNoteMessage('Remarks') });
   }
-  if (!Number.isInteger(durationInMonths) || durationInMonths < 1) {
-    return res
-      .status(400)
-      .json({ success: false, message: 'Lease duration must be a whole number of months (min 1)' });
+  {
+    const { toFiniteNumber } = require('../utils/validateMoney');
+    const rent = toFiniteNumber(monthlyRent);
+    if (rent === null || rent <= 0 || rent > 1e11) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Monthly rent must be a positive number up to NPR 100,000,000,000' });
+    }
+    monthlyRent = rent;
+  }
+  {
+    const duration = Number(durationInMonths);
+    if (!Number.isInteger(duration) || duration < 1 || duration > 360) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Lease duration must be a whole number of months between 1 and 360' });
+    }
+    durationInMonths = duration;
+  }
+  {
+    const { toFiniteNumber } = require('../utils/validateMoney');
+    if (securityDeposit !== undefined && securityDeposit !== null && securityDeposit !== '') {
+      const deposit = toFiniteNumber(securityDeposit);
+      const leaseValue = monthlyRent * durationInMonths;
+      if (deposit === null || deposit < 0 || deposit > 1e11) {
+        return res.status(400).json({ success: false, message: 'Security deposit must be a number between 0 and NPR 100,000,000,000' });
+      }
+      if (deposit > leaseValue) {
+        return res.status(400).json({ success: false, message: `Security deposit cannot exceed the lease value (NPR ${leaseValue.toLocaleString()})` });
+      }
+    }
   }
   if (!startDate) {
     return res.status(400).json({ success: false, message: 'Lease start date is required' });
@@ -159,7 +189,12 @@ const createRental = asyncHandler(async (req, res) => {
     monthlyRent,
     durationInMonths,
     startDate: parsedStartDate,
-    securityDeposit: securityDeposit ?? 0,
+    securityDeposit: (() => {
+      const { toFiniteNumber } = require('../utils/validateMoney');
+      if (securityDeposit === undefined || securityDeposit === null || securityDeposit === '') return 0;
+      const n = toFiniteNumber(securityDeposit);
+      return n === null ? 0 : n;
+    })(),
     remarks: remarks || '',
     status: 'pending_review',
     submittedBy: req.user._id,
@@ -456,6 +491,9 @@ const rejectRental = asyncHandler(async (req, res) => {
   const { reason } = req.body;
   if (!reason || !String(reason).trim()) {
     return res.status(400).json({ success: false, message: 'A rejection reason is required' });
+  }
+  if (!isValidRequiredNote(reason)) {
+    return res.status(400).json({ success: false, message: requiredNoteMessage('Rejection reason') });
   }
   const trimmedReason = String(reason).trim();
 

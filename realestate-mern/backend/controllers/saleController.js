@@ -8,6 +8,12 @@ const asyncHandler = require('../utils/asyncHandler');
 const { notify, notifyMany } = require('../utils/notify');
 const { runWithTransaction, opts } = require('../utils/withTransaction');
 const { effectiveCommissionPercentage } = require('../utils/commission');
+const {
+  isValidRequiredNote,
+  isValidOptionalNote,
+  requiredNoteMessage,
+  optionalNoteMessage,
+} = require('../utils/validateNotes');
 
 // ---------- helpers ----------
 
@@ -31,7 +37,8 @@ const saleSortMap = {
  * @access  Private (admin or assigned agent)
  */
 const createSale = asyncHandler(async (req, res) => {
-  const { leadId, agreedPrice, paymentType, downPaymentAmount, remarks } = req.body;
+  const { leadId, paymentType, downPaymentAmount, remarks } = req.body;
+  let { agreedPrice } = req.body;
   const buyer = req.body.buyer || {};
 
   if (!leadId) {
@@ -87,10 +94,39 @@ const createSale = asyncHandler(async (req, res) => {
   if (!buyer.name || !String(buyer.name).trim()) {
     return res.status(400).json({ success: false, message: 'Buyer name is required' });
   }
-  if (typeof agreedPrice !== 'number' || !Number.isFinite(agreedPrice) || agreedPrice <= 0) {
-    return res
-      .status(400)
-      .json({ success: false, message: 'Agreed price must be a number greater than 0' });
+  if (!isValidOptionalNote(remarks)) {
+    return res.status(400).json({ success: false, message: optionalNoteMessage('Remarks') });
+  }
+  {
+    const { toFiniteNumber } = require('../utils/validateMoney');
+    const coerced = toFiniteNumber(agreedPrice);
+    if (coerced === null || coerced <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Agreed price must be a number greater than 0' });
+    }
+    agreedPrice = coerced;
+  }
+  const finalAgreedPrice = agreedPrice;
+  if (finalAgreedPrice > 1e11) {
+    return res.status(400).json({ success: false, message: 'Agreed price exceeds the maximum allowed (NPR 100,000,000,000)' });
+  }
+  // Down payment guards: required >=10% for EMI, optional-but-ranged otherwise
+  {
+    const { toFiniteNumber } = require('../utils/validateMoney');
+    const hasDown = downPaymentAmount !== undefined && downPaymentAmount !== null && downPaymentAmount !== '';
+    if (paymentType === 'emi') {
+      const { validateDownPayment } = require('../utils/validateMoney');
+      const check = validateDownPayment(downPaymentAmount, finalAgreedPrice);
+      if (!check.ok) {
+        return res.status(400).json({ success: false, message: check.message });
+      }
+    } else if (hasDown) {
+      const down = toFiniteNumber(downPaymentAmount);
+      if (down === null || down < 0 || down >= finalAgreedPrice) {
+        return res.status(400).json({ success: false, message: 'Down payment must be a number between 0 and the agreed price' });
+      }
+    }
   }
   if (!Sale.PAYMENT_TYPES.includes(paymentType)) {
     return res.status(400).json({
@@ -156,7 +192,12 @@ const createSale = asyncHandler(async (req, res) => {
     },
     agreedPrice,
     paymentType,
-    downPaymentAmount: downPaymentAmount ?? null,
+    downPaymentAmount: (() => {
+      const { toFiniteNumber } = require('../utils/validateMoney');
+      if (downPaymentAmount === undefined || downPaymentAmount === null || downPaymentAmount === '') return null;
+      const n = toFiniteNumber(downPaymentAmount);
+      return n === null ? null : n;
+    })(),
     remarks: remarks || '',
     status: 'pending_review',
     submittedBy: req.user._id,
@@ -503,6 +544,9 @@ const rejectSale = asyncHandler(async (req, res) => {
   const { reason } = req.body;
   if (!reason || !String(reason).trim()) {
     return res.status(400).json({ success: false, message: 'A rejection reason is required' });
+  }
+  if (!isValidRequiredNote(reason)) {
+    return res.status(400).json({ success: false, message: requiredNoteMessage('Rejection reason') });
   }
   const trimmedReason = String(reason).trim();
 

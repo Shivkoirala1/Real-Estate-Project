@@ -57,9 +57,13 @@ const LISTING_FILTERS = {
 };
 
 const SORT_OPTIONS = [
+  { value: "availability", label: "Availability" },
   { value: 1, label: "Newest" },
   { value: 2, label: "Oldest" },
 ];
+// Rank for availability-first ordering (mirrors the backend `availability`
+// sort: status ascending, then title A–Z).
+const AVAILABILITY_RANK = { available: 0, reserved: 1, rented: 2, sold: 3 };
 
 const ManageProperties = ({ showHeader = true }) => {
   const { user } = useAuth();
@@ -72,7 +76,9 @@ const ManageProperties = ({ showHeader = true }) => {
   // Filter, sort, and pagination state matching ManageBlogs
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [orderBy, setOrderBy] = useState(1); // 1 = Newest, 2 = Oldest
+  // Default view: availability first (available on top), alphabetical
+  // within each status.
+  const [orderBy, setOrderBy] = useState("availability");
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({
     total: 0,
@@ -90,12 +96,18 @@ const ManageProperties = ({ showHeader = true }) => {
     setLoading(true);
     try {
       if (isAdmin || user?.role === "agent") {
+        const sortParam =
+          orderBy === 2 || orderBy === "2"
+            ? "oldest"
+            : orderBy === "availability"
+              ? "availability"
+              : undefined; // 1 / "1" = newest (server default)
         const params = {
           page,
           limit: PAGE_SIZE,
           keyword: search.trim() || undefined,
           status: statusFilter !== "all" ? statusFilter : undefined,
-          sort: orderBy === 2 ? "oldest" : undefined,
+          sort: sortParam,
         };
 
         const data = await getProperties(params);
@@ -133,9 +145,17 @@ const ManageProperties = ({ showHeader = true }) => {
         }
 
         rawList.sort((a, b) => {
+          if (orderBy === "availability") {
+            const rankA = AVAILABILITY_RANK[a.status] ?? 4;
+            const rankB = AVAILABILITY_RANK[b.status] ?? 4;
+            if (rankA !== rankB) return rankA - rankB;
+            return (a.title || "").localeCompare(b.title || "", "en", {
+              sensitivity: "base",
+            });
+          }
           const dateA = new Date(a.createdAt || 0);
           const dateB = new Date(b.createdAt || 0);
-          return orderBy === 1 ? dateB - dateA : dateA - dateB;
+          return orderBy === 2 || orderBy === "2" ? dateA - dateB : dateB - dateA;
         });
 
         const totalDocs = rawList.length;
@@ -186,7 +206,7 @@ const ManageProperties = ({ showHeader = true }) => {
   const handleFilterBarChange = (key, value) => {
     if (key === "keyword") handleSearchChange(value);
     else if (key === "status") handleStatusFilterChange(value);
-    else if (key === "sort") handleOrderChange(Number(value));
+    else if (key === "sort") handleOrderChange(value);
   };
 
   const goToPage = (newPage) => {

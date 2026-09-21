@@ -5,9 +5,37 @@ const Property = require("../models/Property");
 const User = require("../models/User");
 const asyncHandler = require("../utils/asyncHandler");
 const { notify, notifyMany } = require("../utils/notify");
+const {
+  isValidRequiredNote,
+  isValidOptionalNote,
+  requiredNoteMessage,
+  optionalNoteMessage,
+} = require("../utils/validateNotes");
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\d{10}$/;
+
+// Anti-spam: one inquiry per sender per scope per hour.
+// - Property inquiry: same sender + same property.
+// - General contact form: same sender, no property.
+// Sender identity prefers the logged-in user id, falling back to the
+// normalized email so anonymous visitors are covered too.
+const INQUIRY_COOLDOWN_MS = 60 * 60 * 1000;
+
+const buildCooldownQuery = ({ userId, email, propertyId, since }) => {
+  const senderClauses = [];
+  if (userId) senderClauses.push({ user: userId });
+  if (email) senderClauses.push({ email });
+  const query = { createdAt: { $gte: since } };
+  if (propertyId) {
+    query.property = propertyId;
+  } else {
+    query.$and = [{ $or: [{ property: null }, { property: { $exists: false } }] }];
+  }
+  if (senderClauses.length === 1) Object.assign(query, senderClauses[0]);
+  else query.$and = [...(query.$and || []), { $or: senderClauses }];
+  return query;
+};
 
 /**
  * @desc    Submit a contact form / property inquiry
@@ -22,6 +50,13 @@ const createContactForm = asyncHandler(async (req, res) => {
     return res.status(400).json({
       success: false,
       message: "Name, email, and message are required",
+    });
+  }
+
+  if (!isValidRequiredNote(message)) {
+    return res.status(400).json({
+      success: false,
+      message: requiredNoteMessage("Message"),
     });
   }
 
@@ -68,6 +103,35 @@ const createContactForm = asyncHandler(async (req, res) => {
         message: "You can't send an inquiry about your own property listing",
       });
     }
+  }
+
+  // 1-hour cooldown per sender per scope (DB-backed, works across instances).
+  // Property inquiries are scoped to the same property; the general form is
+  // scoped to sender-only so asking about property A doesn't block property B.
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const cooldownSince = new Date(Date.now() - INQUIRY_COOLDOWN_MS);
+  const recent = await ContactForm.findOne(
+    buildCooldownQuery({
+      userId: req.user ? req.user._id : null,
+      email: normalizedEmail,
+      propertyId: property || null,
+      since: cooldownSince,
+    }),
+  )
+    .select("_id createdAt")
+    .lean();
+  if (recent) {
+    const retryAfterMs =
+      new Date(recent.createdAt).getTime() + INQUIRY_COOLDOWN_MS - Date.now();
+    const retryAfterMinutes = Math.max(1, Math.ceil(retryAfterMs / 60000));
+    return res.status(429).json({
+      success: false,
+      message: property
+        ? `You've already sent an inquiry about this property recently. Please wait about ${retryAfterMinutes} minute(s) before sending another.`
+        : `You've already sent a message recently. Please wait about ${retryAfterMinutes} minute(s) before sending another.`,
+      retryAfterMinutes,
+      retryAfterSeconds: Math.max(1, Math.ceil(retryAfterMs / 1000)),
+    });
   }
 
   // Create contact form
@@ -283,6 +347,13 @@ const respondToContactForm = asyncHandler(async (req, res) => {
     });
   }
 
+  if (!isValidRequiredNote(response)) {
+    return res.status(400).json({
+      success: false,
+      message: requiredNoteMessage("Response"),
+    });
+  }
+
   const contactForm = await ContactForm.findById(req.params.id).populate(
     "user",
     "_id name email",
@@ -371,6 +442,13 @@ const convertContactFormToLead = asyncHandler(async (req, res) => {
         .status(404)
         .json({ success: false, message: "Assigned agent not found" });
     }
+  }
+
+  // Optional convert notes: empty allowed, otherwise min 10 after trim
+  if (!isValidOptionalNote(notes)) {
+    return res
+      .status(400)
+      .json({ success: false, message: optionalNoteMessage("Notes") });
   }
 
   const propertyId = property || contactForm.property || null;

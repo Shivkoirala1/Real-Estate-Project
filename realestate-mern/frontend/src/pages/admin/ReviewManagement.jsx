@@ -8,6 +8,7 @@ import {
 } from "../../services/reviewService";
 import { useToast } from "../../context/ToastContext";
 import { useConfirm } from "../../context/ConfirmContext";
+import { isValidRequiredNote, requiredNoteMessage } from "../../utils/validateNotes";
 
 const PAGE_SIZE = 10;
 
@@ -346,6 +347,10 @@ const ReplyModal = ({ review, onClose, onSaved }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!text.trim()) return;
+    if (!isValidRequiredNote(text)) {
+      showToast(requiredNoteMessage('Reply'), 'error');
+      return;
+    }
     setSaving(true);
     try {
       const updated = await replyToReview(review._id, text.trim());
@@ -401,7 +406,7 @@ const ReplyModal = ({ review, onClose, onSaved }) => {
             </button>
             <button
               type="submit"
-              disabled={saving || !text.trim()}
+              disabled={saving || !text.trim() || !isValidRequiredNote(text)}
               className="btn-gold text-sm py-1.5 px-4 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {saving ? "Posting..." : "Post Reply"}

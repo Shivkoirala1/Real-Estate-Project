@@ -24,7 +24,21 @@ const createPropertyType = asyncHandler(async (req, res) => {
   if (defaultCommissionPercentage === null) {
     return res.status(400).json({ success: false, message: 'Commission percentage must be between 0 and 100' });
   }
-  const type = await PropertyType.create({ name, description, defaultCommissionPercentage });
+  // Category drives the Land vs Building posting form. Default to
+  // 'building' when omitted so legacy callers keep working.
+  let category;
+  if (req.body.category !== undefined && req.body.category !== '' && req.body.category !== null) {
+    if (!['land', 'building'].includes(req.body.category)) {
+      return res.status(400).json({ success: false, message: "Category must be 'land' or 'building'" });
+    }
+    category = req.body.category;
+  }
+  const type = await PropertyType.create({
+    name,
+    description,
+    defaultCommissionPercentage,
+    ...(category ? { category } : {}),
+  });
   res.status(201).json({ success: true, propertyType: type });
 });
 

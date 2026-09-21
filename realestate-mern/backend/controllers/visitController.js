@@ -8,6 +8,10 @@ const asyncHandler = require("../utils/asyncHandler");
 const { notify, notifyMany } = require("../utils/notify");
 const { ensureLeadFromVisit } = require("../utils/leadAutoConversion");
 const { awardReward } = require("../utils/rewards");
+const {
+  isValidOptionalNote,
+  optionalNoteMessage,
+} = require("../utils/validateNotes");
 
 // Lead stages that can still absorb new activity (visit linking). Closed/lost
 // leads are never silently resurrected - a returning customer starts fresh.
@@ -124,6 +128,13 @@ const createVisit = asyncHandler(async (req, res) => {
     return res.status(400).json({
       success: false,
       message: "Please provide a valid future date and time slot",
+    });
+  }
+
+  if (!isValidOptionalNote(buyerNotes)) {
+    return res.status(400).json({
+      success: false,
+      message: optionalNoteMessage("Visit notes"),
     });
   }
 
@@ -530,7 +541,15 @@ const updateVisit = asyncHandler(async (req, res) => {
   }
 
   if (status) visit.status = status;
-  if (internalNotes !== undefined) visit.internalNotes = internalNotes;
+  if (internalNotes !== undefined) {
+    if (!isValidOptionalNote(internalNotes)) {
+      return res.status(400).json({
+        success: false,
+        message: optionalNoteMessage("Internal notes"),
+      });
+    }
+    visit.internalNotes = internalNotes;
+  }
   if (assignedAgent !== undefined) visit.assignedAgent = assignedAgent;
   if (requestedSlot) visit.requestedSlot = newSlotDate;
 

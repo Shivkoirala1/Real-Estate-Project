@@ -32,9 +32,15 @@ export const getCities = async (district) => {
 /**
  * Create a property type
  * POST /api/categories/property-types
+ * payload: { name, category?, description?, defaultCommissionPercentage? }
+ * `category` is 'land' | 'building' — drives the Land vs Building form.
+ * Kept backward-compatible: createPropertyType("Duplex") still works.
  */
-export const createPropertyType = async (name) => {
-  const { data } = await api.post("/categories/property-types", { name });
+export const createPropertyType = async (name, opts = {}) => {
+  const payload = typeof name === 'object'
+    ? name
+    : { name, ...opts };
+  const { data } = await api.post("/categories/property-types", payload);
   return data;
 };
 

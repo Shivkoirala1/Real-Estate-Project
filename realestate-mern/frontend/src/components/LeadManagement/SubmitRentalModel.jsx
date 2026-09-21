@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createRental } from '../../services/rentalService';
 import { useToast } from '../../context/ToastContext';
+import { isValidOptionalNote, optionalNoteMessage } from '../../utils/validateNotes';
 
 const EMPTY_FORM = {
   tenantName: '',
@@ -55,6 +56,15 @@ const SubmitRentalModal = ({ lead, property, open, onClose, onSuccess }) => {
     if (!Number.isInteger(months) || months < 1)
       next.durationInMonths = 'Duration must be a whole number of months (min 1)';
     if (!form.startDate) next.startDate = 'Lease start date is required';
+    if (form.securityDeposit !== '') {
+      const deposit = Number(form.securityDeposit);
+      if (!Number.isFinite(deposit) || deposit < 0) {
+        next.securityDeposit = 'Security deposit must be a number of at least 0';
+      } else if (Number.isFinite(rent) && Number.isFinite(months) && rent > 0 && months >= 1 && deposit > rent * months) {
+        next.securityDeposit = `Security deposit cannot exceed the total lease value (NPR ${(rent * months).toLocaleString()})`;
+      }
+    }
+    if (!isValidOptionalNote(form.remarks)) next.remarks = optionalNoteMessage('Remarks');
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -171,6 +181,7 @@ const SubmitRentalModal = ({ lead, property, open, onClose, onSuccess }) => {
               <input type="number" min="0" step="any" className="input-field text-sm"
                 value={form.securityDeposit} onChange={(e) => setField('securityDeposit', e.target.value)}
                 placeholder="e.g. 50000" />
+              {errors.securityDeposit && <p className="mt-1 text-xs text-brick">{errors.securityDeposit}</p>}
             </div>
           </div>
 
@@ -186,6 +197,7 @@ const SubmitRentalModal = ({ lead, property, open, onClose, onSuccess }) => {
             <textarea rows={3} className="input-field text-sm" value={form.remarks}
               onChange={(e) => setField('remarks', e.target.value)}
               placeholder="Lease terms, agreements, notes..." />
+            {errors.remarks && <p className="mt-1 text-xs text-brick">{errors.remarks}</p>}
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-navy/10">

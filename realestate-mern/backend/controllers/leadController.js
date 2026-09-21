@@ -3,6 +3,12 @@ const Property = require('../models/Property');
 const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const { notify, notifyMany } = require('../utils/notify');
+const {
+  isValidRequiredNote,
+  isValidOptionalNote,
+  requiredNoteMessage,
+  optionalNoteMessage,
+} = require('../utils/validateNotes');
 
 const LEAD_STAGES = Lead.STAGES;
 const LEAD_SOURCES = Lead.SOURCES;
@@ -116,6 +122,10 @@ const createLead = asyncHandler(async (req, res) => {
 
   if (!LEAD_SOURCES.includes(source)) {
     return res.status(400).json({ success: false, message: 'Invalid lead source' });
+  }
+
+  if (!isValidOptionalNote(notes)) {
+    return res.status(400).json({ success: false, message: optionalNoteMessage('Notes') });
   }
 
   // Verify agent exists if one was chosen (leads can also sit unassigned)
@@ -695,6 +705,11 @@ const updateLeadNotes = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Notes are required' });
   }
 
+  // Empty string clears notes; otherwise min 10 chars after trim
+  if (!isValidOptionalNote(notes)) {
+    return res.status(400).json({ success: false, message: optionalNoteMessage('Notes') });
+  }
+
   const lead = await Lead.findById(req.params.id);
   if (!lead) {
     return res.status(404).json({ success: false, message: 'Lead not found' });
@@ -1001,6 +1016,10 @@ const addLeadActivity = asyncHandler(async (req, res) => {
 
   if (!message || !message.trim()) {
     return res.status(400).json({ success: false, message: 'Activity message is required' });
+  }
+
+  if (!isValidRequiredNote(message)) {
+    return res.status(400).json({ success: false, message: requiredNoteMessage('Note') });
   }
 
   const lead = await Lead.findById(req.params.id);

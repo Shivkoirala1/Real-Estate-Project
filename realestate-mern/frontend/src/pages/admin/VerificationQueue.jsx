@@ -5,6 +5,7 @@ import { getRentals, verifyRental, rejectRental } from '../../services/rentalSer
 import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import { timeAgo } from '../../utils/format';
+import { isValidRequiredNote, requiredNoteMessage } from '../../utils/validateNotes';
 
 const PAGE_SIZE = 10;
 
@@ -276,8 +277,8 @@ const VerificationQueue = () => {
   };
 
   const handleRejectSubmit = async () => {
-    if (!rejectReason.trim()) {
-      setRejectError('A rejection reason is required');
+    if (!rejectReason.trim() || !isValidRequiredNote(rejectReason)) {
+      setRejectError(requiredNoteMessage('Rejection reason'));
       return;
     }
     setBusyId(rejectTarget._id);

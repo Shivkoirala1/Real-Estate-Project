@@ -89,8 +89,14 @@ const RequestVerificationModal = ({ inst, busy, onClose, onSubmit }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     const amount = Number(paidAmount);
-    if (!Number.isFinite(amount) || amount < 0) {
-      return setError("Amount must be a number of at least 0.");
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return setError("Payment amount must be greater than 0.");
+    }
+    if (Number.isFinite(Number(inst.amount)) && amount > Number(inst.amount)) {
+      return setError(`Payment cannot exceed the installment amount (NPR ${Number(inst.amount).toLocaleString()}).`);
+    }
+    if (amount > 1e11) {
+      return setError("Payment amount is too large.");
     }
     if (!paidDate) return setError("Paid date is required.");
     setError("");

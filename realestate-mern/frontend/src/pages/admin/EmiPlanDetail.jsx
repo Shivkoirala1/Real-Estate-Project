@@ -99,7 +99,9 @@ const MarkPaidModal = ({ inst, busy, onClose, onSubmit }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     const amount = Number(paidAmount);
-    if (!Number.isFinite(amount) || amount < 0) return setError('Paid amount must be a number of at least 0.');
+    if (!Number.isFinite(amount) || amount <= 0) return setError('Payment amount must be greater than 0.');
+    if (Number.isFinite(Number(inst.amount)) && amount > Number(inst.amount)) return setError(`Payment cannot exceed the due amount (NPR ${Number(inst.amount).toLocaleString()}).`);
+    if (amount > 1e11) return setError('Payment amount is too large.');
     if (!paidDate) return setError('Paid date is required.');
     setError('');
     onSubmit({ status: 'paid', paidAmount: amount, paidDate, remarks: remarks.trim() });
@@ -173,7 +175,8 @@ const EditPendingModal = ({ inst, busy, onClose, onSubmit }) => {
     const payload = {};
     if (dueDate !== toDateInput(inst.dueDate)) payload.dueDate = dueDate;
     const nextAmount = Number(amount);
-    if (!Number.isFinite(nextAmount) || nextAmount < 0) return setError('Amount must be a number of at least 0.');
+    if (!Number.isFinite(nextAmount) || nextAmount <= 0) return setError('Amount must be greater than 0.');
+    if (nextAmount > 1e11) return setError('Amount is too large.');
     if (nextAmount !== Number(inst.amount)) payload.amount = nextAmount;
     if ((remarks || '').trim() !== (inst.remarks || '')) payload.remarks = (remarks || '').trim();
     if (Object.keys(payload).length === 0) return setError('No changes to save.');
@@ -291,7 +294,9 @@ const ReviewVerificationModal = ({ inst, busy, onClose, onSubmit }) => {
       return onSubmit({ action: 'reject', reviewNote: reviewNote.trim() });
     }
     const amount = Number(paidAmount);
-    if (!Number.isFinite(amount) || amount < 0) return setError('Paid amount must be a number of at least 0.');
+    if (!Number.isFinite(amount) || amount <= 0) return setError('Payment amount must be greater than 0.');
+    if (Number.isFinite(Number(inst.amount)) && amount > Number(inst.amount)) return setError(`Payment cannot exceed the due amount (NPR ${Number(inst.amount).toLocaleString()}).`);
+    if (amount > 1e11) return setError('Payment amount is too large.');
     if (!paidDate) return setError('Paid date is required.');
     setError('');
     onSubmit({ action: 'approve', paidAmount: amount, paidDate, reviewNote: reviewNote.trim() });
@@ -430,6 +435,7 @@ const RescheduleModal = ({ busy, onClose, onSubmit }) => {
     if (amount !== '') {
       const a = Number(amount);
       if (!Number.isFinite(a) || a <= 0) return setError('New installment amount must be greater than 0.');
+      if (a > 1e11) return setError('New installment amount is too large.');
       payload.installmentAmount = a;
     }
     setError('');

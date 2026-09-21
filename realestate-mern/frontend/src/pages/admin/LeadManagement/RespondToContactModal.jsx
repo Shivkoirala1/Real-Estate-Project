@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { respondToContactForm } from '../../../services/contactFormService';
 import { useToast } from '../../../context/ToastContext';
+import { isValidRequiredNote, requiredNoteMessage } from '../../../utils/validateNotes';
 
 // Modal for replying to a contact form submission.
 const RespondToContactModal = ({ contactForm, onClose, onResponded }) => {
@@ -11,6 +12,10 @@ const RespondToContactModal = ({ contactForm, onClose, onResponded }) => {
   const submit = async (e) => {
     e.preventDefault();
     if (!response.trim()) return;
+    if (!isValidRequiredNote(response)) {
+      showToast(requiredNoteMessage('Response'), 'error');
+      return;
+    }
 
     setSending(true);
     try {
@@ -63,7 +68,7 @@ const RespondToContactModal = ({ contactForm, onClose, onResponded }) => {
             </button>
             <button
               type="submit"
-              disabled={sending || !response.trim()}
+              disabled={sending || !response.trim() || !isValidRequiredNote(response)}
               className="btn-gold text-sm disabled:opacity-50"
             >
               {sending ? 'Sending...' : 'Send response'}

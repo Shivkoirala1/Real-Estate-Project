@@ -9,6 +9,10 @@ const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const { notify, notifyMany } = require('../utils/notify');
 const { runWithTransaction, opts } = require('../utils/withTransaction');
+const {
+  isValidRequiredNote,
+  requiredNoteMessage,
+} = require('../utils/validateNotes');
 
 // ---------- helpers ----------
 
@@ -28,6 +32,41 @@ const managementSortMap = {
   newest: { createdAt: -1 },
   oldest: { createdAt: 1 },
   status: { status: 1, createdAt: -1 },
+  // `alpha` sorts by the linked property's title (case-insensitive) and is
+  // handled via aggregation (see findRequestsSortedAlpha) because populate
+  // cannot sort - it is intentionally absent from this find() sort map.
+  alpha: null,
+};
+
+// Alphabetical listing by property title with correct server-side
+// pagination: $lookup the property, sort on the lowercased title, then
+// populate the page the same way the find() path does.
+const findRequestsSortedAlpha = async (query, skip, limitNum) => {
+  const docs = await PropertyManagementRequest.aggregate([
+    { $match: query },
+    {
+      $lookup: {
+        from: 'properties',
+        localField: 'property',
+        foreignField: '_id',
+        as: '_sortProperty',
+      },
+    },
+    {
+      $addFields: {
+        _sortTitle: {
+          $toLower: {
+            $ifNull: [{ $arrayElemAt: ['$_sortProperty.title', 0] }, ''],
+          },
+        },
+      },
+    },
+    { $sort: { _sortTitle: 1, createdAt: -1 } },
+    { $skip: skip },
+    { $limit: limitNum },
+    { $project: { _sortProperty: 0, _sortTitle: 0 } },
+  ]);
+  return PropertyManagementRequest.populate(docs, REQUEST_POPULATE);
 };
 
 // Shared populate for every list/detail response in this module
@@ -222,11 +261,13 @@ const getMyManagementRequests = asyncHandler(async (req, res) => {
   const skip = (pageNum - 1) * limitNum;
 
   const [requests, total] = await Promise.all([
-    PropertyManagementRequest.find(query)
-      .populate(REQUEST_POPULATE)
-      .sort(managementSortMap[sort] || managementSortMap.newest)
-      .skip(skip)
-      .limit(limitNum),
+    sort === 'alpha'
+      ? findRequestsSortedAlpha(query, skip, limitNum)
+      : PropertyManagementRequest.find(query)
+          .populate(REQUEST_POPULATE)
+          .sort(managementSortMap[sort] || managementSortMap.newest)
+          .skip(skip)
+          .limit(limitNum),
     PropertyManagementRequest.countDocuments(query),
   ]);
 
@@ -286,11 +327,13 @@ const getManagementRequests = asyncHandler(async (req, res) => {
   delete baseFilter.status;
 
   const [requests, total, statusCounts] = await Promise.all([
-    PropertyManagementRequest.find(query)
-      .populate(REQUEST_POPULATE)
-      .sort(managementSortMap[sort] || managementSortMap.newest)
-      .skip(skip)
-      .limit(limitNum),
+    sort === 'alpha'
+      ? findRequestsSortedAlpha(query, skip, limitNum)
+      : PropertyManagementRequest.find(query)
+          .populate(REQUEST_POPULATE)
+          .sort(managementSortMap[sort] || managementSortMap.newest)
+          .skip(skip)
+          .limit(limitNum),
     PropertyManagementRequest.countDocuments(query),
     PropertyManagementRequest.aggregate([
       { $match: baseFilter },
@@ -401,6 +444,9 @@ const declineRequest = asyncHandler(async (req, res) => {
   if (!decisionReason || !String(decisionReason).trim()) {
     return res.status(400).json({ success: false, message: 'A decline reason is required' });
   }
+  if (!isValidRequiredNote(decisionReason)) {
+    return res.status(400).json({ success: false, message: requiredNoteMessage('Decline reason') });
+  }
   const trimmedReason = String(decisionReason).trim();
 
   const request = await PropertyManagementRequest.findById(req.params.id);
@@ -455,6 +501,9 @@ const terminateManagement = asyncHandler(async (req, res) => {
   const { terminatedReason } = req.body;
   if (!terminatedReason || !String(terminatedReason).trim()) {
     return res.status(400).json({ success: false, message: 'A termination reason is required' });
+  }
+  if (!isValidRequiredNote(terminatedReason)) {
+    return res.status(400).json({ success: false, message: requiredNoteMessage('Termination reason') });
   }
   const trimmedReason = String(terminatedReason).trim();
 
@@ -563,6 +612,9 @@ const approveTermination = asyncHandler(async (req, res) => {
 const requestTermination = asyncHandler(async (req, res) => {
   const { terminationReason } = req.body;
   const trimmedReason = terminationReason ? String(terminationReason).trim() : '';
+  if (trimmedReason && !isValidRequiredNote(trimmedReason)) {
+    return res.status(400).json({ success: false, message: requiredNoteMessage('Termination reason') });
+  }
 
   const request = await PropertyManagementRequest.findById(req.params.id);
   if (!request) {
@@ -627,6 +679,9 @@ const addActivity = asyncHandler(async (req, res) => {
   const trimmedMessage = typeof message === 'string' ? message.trim() : '';
   if (!trimmedMessage) {
     return res.status(400).json({ success: false, message: 'An activity message is required' });
+  }
+  if (!isValidRequiredNote(trimmedMessage)) {
+    return res.status(400).json({ success: false, message: requiredNoteMessage('Note') });
   }
   if (trimmedMessage.length > 1000) {
     return res

@@ -23,6 +23,7 @@ import SubmitSaleModal from '../../../components/LeadManagement/SubmitSaleModal'
 import SubmitRentalModal from '../../../components/LeadManagement/SubmitRentalModel';
 import { ADMIN_MANUAL_STAGES, AGENT_MANUAL_STAGES, STAGE_META, PRIORITIES, CATEGORIES } from '../../../utils/leadConstants';
 import { timeAgo } from '../../../utils/format';
+import { isValidOptionalNote, optionalNoteMessage } from '../../../utils/validateNotes';
 
 // Single lead view: contact info + pipeline controls on the left, activity
 // timeline in the middle, unified conversation thread on the right.
@@ -98,8 +99,13 @@ const LeadDetail = () => {
     }
   };
 
-  const saveNotes = () =>
-    runUpdate(() => updateLead(lead._id, { notes }), 'Notes saved');
+  const saveNotes = () => {
+    if (!isValidOptionalNote(notes)) {
+      showToast(optionalNoteMessage('Notes'), 'error');
+      return;
+    }
+    return runUpdate(() => updateLead(lead._id, { notes }), 'Notes saved');
+  };
 
   const saveFollowUp = () =>
     runUpdate(

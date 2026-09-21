@@ -3,6 +3,7 @@ import { getPendingVerifications, verifyUser } from '../../services/userService'
 import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import { imageUrl } from '../../utils/format';
+import { isValidOptionalNote, optionalNoteMessage } from '../../utils/validateNotes';
 
 const VerifyUsers = () => {
   const { showToast } = useToast();
@@ -24,6 +25,10 @@ const VerifyUsers = () => {
   useEffect(() => { load(); }, []);
 
   const handleDecision = async (id, status) => {
+    if (!isValidOptionalNote(noteDrafts[id] || '')) {
+      showToast(optionalNoteMessage('Note'), 'error');
+      return;
+    }
     if (status === 'rejected') {
       const confirmed = await confirm({
         title: "Reject this user's verification?",

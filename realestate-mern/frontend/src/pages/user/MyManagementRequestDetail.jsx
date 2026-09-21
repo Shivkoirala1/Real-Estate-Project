@@ -10,6 +10,12 @@ import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import ManagementStatusBadge from '../../components/PropertyManagement/ManagementStatusBadge';
 import ManagementActivityTimeline from '../../components/PropertyManagement/ManagementActivityTimeline';
+import {
+  isValidOptionalNote,
+  isValidRequiredNote,
+  optionalNoteMessage,
+  requiredNoteMessage,
+} from '../../utils/validateNotes';
 
 const ACTIVITY_PAGE_SIZE = 20;
 
@@ -67,6 +73,10 @@ const MyManagementRequestDetail = () => {
   }, [load]);
 
   const handleRequestTermination = async () => {
+    if (!isValidOptionalNote(reason)) {
+      showToast(optionalNoteMessage('Reason'), 'error');
+      return;
+    }
     const ok = await confirm({
       title: 'Request termination?',
       message:
@@ -91,6 +101,10 @@ const MyManagementRequestDetail = () => {
 
   const handleAddNote = async () => {
     if (!note.trim() || noteBusy) return;
+    if (!isValidRequiredNote(note)) {
+      showToast(requiredNoteMessage('Note'), 'error');
+      return;
+    }
     setNoteBusy(true);
     try {
       const data = await addActivity(id, note.trim());
@@ -237,7 +251,7 @@ const MyManagementRequestDetail = () => {
             <button
               type="button"
               onClick={handleAddNote}
-              disabled={noteBusy || !note.trim()}
+              disabled={noteBusy || !note.trim() || !isValidRequiredNote(note)}
               className="btn-gold text-sm w-full disabled:opacity-60"
             >
               {noteBusy ? 'Adding...' : 'Add Note'}

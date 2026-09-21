@@ -3,6 +3,7 @@ import { addLeadActivity } from '../../services/leadService';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { timeAgo } from '../../utils/format';
+import { isValidRequiredNote, requiredNoteMessage } from '../../utils/validateNotes';
 
 const ACTIVITY_ICONS = {
   created: '✦',
@@ -39,6 +40,10 @@ const LeadActivityTimeline = ({ lead, onChange }) => {
 
   const addNote = async () => {
     if (!note.trim()) return;
+    if (!isValidRequiredNote(note)) {
+      showToast(requiredNoteMessage('Note'), 'error');
+      return;
+    }
     setSending(true);
     try {
       await addLeadActivity(lead._id, note.trim(), 'note_added');
@@ -68,7 +73,7 @@ const LeadActivityTimeline = ({ lead, onChange }) => {
           />
           <button
             onClick={addNote}
-            disabled={sending || !note.trim()}
+            disabled={sending || !note.trim() || !isValidRequiredNote(note)}
             className="btn-gold text-sm px-4 whitespace-nowrap disabled:opacity-50"
           >
             {sending ? 'Adding...' : 'Add'}

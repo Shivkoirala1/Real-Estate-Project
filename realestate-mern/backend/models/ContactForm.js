@@ -12,7 +12,7 @@ const contactFormSchema = new mongoose.Schema({
   email: { type: String, required: true, trim: true },
   phone: { type: String, default: '' },
   subject: { type: String, required: true },
-  message: { type: String, required: true },
+  message: { type: String, required: true, trim: true, minlength: [10, 'Message must be at least 10 characters'] },
   property: { type: mongoose.Schema.Types.ObjectId, ref: 'Property', default: null },
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // if logged-in user submitted
   status: {
@@ -32,5 +32,11 @@ const contactFormSchema = new mongoose.Schema({
 // Admin inbox sorts by newest
 contactFormSchema.index({ createdAt: -1 });
 contactFormSchema.index({ status: 1, createdAt: -1 });
+// 1-hour inquiry cooldown lookups: same sender re-submitting.
+// General form is scoped by sender only; property inquiries by sender + property.
+contactFormSchema.index({ email: 1, createdAt: -1 });
+contactFormSchema.index({ user: 1, createdAt: -1 });
+contactFormSchema.index({ property: 1, email: 1, createdAt: -1 });
+contactFormSchema.index({ property: 1, user: 1, createdAt: -1 });
 
 module.exports = mongoose.model('ContactForm', contactFormSchema);

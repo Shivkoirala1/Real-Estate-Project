@@ -4,6 +4,7 @@ import { convertContactFormToLead, convertVisitToLead } from '../../../services/
 import { getAgents } from "../../../services/agentService";
 import { useToast } from '../../../context/ToastContext';
 import { CATEGORIES, PRIORITIES } from '../../../utils/leadConstants';
+import { isValidOptionalNote, optionalNoteMessage } from '../../../utils/validateNotes';
 
 /**
  * Shared conversion modal: turns either a contact form submission or a visit
@@ -26,6 +27,7 @@ const ConvertToLeadModal = ({ sourceType, source, onClose, onConverted }) => {
   });
   const [agents, setAgents] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [notesError, setNotesError] = useState('');
 
   useEffect(() => {
     getAgents()
@@ -35,6 +37,13 @@ const ConvertToLeadModal = ({ sourceType, source, onClose, onConverted }) => {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (!isValidOptionalNote(form.notes)) {
+      const msg = optionalNoteMessage('Notes');
+      setNotesError(msg);
+      showToast(msg, 'error');
+      return;
+    }
+    setNotesError('');
     setSaving(true);
     try {
       const payload = {
@@ -162,9 +171,13 @@ const ConvertToLeadModal = ({ sourceType, source, onClose, onConverted }) => {
               rows={3}
               className="input-field"
               value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, notes: e.target.value });
+                if (notesError) setNotesError('');
+              }}
               placeholder="Context carried onto the lead..."
             />
+            {notesError && <p className="text-xs text-brick mt-1">{notesError}</p>}
           </div>
 
           <div className="flex justify-end gap-3 pt-1">

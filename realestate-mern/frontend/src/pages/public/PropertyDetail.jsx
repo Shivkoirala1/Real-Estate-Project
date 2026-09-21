@@ -13,6 +13,8 @@ import {
   createReview,
 } from "../../services/reviewService";
 import ImageGallery from "../../components/ImageGallery";
+import { isValidRequiredNote, isValidOptionalNote, requiredNoteMessage, optionalNoteMessage } from "../../utils/validateNotes";
+import { getCooldownRemainingMs, markCooldown, cooldownMessageFor } from "../../utils/inquiryCooldown";
 import MapView from "../../components/MapView";
 import PropertyCard from "../../components/PropertyCard";
 import StatusBadge from "../../components/StatusBadge";
@@ -200,6 +202,7 @@ const PropertyDetail = () => {
     else if (!PHONE_REGEX.test(form.phone.trim()))
       next.phone = "Phone number must be exactly 10 digits";
     if (!form.message.trim()) next.message = "Please enter a message";
+    else if (!isValidRequiredNote(form.message)) next.message = requiredNoteMessage("Message");
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -215,6 +218,12 @@ const PropertyDetail = () => {
     e.preventDefault();
     if (isStaff) return showToast("Only buyers can send inquiries", "error");
     if (!validateInquiry()) return;
+
+    const cooldownScope = `property:${property._id}`;
+    const remaining = getCooldownRemainingMs(cooldownScope);
+    if (remaining > 0) {
+      return showToast(cooldownMessageFor(cooldownScope, remaining), "error");
+    }
 
     // Confirm with the user before sending the inquiry
     const confirmed = await confirm({
@@ -233,6 +242,7 @@ const PropertyDetail = () => {
         property: property._id,
       });
       showToast("Your inquiry has been sent to the agent");
+      markCooldown(`property:${property._id}`);
       setForm({ name: "", email: "", phone: "", message: "" });
       setErrors({});
       // Keep the created inquiry's id around so a follow-up visit request gets linked to it
@@ -240,6 +250,7 @@ const PropertyDetail = () => {
         setVisitForm((v) => ({ ...v, inquiryId: data.inquiry._id }));
       }
     } catch (err) {
+      if (err.response?.status === 429) markCooldown(`property:${property._id}`);
       showToast(
         err.response?.data?.message || "Failed to send inquiry",
         "error",
@@ -259,6 +270,9 @@ const PropertyDetail = () => {
       if (isNaN(slotDate.getTime()) || slotDate < new Date()) {
         next.requestedSlot = "Please choose a future date and time";
       }
+    }
+    if (!isValidOptionalNote(visitForm.buyerNotes)) {
+      next.buyerNotes = optionalNoteMessage("Visit notes");
     }
     setVisitErrors(next);
     return Object.keys(next).length === 0;
@@ -326,6 +340,10 @@ const PropertyDetail = () => {
     e.preventDefault();
     if (!user) return showToast("Please sign in to write a review", "error");
     setReviewError("");
+    if (!isValidRequiredNote(reviewForm.comment)) {
+      setReviewError(requiredNoteMessage("Review"));
+      return;
+    }
     setReviewSending(true);
     try {
       const review = await createReview({

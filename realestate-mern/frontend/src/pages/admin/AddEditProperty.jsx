@@ -111,10 +111,13 @@ const AddEditProperty = () => {
   const [form, setForm] = useState(initialState);
   // Which of the two posting forms is active. Driven by the selected
   // Property Type's category ('land' vs 'building') - Land gets the
-  // practical land-only form, everything else (House, Apartment, Villa,
-  // Commercial Space, Traditional Nepali Home) gets the building form.
+  // practical land-only form, everything else (House, Apartment,
+  // Commercial Space) gets the building form.
   const [category, setCategory] = useState('building');
   const [propertyTypes, setPropertyTypes] = useState([]);
+  const [typesLoading, setTypesLoading] = useState(true);
+  const [typesError, setTypesError] = useState('');
+  const [typesRetry, setTypesRetry] = useState(0);
   const [coverImage, setCoverImage] = useState(null);
   const [coverPreview, setCoverPreview] = useState(null);
   const [currentCoverImage, setCurrentCoverImage] = useState(''); // existing cover when editing
@@ -136,8 +139,26 @@ const AddEditProperty = () => {
   const [mgmtNote, setMgmtNote] = useState('');
 
   useEffect(() => {
-    getPropertyTypes().then((data) => setPropertyTypes(data.propertyTypes));
-  }, []);
+    let active = true;
+    setTypesLoading(true);
+    setTypesError('');
+    getPropertyTypes()
+      .then((data) => {
+        if (active) setPropertyTypes(data.propertyTypes || []);
+      })
+      .catch(() => {
+        if (active) {
+          setPropertyTypes([]);
+          setTypesError('Could not load property types. Check your connection and retry.');
+        }
+      })
+      .finally(() => {
+        if (active) setTypesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [typesRetry]);
 
   // Management service catalogue (active only) for the wizard's services step.
   useEffect(() => {
@@ -221,8 +242,15 @@ const AddEditProperty = () => {
     if (nextCategory === category) return;
     setCategory(nextCategory);
     setFieldErrors({});
+    // Preserve the selected type when it belongs to the new form;
+    // otherwise clear it so a building type can't leak into a land
+    // listing or vice versa. Legacy types without a category count as
+    // 'building', matching the dropdown filter below.
+    let clearedType = false;
     setForm((f) => {
-      const stillValidType = propertyTypes.find((t) => t._id === f.propertyType)?.category === nextCategory;
+      const stillValidType =
+        (propertyTypes.find((t) => t._id === f.propertyType)?.category || 'building') === nextCategory;
+      if (f.propertyType && !stillValidType) clearedType = true;
       return {
         ...f,
         propertyType: stillValidType ? f.propertyType : '',
@@ -233,6 +261,9 @@ const AddEditProperty = () => {
         },
       };
     });
+    if (clearedType) {
+      showToast('Property type cleared — pick one for the new form');
+    }
   };
 
   const handleMapPick = (lat, lng) => {
@@ -313,12 +344,12 @@ const AddEditProperty = () => {
     if (!isManagement) {
       if (form.price === '' || form.price === null) {
         next.price = 'Price is required';
-      } else if (Number(form.price) <= 0) {
+      } else if (!Number.isFinite(Number(form.price)) || Number(form.price) <= 0) {
         next.price = 'Price must be greater than 0';
       } else if (Number(form.price) > 100_000_000_000) {
         next.price = 'That price looks too high - please double-check it';
       }
-    } else if (form.price !== '' && form.price !== null && Number(form.price) < 0) {
+    } else if (form.price !== '' && form.price !== null && (!Number.isFinite(Number(form.price)) || Number(form.price) < 0)) {
       next.price = 'Price cannot be negative';
     }
 
@@ -352,11 +383,11 @@ const AddEditProperty = () => {
 
     if (form.details.landArea === '' || form.details.landArea === null) {
       next.landArea = 'Land area is required';
-    } else if (Number(form.details.landArea) <= 0) {
+    } else if (!Number.isFinite(Number(form.details.landArea)) || Number(form.details.landArea) <= 0) {
       next.landArea = 'Land area must be greater than 0';
     }
 
-    if (form.details.roadFrontage !== '' && Number(form.details.roadFrontage) < 0) {
+    if (form.details.roadFrontage !== '' && (!Number.isFinite(Number(form.details.roadFrontage)) || Number(form.details.roadFrontage) < 0)) {
       next.roadFrontage = 'Road frontage cannot be negative';
     }
 
@@ -367,7 +398,7 @@ const AddEditProperty = () => {
     } else {
       if (form.details.builtUpArea === '' || form.details.builtUpArea === null) {
         next.builtUpArea = 'Built-up area is required';
-      } else if (Number(form.details.builtUpArea) <= 0) {
+      } else if (!Number.isFinite(Number(form.details.builtUpArea)) || Number(form.details.builtUpArea) <= 0) {
         next.builtUpArea = 'Built-up area must be greater than 0';
       }
 
@@ -616,14 +647,29 @@ const AddEditProperty = () => {
               <label className="label-field">Property Type</label>
               <select
                 required
+                disabled={typesLoading}
                 className={`input-field ${errorInputClass(fieldErrors.propertyType)}`}
                 value={form.propertyType}
                 onChange={(e) => { updateField('propertyType', e.target.value); clearFieldError('propertyType'); }}
               >
-                <option value="">Select type</option>
+                <option value="">{typesLoading ? 'Loading types…' : 'Select type'}</option>
                 {visiblePropertyTypes.map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}
               </select>
-              {fieldErrors.propertyType && <p className="text-xs text-brick mt-1">{fieldErrors.propertyType}</p>}
+              {typesError ? (
+                <p className="text-xs text-brick mt-1">
+                  {typesError}{' '}
+                  <button type="button" onClick={() => setTypesRetry((n) => n + 1)} className="underline hover:no-underline">
+                    Retry
+                  </button>
+                </p>
+              ) : fieldErrors.propertyType ? (
+                <p className="text-xs text-brick mt-1">{fieldErrors.propertyType}</p>
+              ) : !typesLoading && propertyTypes.length > 0 ? (
+                <p className="text-xs text-slate-muted mt-1">
+                  Showing {visiblePropertyTypes.length} of {propertyTypes.length} types for{' '}
+                  {category === 'land' ? 'Bare Land / Plot' : 'House / Apartment'} — switch the form above to see the rest.
+                </p>
+              ) : null}
             </div>
             <div>
               <label className="label-field">Sale Type</label>

@@ -39,16 +39,19 @@ const validatePropertyInput = (data, category = 'building', purpose = 'listing')
   if (!data.propertyType) errors.push('Property type is required');
 
   // Management properties have no asking price.
+  // NOTE: every numeric check uses Number.isFinite first - bare
+  // `Number(x) <= 0` comparisons let NaN/Infinity slip through
+  // (NaN <= 0 === false), so non-numeric strings would pass validation.
   if (!isManagement) {
     if (data.price === undefined || data.price === null || data.price === '') {
       errors.push('Price is required');
-    } else if (Number(data.price) <= 0) {
-      errors.push('Price must be greater than 0');
+    } else if (!Number.isFinite(Number(data.price)) || Number(data.price) <= 0) {
+      errors.push('Price must be a valid number greater than 0');
     } else if (Number(data.price) > 100_000_000_000) {
       errors.push('Price is unrealistically high - please double-check it');
     }
-  } else if (data.price !== undefined && data.price !== null && data.price !== '' && Number(data.price) < 0) {
-    errors.push('Price cannot be negative');
+  } else if (data.price !== undefined && data.price !== null && data.price !== '' && (!Number.isFinite(Number(data.price)) || Number(data.price) < 0)) {
+    errors.push('Price must be a valid number and cannot be negative');
   }
 
   // Location: Province -> District strictly validated; municipality
@@ -80,12 +83,12 @@ const validatePropertyInput = (data, category = 'building', purpose = 'listing')
   // but for a Land listing it's the single most important number. ----
   if (details.landArea === undefined || details.landArea === null || details.landArea === '') {
     errors.push('Land area is required');
-  } else if (Number(details.landArea) <= 0) {
-    errors.push('Land area must be greater than 0');
+  } else if (!Number.isFinite(Number(details.landArea)) || Number(details.landArea) <= 0) {
+    errors.push('Land area must be a valid number greater than 0');
   }
 
-  if (details.roadFrontage !== undefined && details.roadFrontage !== '' && Number(details.roadFrontage) < 0) {
-    errors.push('Road frontage (mukh) cannot be negative');
+  if (details.roadFrontage !== undefined && details.roadFrontage !== '' && (!Number.isFinite(Number(details.roadFrontage)) || Number(details.roadFrontage) < 0)) {
+    errors.push('Road frontage (mukh) must be a valid number and cannot be negative');
   }
 
   // Road type is optional for every category; when provided it must be one
@@ -105,8 +108,8 @@ const validatePropertyInput = (data, category = 'building', purpose = 'listing')
     // useful to a buyer, so these are required (unlike for bare land). ----
     if (details.builtUpArea === undefined || details.builtUpArea === null || details.builtUpArea === '') {
       errors.push('Built-up area is required');
-    } else if (Number(details.builtUpArea) <= 0) {
-      errors.push('Built-up area must be greater than 0');
+    } else if (!Number.isFinite(Number(details.builtUpArea)) || Number(details.builtUpArea) <= 0) {
+      errors.push('Built-up area must be a valid number greater than 0');
     }
 
     if (details.bedrooms === undefined || details.bedrooms === null || details.bedrooms === '') {
@@ -127,8 +130,8 @@ const validatePropertyInput = (data, category = 'building', purpose = 'listing')
       errors.push('Floors must be a whole number, at least 1');
     }
 
-    if (details.parkingSpaces !== undefined && details.parkingSpaces !== '' && (Number(details.parkingSpaces) < 0 || Number(details.parkingSpaces) > 50)) {
-      errors.push('Parking spaces must be between 0 and 50');
+    if (details.parkingSpaces !== undefined && details.parkingSpaces !== '' && (!Number.isFinite(Number(details.parkingSpaces)) || !Number.isInteger(Number(details.parkingSpaces)) || Number(details.parkingSpaces) < 0 || Number(details.parkingSpaces) > 50)) {
+      errors.push('Parking spaces must be a whole number between 0 and 50');
     }
 
     if (details.constructionYear !== undefined && details.constructionYear !== '' && details.constructionYear !== null) {

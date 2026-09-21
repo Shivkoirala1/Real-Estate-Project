@@ -233,16 +233,32 @@ const InitEmiModal = ({
     const p = Number(principal);
     const t = Number(tenure);
     const inst = Number(installment);
+    const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
     if (!sale) return setError("Sale context is still loading.");
     if (!Number.isFinite(p) || p <= 0)
       return setError("Principal amount must be greater than 0.");
+    if (sale.agreedPrice == null || sale.downPaymentAmount == null)
+      return setError("Sale context is still loading.");
+    {
+      const expected = round2(
+        Number(sale.agreedPrice) - Number(sale.downPaymentAmount),
+      );
+      if (round2(p) !== expected)
+        return setError(
+          `Principal must equal agreed price minus down payment (expected NPR ${expected.toLocaleString()}).`,
+        );
+    }
     if (!Number.isInteger(t) || t < 1 || t > 360)
       return setError(
         "Tenure must be a whole number between 1 and 360 months.",
       );
     if (!Number.isFinite(inst) || inst <= 0)
       return setError("Installment amount must be greater than 0.");
+    if (round2(t * inst) !== round2(p))
+      return setError(
+        "Tenure × installment must equal the principal amount.",
+      );
     if (!startDate) return setError("Start date is required.");
 
     setError("");

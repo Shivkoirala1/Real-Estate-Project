@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createSale } from '../../services/saleService';
 import { useToast } from '../../context/ToastContext';
+import { isValidOptionalNote, optionalNoteMessage } from '../../utils/validateNotes';
 
 const PAYMENT_TYPES = [
   {
@@ -75,6 +76,27 @@ const SubmitSaleModal = ({ lead, property, open, onClose, onSuccess }) => {
     if (form.agreedPrice === '' || !Number.isFinite(price) || price <= 0) {
       next.agreedPrice = 'Agreed price must be a number greater than 0';
     }
+    if (Number.isFinite(price) && price > 0) {
+      const round2 = (n) => Math.round(Number(n) * 100) / 100;
+      if (form.paymentType === 'emi') {
+        const down = Number(form.downPaymentAmount);
+        if (form.downPaymentAmount === '' || !Number.isFinite(down)) {
+          next.downPayment = 'Down payment is required for EMI sales (minimum 10% of agreed price)';
+        } else if (down < round2(price * 0.1)) {
+          next.downPayment = `Down payment must be at least 10% of agreed price (minimum NPR ${round2(price * 0.1).toLocaleString()})`;
+        } else if (down >= price) {
+          next.downPayment = 'Down payment must be less than the agreed price';
+        }
+      } else if (form.downPaymentAmount !== '') {
+        const down = Number(form.downPaymentAmount);
+        if (!Number.isFinite(down) || down < 0) {
+          next.downPayment = 'Down payment must be a number of at least 0';
+        } else if (down >= price) {
+          next.downPayment = 'Down payment must be less than the agreed price';
+        }
+      }
+    }
+    if (!isValidOptionalNote(form.remarks)) next.remarks = optionalNoteMessage('Remarks');
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -95,7 +117,7 @@ const SubmitSaleModal = ({ lead, property, open, onClose, onSuccess }) => {
       };
       if (form.paymentType !== 'full_payment' && form.downPaymentAmount !== '') {
         const downPayment = Number(form.downPaymentAmount);
-        if (Number.isFinite(downPayment) && downPayment > 0) {
+        if (Number.isFinite(downPayment) && downPayment >= 0) {
           payload.downPaymentAmount = downPayment;
         }
       }
@@ -239,6 +261,9 @@ const SubmitSaleModal = ({ lead, property, open, onClose, onSuccess }) => {
                 onChange={(e) => setField('downPaymentAmount', e.target.value)}
                 placeholder="e.g. 2500000"
               />
+              {errors.downPayment && (
+                <p className="mt-1 text-xs text-brick">{errors.downPayment}</p>
+              )}
             </div>
           )}
 
@@ -251,6 +276,9 @@ const SubmitSaleModal = ({ lead, property, open, onClose, onSuccess }) => {
               onChange={(e) => setField('remarks', e.target.value)}
               placeholder="Deal context, payment notes, agreements..."
             />
+            {errors.remarks && (
+              <p className="mt-1 text-xs text-brick">{errors.remarks}</p>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-navy/10">

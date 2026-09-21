@@ -119,22 +119,27 @@ const createEmiPlan = asyncHandler(async (req, res) => {
   }
 
   const principal = Number(principalAmount);
-  if (!Number.isFinite(principal) || principal <= 0) {
-    return res.status(400).json({ success: false, message: 'Principal amount must be a positive number' });
+  if (!Number.isFinite(principal) || principal <= 0 || principal > 1e11) {
+    return res.status(400).json({ success: false, message: 'Principal amount must be a positive number up to NPR 100,000,000,000' });
   }
 
   const tenure = Number(tenureMonths);
-  if (!Number.isInteger(tenure) || tenure <= 0) {
-    return res.status(400).json({ success: false, message: 'Tenure months must be a positive whole number' });
+  if (!Number.isInteger(tenure) || tenure < 1 || tenure > 360) {
+    return res.status(400).json({ success: false, message: 'Tenure months must be a whole number between 1 and 360' });
   }
 
   const perInstallment = Number(installmentAmount);
-  if (!Number.isFinite(perInstallment) || perInstallment <= 0) {
-    return res.status(400).json({ success: false, message: 'Installment amount must be a positive number' });
+  if (!Number.isFinite(perInstallment) || perInstallment <= 0 || perInstallment > 1e11) {
+    return res.status(400).json({ success: false, message: 'Installment amount must be a positive number up to NPR 100,000,000,000' });
   }
 
   if (!startDate || !isParseableDate(startDate)) {
     return res.status(400).json({ success: false, message: 'A valid start date is required' });
+  }
+
+  const { isValidOptionalNote, optionalNoteMessage } = require('../utils/validateNotes');
+  if (!isValidOptionalNote(remarks)) {
+    return res.status(400).json({ success: false, message: optionalNoteMessage('Remarks') });
   }
 
   // ---- sale eligibility ----
@@ -171,6 +176,24 @@ const createEmiPlan = asyncHandler(async (req, res) => {
     return res.status(400).json({
       success: false,
       message: 'This sale has no registered buyer account. EMI plans must be linked to the buyer platform account.',
+    });
+  }
+
+  // ---- down payment + principal consistency guards ----
+  const { validateDownPayment, validatePrincipal, round2 } = require('../utils/validateMoney');
+  const downCheck = validateDownPayment(sale.downPaymentAmount, sale.agreedPrice);
+  if (!downCheck.ok) {
+    return res.status(400).json({ success: false, message: downCheck.message });
+  }
+  const principalCheck = validatePrincipal(principal, sale.agreedPrice, downCheck.down);
+  if (!principalCheck.ok) {
+    return res.status(400).json({ success: false, message: principalCheck.message });
+  }
+  // Schedule total must equal principal (strict, paisa-safe)
+  if (round2(tenure * perInstallment) !== round2(principal)) {
+    return res.status(400).json({
+      success: false,
+      message: `Tenure x installment must equal principal (expected NPR ${round2(principal).toLocaleString()}, got NPR ${round2(tenure * perInstallment).toLocaleString()})`,
     });
   }
 
@@ -593,8 +616,8 @@ const updateInstallment = asyncHandler(async (req, res) => {
       });
     }
     const num = Number(amount);
-    if (!Number.isFinite(num) || num < 0) {
-      return res.status(400).json({ success: false, message: 'Amount must be a number greater than or equal to 0' });
+    if (!Number.isFinite(num) || num <= 0 || num > 1e11) {
+      return res.status(400).json({ success: false, message: 'Amount must be a positive number up to NPR 100,000,000,000' });
     }
   }
 
@@ -615,12 +638,11 @@ const updateInstallment = asyncHandler(async (req, res) => {
   }
 
   if (paidAmount !== undefined && paidAmount !== null) {
-    const num = Number(paidAmount);
-    if (!Number.isFinite(num) || num < 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Paid amount must be a number greater than or equal to 0',
-      });
+    const { validatePaymentAmount } = require('../utils/validateMoney');
+    const outstanding = plan.outstandingBalance ?? null;
+    const check = validatePaymentAmount(paidAmount, installment.amount, outstanding);
+    if (!check.ok) {
+      return res.status(400).json({ success: false, message: check.message });
     }
   }
 
@@ -639,9 +661,16 @@ const updateInstallment = asyncHandler(async (req, res) => {
     statusChanged = true;
 
     if (status === 'paid') {
+      const { validatePaymentAmount } = require('../utils/validateMoney');
+      const effectivePaid = paidAmount != null ? paidAmount : installment.amount;
+      const outstanding = plan.outstandingBalance ?? null;
+      const check = validatePaymentAmount(effectivePaid, installment.amount, outstanding);
+      if (!check.ok) {
+        return res.status(400).json({ success: false, message: check.message });
+      }
       installment.status = 'paid';
       installment.paidDate = paidDate ? new Date(paidDate) : new Date();
-      installment.paidAmount = paidAmount != null ? Number(paidAmount) : installment.amount;
+      installment.paidAmount = check.paid;
       plan.recordActivity({
         type: 'installment_paid',
         message: `Installment ${n} marked paid${
@@ -910,10 +939,10 @@ const updateEmiPlan = asyncHandler(async (req, res) => {
     }
     if (reschedule.installmentAmount !== undefined) {
       const num = Number(reschedule.installmentAmount);
-      if (!Number.isFinite(num) || num <= 0) {
+      if (!Number.isFinite(num) || num <= 0 || num > 1e11) {
         return res.status(400).json({
           success: false,
-          message: 'reschedule.installmentAmount must be a positive number',
+          message: 'reschedule.installmentAmount must be a positive number up to NPR 100,000,000,000',
         });
       }
       rescheduleAmount = num;
@@ -1088,11 +1117,12 @@ const requestInstallmentVerification = asyncHandler(async (req, res) => {
 
   let requestedAmount = installment.amount;
   if (paidAmount !== undefined && paidAmount !== null && paidAmount !== '') {
-    const num = Number(paidAmount);
-    if (!Number.isFinite(num) || num < 0) {
-      return res.status(400).json({ success: false, message: 'Paid amount must be a number greater than or equal to 0' });
+    const { validatePaymentAmount } = require('../utils/validateMoney');
+    const check = validatePaymentAmount(paidAmount, installment.amount, plan.outstandingBalance ?? null);
+    if (!check.ok) {
+      return res.status(400).json({ success: false, message: check.message });
     }
-    requestedAmount = num;
+    requestedAmount = check.paid;
   }
 
   let requestedDate = new Date();
@@ -1222,11 +1252,19 @@ const reviewInstallmentVerification = asyncHandler(async (req, res) => {
     // approve - admin may override the buyer's submitted figures
     let finalAmount = installment.verification.requestedAmount != null ? installment.verification.requestedAmount : installment.amount;
     if (paidAmount !== undefined && paidAmount !== null && paidAmount !== '') {
-      const num = Number(paidAmount);
-      if (!Number.isFinite(num) || num < 0) {
-        return res.status(400).json({ success: false, message: 'Paid amount must be a number greater than or equal to 0' });
+      const { validatePaymentAmount } = require('../utils/validateMoney');
+      const check = validatePaymentAmount(paidAmount, installment.amount, plan.outstandingBalance ?? null);
+      if (!check.ok) {
+        return res.status(400).json({ success: false, message: check.message });
       }
-      finalAmount = num;
+      finalAmount = check.paid;
+    } else {
+      const { validatePaymentAmount } = require('../utils/validateMoney');
+      const check = validatePaymentAmount(finalAmount, installment.amount, plan.outstandingBalance ?? null);
+      if (!check.ok) {
+        return res.status(400).json({ success: false, message: check.message });
+      }
+      finalAmount = check.paid;
     }
 
     let finalDate = installment.verification.requestedDate || new Date();

@@ -192,6 +192,10 @@ const verifyUser = asyncHandler(async (req, res) => {
   if (!['verified', 'rejected'].includes(status)) {
     return res.status(400).json({ success: false, message: "Status must be 'verified' or 'rejected'" });
   }
+  const { isValidOptionalNote, optionalNoteMessage } = require('../utils/validateNotes');
+  if (!isValidOptionalNote(note)) {
+    return res.status(400).json({ success: false, message: optionalNoteMessage('Verification note') });
+  }
 
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });

@@ -6,6 +6,10 @@ const Rental = require('../models/Rental');
 const asyncHandler = require('../utils/asyncHandler');
 const { awardReward } = require('../utils/rewards');
 const { notify, notifyMany } = require('../utils/notify');
+const {
+  isValidRequiredNote,
+  requiredNoteMessage,
+} = require('../utils/validateNotes');
 
 // Roles allowed to ever write a review. Admins moderate reviews, they don't
 // author them.
@@ -123,6 +127,9 @@ const createReview = asyncHandler(async (req, res) => {
   if (!propertyId || !rating || !comment) {
     return res.status(400).json({ success: false, message: 'Property, rating, and comment are required' });
   }
+  if (!isValidRequiredNote(comment)) {
+    return res.status(400).json({ success: false, message: requiredNoteMessage('Review') });
+  }
   if (rating < 1 || rating > 5) {
     return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
   }
@@ -221,6 +228,10 @@ const replyToReview = asyncHandler(async (req, res) => {
 
   if (!text || !text.trim()) {
     return res.status(400).json({ success: false, message: 'Reply text is required' });
+  }
+
+  if (!isValidRequiredNote(text)) {
+    return res.status(400).json({ success: false, message: requiredNoteMessage('Reply') });
   }
 
   const review = await Review.findById(req.params.id).populate('property', 'title slug');

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { createContactForm } from '../../services/contactFormService';
+import { isValidRequiredNote, requiredNoteMessage } from '../../utils/validateNotes';
+import { getCooldownRemainingMs, markCooldown, cooldownMessageFor } from '../../utils/inquiryCooldown';
 import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmContext';
 
@@ -26,6 +28,7 @@ const ContactForm = ({ onSubmitted }) => {
     if (!form.phone.trim()) next.phone = 'Please enter your phone number';
     else if (!PHONE_REGEX.test(form.phone.trim())) next.phone = 'Phone number must be exactly 10 digits';
     if (!form.message.trim()) next.message = 'Please enter a message';
+    else if (!isValidRequiredNote(form.message)) next.message = requiredNoteMessage('Message');
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -39,6 +42,12 @@ const ContactForm = ({ onSubmitted }) => {
     e.preventDefault();
     if (!validate()) return;
 
+    const remaining = getCooldownRemainingMs('general');
+    if (remaining > 0) {
+      showToast(cooldownMessageFor('general', remaining), 'error');
+      return;
+    }
+
     const confirmed = await confirm({
       title: 'Send this message?',
       message: 'Do you want to send this message to Youth Real Estate?',
@@ -50,6 +59,7 @@ const ContactForm = ({ onSubmitted }) => {
     setSending(true);
     try {
       const result = await createContactForm(form);
+      markCooldown('general');
       showToast(
         result?.message || 'Message sent. Our team has been notified and will get back to you soon.'
       );
@@ -57,6 +67,7 @@ const ContactForm = ({ onSubmitted }) => {
       setErrors({});
       onSubmitted?.();
     } catch (err) {
+      if (err.response?.status === 429) markCooldown('general');
       showToast(err.response?.data?.message || 'Failed to send message', 'error');
     } finally {
       setSending(false);

@@ -5,7 +5,7 @@ const reviewSchema = new mongoose.Schema(
     property: { type: mongoose.Schema.Types.ObjectId, ref: 'Property', required: true },
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     rating: { type: Number, required: true, min: 1, max: 5 },
-    comment: { type: String, required: true, trim: true, maxlength: 1000 },
+    comment: { type: String, required: true, trim: true, minlength: [10, 'Review must be at least 10 characters'], maxlength: 1000 },
 
     // Eligibility trail - records *why* this review was allowed, so it's
     // auditable later even if the underlying visit/sale/rental is edited or

@@ -20,12 +20,14 @@ const ManageCategories = () => {
   const [districts, setDistricts] = useState([]);
   const [cities, setCities] = useState([]);
   const [newType, setNewType] = useState('');
+  const [newTypeCategory, setNewTypeCategory] = useState('building');
   const [newDistrict, setNewDistrict] = useState('');
   const [newCity, setNewCity] = useState({ name: '', district: '' });
   // Per-type commission drafts for the inline editor in the Property Types
   // tab, keyed by type _id (untyped entries fall back to the loaded value).
   const [commissionDrafts, setCommissionDrafts] = useState({});
   const [savingCommissionId, setSavingCommissionId] = useState(null);
+  const [savingCategoryId, setSavingCategoryId] = useState(null);
 
   const loadAll = async () => {
     const [t, d, c] = await Promise.all([
@@ -33,9 +35,9 @@ const ManageCategories = () => {
       getDistricts(),
       getCities(),
     ]);
-    setPropertyTypes(t.propertyTypes);
-    setDistricts(d.districts);
-    setCities(c.cities);
+    setPropertyTypes(t.propertyTypes || []);
+    setDistricts(d.districts || []);
+    setCities(c.cities || []);
   };
 
   useEffect(() => { loadAll(); }, []);
@@ -44,8 +46,9 @@ const ManageCategories = () => {
     e.preventDefault();
     if (!newType.trim()) return;
     try {
-      await createPropertyType(newType);
+      await createPropertyType(newType.trim(), { category: newTypeCategory });
       setNewType('');
+      setNewTypeCategory('building');
       showToast('Property type added');
       loadAll();
     } catch (err) {
@@ -101,6 +104,22 @@ const ManageCategories = () => {
     }
   };
 
+  const saveCategory = async (t, nextCategory) => {
+    if (!['land', 'building'].includes(nextCategory) || (t.category || 'building') === nextCategory) return;
+    setSavingCategoryId(t._id);
+    try {
+      await updatePropertyType(t._id, { category: nextCategory });
+      setPropertyTypes((prev) =>
+        prev.map((pt) => (pt._id === t._id ? { ...pt, category: nextCategory } : pt))
+      );
+      showToast(`"${t.name}" moved to ${nextCategory === 'land' ? 'Bare Land / Plot' : 'House / Apartment'} form`);
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update category', 'error');
+    } finally {
+      setSavingCategoryId(null);
+    }
+  };
+
   const remove = async (type, id) => {
     const confirmed = await confirm({
       title: 'Delete this item?',
@@ -144,18 +163,48 @@ const ManageCategories = () => {
 
       {tab === 'types' && (
         <div className="bg-white border border-navy/10 rounded-sm p-6">
-          <form onSubmit={addType} className="flex gap-3 mb-6">
-            <input className="input-field" placeholder="e.g. Duplex" value={newType} onChange={(e) => setNewType(e.target.value)} />
+          <form onSubmit={addType} className="flex flex-col sm:flex-row gap-3 mb-6">
+            <input className="input-field flex-1" placeholder="e.g. Duplex" value={newType} onChange={(e) => setNewType(e.target.value)} />
+            <select
+              className="input-field sm:w-48"
+              value={newTypeCategory}
+              onChange={(e) => setNewTypeCategory(e.target.value)}
+              title="Which posting form this type belongs to"
+            >
+              <option value="building">House / Apartment form</option>
+              <option value="land">Bare Land / Plot form</option>
+            </select>
             <button type="submit" className="btn-primary px-6">Add</button>
           </form>
           <div className="space-y-2">
             {propertyTypes.map((t) => {
               const draft = commissionDrafts[t._id] ?? (t.defaultCommissionPercentage ?? 0);
               const saving = savingCommissionId === t._id;
+              const savingCat = savingCategoryId === t._id;
+              const typeCategory = t.category || 'building';
               return (
                 <div key={t._id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-navy/5 pb-2">
-                  <span className="font-medium text-navy">{t.name}</span>
+                  <span className="font-medium text-navy">
+                    {t.name}{' '}
+                    <span className={`ml-1 inline-block align-middle text-[11px] px-2 py-0.5 rounded-sm border ${typeCategory === 'land' ? 'border-brass text-brass-dark bg-brass-light/20' : 'border-navy/15 text-slate-muted'}`}>
+                      {typeCategory === 'land' ? 'Land' : 'Building'}
+                    </span>
+                  </span>
                   <div className="flex items-center gap-2 flex-wrap">
+                    <label htmlFor={`category-${t._id}`} className="text-xs text-slate-muted whitespace-nowrap">
+                      Form
+                    </label>
+                    <select
+                      id={`category-${t._id}`}
+                      className="input-field w-32 py-1.5 text-sm"
+                      value={typeCategory}
+                      disabled={savingCat}
+                      onChange={(e) => saveCategory(t, e.target.value)}
+                      title="Switching moves this type to the other posting form in Add/Edit Property"
+                    >
+                      <option value="building">Building</option>
+                      <option value="land">Land</option>
+                    </select>
                     <label htmlFor={`commission-${t._id}`} className="text-xs text-slate-muted whitespace-nowrap">
                       Default Commission %
                     </label>

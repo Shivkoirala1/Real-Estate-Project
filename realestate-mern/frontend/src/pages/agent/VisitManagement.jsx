@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { getVisits, updateVisit } from '../../services/visitService';
 import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmContext';
+import { isValidOptionalNote, optionalNoteMessage } from '../../utils/validateNotes';
 
 // Visit status -> badge styling, same convention as the buyer's My Visits page
 const visitStatusStyles = {
@@ -409,6 +410,16 @@ const VisitManagement = () => {
 
 const NotesModal = ({ visit, onClose, onSave }) => {
   const [notes, setNotes] = useState(visit?.internalNotes || '');
+  const [error, setError] = useState('');
+
+  const handleSave = () => {
+    if (!isValidOptionalNote(notes)) {
+      setError(optionalNoteMessage('Notes'));
+      return;
+    }
+    setError('');
+    onSave(notes);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 px-4">
@@ -440,10 +451,14 @@ const NotesModal = ({ visit, onClose, onSave }) => {
           <textarea
             rows={6}
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(e) => {
+              setNotes(e.target.value);
+              if (error) setError('');
+            }}
             placeholder="Add coordination notes for admins and your own follow-up..."
             className="input-field w-full resize-none"
           />
+          {error && <p className="text-xs text-brick mt-1">{error}</p>}
 
           <div className="flex justify-end gap-2 mt-6">
             <button
@@ -453,7 +468,11 @@ const NotesModal = ({ visit, onClose, onSave }) => {
               Cancel
             </button>
 
-            <button onClick={() => onSave(notes)} className="btn-gold text-sm py-1.5 px-4">
+            <button
+              onClick={handleSave}
+              disabled={!isValidOptionalNote(notes)}
+              className="btn-gold text-sm py-1.5 px-4 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
               Save Notes
             </button>
           </div>

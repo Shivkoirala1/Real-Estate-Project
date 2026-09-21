@@ -15,6 +15,12 @@ import { useToast } from '../../../context/ToastContext';
 import { useConfirm } from '../../../context/ConfirmContext';
 import ManagementStatusBadge from '../../../components/PropertyManagement/ManagementStatusBadge';
 import ManagementActivityTimeline from '../../../components/PropertyManagement/ManagementActivityTimeline';
+import {
+  isValidOptionalNote,
+  isValidRequiredNote,
+  optionalNoteMessage,
+  requiredNoteMessage,
+} from '../../../utils/validateNotes';
 
 const ACTIVITY_PAGE_SIZE = 20;
 
@@ -274,8 +280,13 @@ const ManagementRequestDetail = () => {
     const kind = reasonModal;
     if (!kind) return;
     const needsReason = kind !== 'request_termination';
-    if (needsReason && !reason.trim()) {
-      setReasonError('A reason is required');
+    if (needsReason) {
+      if (!reason.trim() || !isValidRequiredNote(reason)) {
+        setReasonError(requiredNoteMessage('Reason'));
+        return;
+      }
+    } else if (!isValidOptionalNote(reason)) {
+      setReasonError(optionalNoteMessage('Reason'));
       return;
     }
     const meta = REASON_META[kind];
@@ -299,6 +310,10 @@ const ManagementRequestDetail = () => {
   // ---------- notes ----------
   const handleAddNote = async () => {
     if (!note.trim() || noteBusy) return;
+    if (!isValidRequiredNote(note)) {
+      showToast(requiredNoteMessage('Note'), 'error');
+      return;
+    }
     setNoteBusy(true);
     try {
       const data = await addActivity(id, note.trim());
@@ -580,7 +595,7 @@ const ManagementRequestDetail = () => {
               <button
                 type="button"
                 onClick={handleAddNote}
-                disabled={noteBusy || !note.trim()}
+                disabled={noteBusy || !note.trim() || !isValidRequiredNote(note)}
                 className="btn-gold text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {noteBusy ? 'Adding...' : 'Add Note'}
