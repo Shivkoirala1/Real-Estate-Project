@@ -78,7 +78,9 @@ const DEAL_TYPES = {
       headlineSuffix: '/mo',
       subLines: [
         {
-          text: `Lease value NPR ${Number((d.monthlyRent || 0) * (d.durationInMonths || 0)).toLocaleString()} (${d.durationInMonths || '—'} months)`,
+          text: d.durationInMonths != null
+            ? `Lease value NPR ${Number((d.monthlyRent || 0) * d.durationInMonths).toLocaleString()} (${d.durationInMonths} months)`
+            : 'Open-ended tenancy — no fixed lease value',
           strong: true,
         },
         d.securityDeposit > 0 && { text: `Deposit NPR ${Number(d.securityDeposit).toLocaleString()}`, muted: true },
@@ -249,6 +251,7 @@ const VerificationQueue = () => {
       message: `"${deal.property?.title || 'This property'}" will be marked sold, lead "${deal.person?.name || 'the lead'}" will be closed and the agent's commission recorded. This cannot be undone.`,
       confirmLabel: 'Verify sale',
       cancelLabel: 'Cancel',
+      tone: 'danger',
     });
     if (!ok) return;
 
@@ -322,6 +325,7 @@ const VerificationQueue = () => {
       message: `"${verifyRentalTarget.property?.title || 'This property'}" will be marked rented, lead "${verifyRentalTarget.tenant?.name || 'the lead'}" will be closed and a commission of NPR ${amount.toLocaleString()} recorded. This cannot be undone.`,
       confirmLabel: 'Verify rental',
       cancelLabel: 'Cancel',
+      tone: 'danger',
     });
     if (!ok) return;
 
@@ -615,7 +619,9 @@ const VerificationQueue = () => {
                           }}
                         />
                         <p className="mt-1 text-xs text-slate-muted">
-                          Lease value NPR {Number((raw.monthlyRent || 0) * (raw.durationInMonths || 0)).toLocaleString()} ({raw.durationInMonths || '—'} months) — enter the agreed commission for this lease.
+                          {raw.durationInMonths != null
+                            ? `Lease value NPR ${Number((raw.monthlyRent || 0) * raw.durationInMonths).toLocaleString()} (${raw.durationInMonths} months) — enter the agreed commission for this lease.`
+                            : 'Open-ended tenancy — commission basis is one month\u2019s rent. Enter the agreed commission.'}
                         </p>
                         {commissionError && <p className="text-xs text-brick mt-1">{commissionError}</p>}
                         <div className="flex justify-end gap-3 mt-3">

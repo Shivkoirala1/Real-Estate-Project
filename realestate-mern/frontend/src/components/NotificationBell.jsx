@@ -246,6 +246,24 @@ const typeIcon = {
       <path d="M12 8v4M12 16h.01" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+  tenancy_end_requested: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 8v4M12 16h.01" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  tenancy_end_approved: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 12l2.5 2.5L16 9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  tenancy_end_declined: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 8l8 8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   system: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="12" cy="12" r="10" />
@@ -295,6 +313,9 @@ const iconTint = {
   management_status_changed: 'bg-navy/10 text-navy',
   management_terminated: 'bg-brick-light text-brick',
   management_termination_requested: 'bg-brass-light/25 text-brass-dark',
+  tenancy_end_requested: 'bg-brass-light/25 text-brass-dark',
+  tenancy_end_approved: 'bg-sage-light text-sage',
+  tenancy_end_declined: 'bg-brick-light text-brick',
   system: 'bg-parchment text-slate-ink',
 };
 

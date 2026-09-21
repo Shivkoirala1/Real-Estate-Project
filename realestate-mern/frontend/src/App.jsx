@@ -261,7 +261,7 @@ function App() {
             }
           />
           <Route
-            path="/dashboard/agent/sales"
+            path="/dashboard/agent/deals"
             element={
               <ProtectedRoute roles={["agent"]}>
                 <DashboardLayout>
@@ -269,6 +269,20 @@ function App() {
                 </DashboardLayout>
               </ProtectedRoute>
             }
+          />
+          {/* Legacy / renamed paths — keep bookmarks and in-flight
+              notification links working. */}
+          <Route
+            path="/dashboard/agent/sales"
+            element={<Navigate to="/dashboard/agent/deals" replace />}
+          />
+          <Route
+            path="/dashboard/agent/rentals"
+            element={<Navigate to="/dashboard/agent/deals?type=rental" replace />}
+          />
+          <Route
+            path="/dashboard/agent/verification-queue"
+            element={<Navigate to="/dashboard/agent/deals" replace />}
           />
           <Route
             path="/dashboard/agent/emi-sales"

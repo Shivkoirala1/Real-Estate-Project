@@ -38,6 +38,9 @@ const typeMeta = {
   management_status_changed: { label: 'Status changed', tint: 'bg-navy/10 text-navy' },
   management_terminated: { label: 'Terminated', tint: 'bg-brick-light text-brick' },
   management_termination_requested: { label: 'Termination requested', tint: 'bg-brass-light/25 text-brass-dark' },
+  tenancy_end_requested: { label: 'End of tenancy requested', tint: 'bg-brass-light/25 text-brass-dark' },
+  tenancy_end_approved: { label: 'Tenancy ended', tint: 'bg-sage-light text-sage' },
+  tenancy_end_declined: { label: 'End of tenancy declined', tint: 'bg-brick-light text-brick' },
   system: { label: 'System', tint: 'bg-parchment text-slate-ink' },
 };
 

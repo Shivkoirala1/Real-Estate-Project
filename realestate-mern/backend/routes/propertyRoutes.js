@@ -7,13 +7,16 @@ const {
   updateProperty,
   updatePropertyStatus,
   endTenancy,
+  requestEndTenancy,
+  approveEndTenancy,
+  declineEndTenancy,
   deleteProperty,
   getMyProperties,
   toggleFavorite,
   getFavorites,
   shareProperty,
 } = require('../controllers/propertyController');
-const { protect, optionalAuth, requireVerified } = require('../middleware/auth');
+const { protect, optionalAuth, requireVerified, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
 const propertyUpload = upload.fields([
@@ -37,6 +40,10 @@ router.post('/', protect, requireVerified, propertyUpload, createProperty);
 router.put('/:id', protect, requireVerified, propertyUpload, updateProperty);
 router.patch('/:id/status', protect, requireVerified, updatePropertyStatus);
 router.patch('/:id/end-tenancy', protect, requireVerified, endTenancy);
+// Owner-requested end of tenancy (admin approval required)
+router.patch('/:id/request-end-tenancy', protect, requireVerified, requestEndTenancy);
+router.patch('/:id/approve-end-tenancy', protect, requireVerified, authorize('admin'), approveEndTenancy);
+router.patch('/:id/decline-end-tenancy', protect, requireVerified, authorize('admin'), declineEndTenancy);
 router.delete('/:id', protect, requireVerified, deleteProperty);
 
 // Any registered user - favorites

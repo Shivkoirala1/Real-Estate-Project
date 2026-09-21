@@ -5,6 +5,9 @@ import {
   getMyListings,
   updatePropertyStatus,
   endTenancy,
+  requestEndTenancy,
+  approveEndTenancy,
+  declineEndTenancy,
   deleteProperty,
 } from "../../services/propertyService";
 import { useAuth } from "../../context/AuthContext";
@@ -259,6 +262,72 @@ const ManageProperties = ({ showHeader = true }) => {
     }
   };
 
+  // Owner-requested end of tenancy (admin approval). Reason is collected in
+  // a small modal: optional when requesting, optional when declining.
+  const [tenancyModal, setTenancyModal] = useState(null); // { mode: 'request'|'decline', property }
+  const [tenancyReason, setTenancyReason] = useState("");
+  const [tenancyBusy, setTenancyBusy] = useState(false);
+
+  const openTenancyModal = (mode, property) => {
+    setTenancyModal({ mode, property });
+    setTenancyReason("");
+  };
+
+  const submitTenancyModal = async () => {
+    if (!tenancyModal || tenancyBusy) return;
+    const { mode, property } = tenancyModal;
+    if (mode === "request") {
+      const confirmed = await confirm({
+        title: "Request end of tenancy?",
+        message: `Your request is sent to the admin, who makes the final decision. Once submitted, you cannot reverse this request.`,
+        confirmLabel: "Yes, send it",
+        cancelLabel: "No, keep as is",
+        tone: "danger",
+      });
+      if (!confirmed) return;
+    }
+    setTenancyBusy(true);
+    try {
+      if (mode === "request") {
+        await requestEndTenancy(property._id, tenancyReason.trim() || undefined);
+        showToast("End-of-tenancy request sent to the admin");
+      } else {
+        await declineEndTenancy(property._id, tenancyReason.trim() || undefined);
+        showToast("End-of-tenancy request declined — property stays rented");
+      }
+      setTenancyModal(null);
+      load();
+    } catch (err) {
+      showToast(
+        err.response?.data?.message || "Failed to submit — please try again",
+        "error",
+      );
+    } finally {
+      setTenancyBusy(false);
+    }
+  };
+
+  const handleApproveEndTenancy = async (property) => {
+    const confirmed = await confirm({
+      title: "Approve end of tenancy?",
+      message: `"${property.title}" will return to available and its current-occupancy details will be cleared. The verified rental record itself is kept as history.`,
+      confirmLabel: "Yes, end tenancy",
+      cancelLabel: "No, keep as is",
+    });
+    if (!confirmed) return;
+
+    try {
+      await approveEndTenancy(property._id);
+      showToast("Tenancy ended — property is available again");
+      load();
+    } catch (err) {
+      showToast(
+        err.response?.data?.message || "Failed to approve — please try again",
+        "error",
+      );
+    }
+  };
+
   const handleDelete = async (property) => {
     const confirmed = await confirm({
       title: "Delete this property?",
@@ -480,14 +549,55 @@ const ManageProperties = ({ showHeader = true }) => {
                         {p.status === "rented" &&
                           (isAdmin ||
                             String(p.listedBy?._id || p.listedBy) === String(user?._id)) && (
-                            <button
-                              type="button"
-                              onClick={() => handleEndTenancy(p)}
-                              className="btn-gold text-sm px-3 py-1.5 whitespace-nowrap"
-                              title="Return this property to available and clear its occupancy details"
-                            >
-                              End Tenancy
-                            </button>
+                            <>
+                              {p.tenancyEndRequestedAt ? (
+                                <span
+                                  className="status-badge whitespace-nowrap bg-brass/10 text-brass-dark"
+                                  title={p.tenancyEndReason ? `Owner reason: ${p.tenancyEndReason}` : "End of tenancy requested — awaiting admin review"}
+                                >
+                                  End requested
+                                </span>
+                              ) : (
+                                !isAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openTenancyModal("request", p)}
+                                    className="btn-secondary text-sm px-3 py-1.5 whitespace-nowrap"
+                                    title="Ask the admin to end this tenancy"
+                                  >
+                                    Request End of Tenancy
+                                  </button>
+                                )
+                              )}
+                              {isAdmin && p.tenancyEndRequestedAt && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveEndTenancy(p)}
+                                    className="btn-gold text-sm px-3 py-1.5 whitespace-nowrap"
+                                    title="Approve the owner's request and return this property to available"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openTenancyModal("decline", p)}
+                                    className="text-sm px-3 py-1.5 whitespace-nowrap text-brick hover:underline"
+                                    title="Decline the owner's request — the property stays rented"
+                                  >
+                                    Decline
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleEndTenancy(p)}
+                                className="btn-gold text-sm px-3 py-1.5 whitespace-nowrap"
+                                title="Return this property to available and clear its occupancy details"
+                              >
+                                End Tenancy
+                              </button>
+                            </>
                           )}
                       </div>
                     </td>
@@ -528,6 +638,54 @@ const ManageProperties = ({ showHeader = true }) => {
             </div>
           </div>
         </>
+      )}
+
+      {tenancyModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center px-4" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-navy/60" onClick={() => !tenancyBusy && setTenancyModal(null)} />
+          <div className="relative bg-white rounded-sm shadow-lifted max-w-md w-full p-6">
+            <h2 className="font-display text-xl text-navy mb-2">
+              {tenancyModal.mode === "request" ? "Request end of tenancy?" : "Decline this request?"}
+            </h2>
+            <p className="text-sm text-slate-muted mb-4">
+              {tenancyModal.mode === "request"
+                ? "An optional note for the admin. Once submitted, you cannot reverse this request."
+                : "An optional note for the owner. The property stays rented."}
+            </p>
+            <label className="label-field" htmlFor="tenancy-reason">Reason (optional)</label>
+            <textarea
+              id="tenancy-reason"
+              rows={3}
+              value={tenancyReason}
+              onChange={(e) => setTenancyReason(e.target.value)}
+              placeholder={tenancyModal.mode === "request" ? "Why should this tenancy end?" : "Why is this request being declined?"}
+              className="input-field w-full resize-none"
+              maxLength={1000}
+            />
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                type="button"
+                onClick={() => setTenancyModal(null)}
+                disabled={tenancyBusy}
+                className="text-sm px-3 py-1.5 rounded-sm border border-navy/10 text-slate-muted hover:border-navy/20 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitTenancyModal}
+                disabled={tenancyBusy}
+                className="btn-gold text-sm py-1.5 px-4 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {tenancyBusy
+                  ? "Sending..."
+                  : tenancyModal.mode === "request"
+                    ? "Send request"
+                    : "Decline request"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

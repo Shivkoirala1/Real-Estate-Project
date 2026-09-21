@@ -50,9 +50,11 @@ const rentalSchema = new mongoose.Schema(
       required: [true, 'Monthly rent is required'],
       min: [0, 'Monthly rent cannot be negative'],
     },
+    // Optional - null means an open-ended (month-to-month) tenancy with no
+    // fixed end date. Lease-value-derived figures fall back accordingly.
     durationInMonths: {
       type: Number,
-      required: [true, 'Lease duration is required'],
+      default: null,
       min: [1, 'Lease duration must be at least 1 month'],
     },
     // Optional - some landlords may not require a security deposit
@@ -94,8 +96,10 @@ const rentalSchema = new mongoose.Schema(
   }
 );
 
-// Commission basis, in one place
+// Commission basis, in one place. Null when the tenancy is open-ended
+// (no duration) so "unknown" never masquerades as zero.
 rentalSchema.virtual('totalLeaseValue').get(function () {
+  if (this.durationInMonths === null || this.durationInMonths === undefined) return null;
   return this.monthlyRent * this.durationInMonths;
 });
 

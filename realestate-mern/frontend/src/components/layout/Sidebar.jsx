@@ -162,8 +162,8 @@ const agentNavGroups = [
         to: '/dashboard/agent/visits',
       },
       {
-        label: 'My Sales',
-        to: '/dashboard/agent/sales',
+        label: 'My Deals',
+        to: '/dashboard/agent/deals',
       },
     ],
   },

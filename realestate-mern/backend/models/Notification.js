@@ -38,6 +38,9 @@ const notificationSchema = new mongoose.Schema(
         'management_request_declined',      // admin declined a management request
         'management_terminated',            // a management agreement was terminated (either path)
         'management_termination_requested', // termination was requested on a management agreement
+        'tenancy_end_requested',   // owner requested an end of tenancy - admin alert
+        'tenancy_end_approved',    // admin approved the end of tenancy - owner alert
+        'tenancy_end_declined',    // admin declined the end of tenancy - owner alert
         'commission_paid',         // Spec v2: admin marked the agent's commission as paid
         'emi_installment_due',     // Spec v2: reminder a few days before an installment's dueDate
         'emi_installment_overdue', // Spec v2: an installment is past its due date

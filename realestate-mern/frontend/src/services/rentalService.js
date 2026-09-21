@@ -13,7 +13,7 @@ import api from '../utils/axios';
  *   leadId,                      // required
  *   tenant: { name, phone?, email? },   // required (name)
  *   monthlyRent,                 // required, number > 0
- *   durationInMonths,            // required, integer >= 1
+ *   durationInMonths,            // optional (null/empty = open-ended tenancy), integer 1-360 when provided
  *   startDate,                   // required, lease start date
  *   securityDeposit?,            // optional, number >= 0
  *   remarks?,                    // optional free text

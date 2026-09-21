@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { getSales, getSaleById } from '../../services/saleService';
 import { getRentals, getRental } from '../../services/rentalService';
 
@@ -72,10 +73,10 @@ const DEAL_TYPES = {
       badges: [],
       terms: [
         { label: 'Monthly rent', value: money(d.monthlyRent), strong: true },
-        { label: 'Duration', value: `${d.durationInMonths ?? '—'} months` },
+        { label: 'Duration', value: d.durationInMonths != null ? `${d.durationInMonths} months` : 'Open-ended' },
         {
           label: 'Total lease value',
-          value: money((d.monthlyRent || 0) * (d.durationInMonths || 0)),
+          value: money((d.monthlyRent || 0) * (d.durationInMonths ?? 1)),
         },
         d.securityDeposit > 0 && { label: 'Security deposit', value: money(d.securityDeposit) },
       ].filter(Boolean),
@@ -326,7 +327,12 @@ const DealDetailModal = ({ type, dealId, onClose }) => {
 // Agent's filings across both deal types:
 // submit -> admin verification -> verified / rejected.
 const MyDeals = () => {
-  const [type, setType] = useState('sale'); // 'sale' | 'rental'
+  // Deep-linkable deal-type tab (?type=rental|sale) so notifications land on
+  // the right tab; anything else falls back to sale.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [type, setType] = useState(
+    searchParams.get('type') === 'rental' ? 'rental' : 'sale'
+  ); // 'sale' | 'rental'
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -344,11 +350,20 @@ const MyDeals = () => {
   const changeType = (next) => {
     if (next === type) return;
     setType(next);
+    setSearchParams(next === 'rental' ? { type: 'rental' } : {});
     setStatusFilter('');
     setSort('newest');
     setPage(1);
     setCounts({ pending_review: 0, verified: 0, rejected: 0 });
   };
+
+  // Browser back/forward across ?type= links lands here without remounting -
+  // follow the URL so the visible tab never disagrees with it.
+  useEffect(() => {
+    const t = searchParams.get('type');
+    if ((t === 'rental' || t === 'sale') && t !== type) changeType(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const loadDeals = useCallback(async () => {
     setLoading(true);
@@ -521,7 +536,7 @@ const MyDeals = () => {
                             ) : (
                               <span className="text-xs text-slate-muted">
                                 {cfg.key === 'rental'
-                                  ? `${raw.durationInMonths ?? '—'} mo lease`
+                                  ? `${raw.durationInMonths != null ? `${raw.durationInMonths} mo lease` : 'Open-ended lease'}`
                                   : '—'}
                               </span>
                             )}

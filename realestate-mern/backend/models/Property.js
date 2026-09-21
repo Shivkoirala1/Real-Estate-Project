@@ -124,6 +124,12 @@ status: {
     rentedFrom: { type: Date, default: null },
     rentedUntil: { type: Date, default: null },
     tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    // Owner-requested end of tenancy (admin-approved). The property stays
+    // 'rented' while a request is pending; approving runs the same effect as
+    // the direct end-tenancy action, declining just clears the request.
+    tenancyEndRequestedAt: { type: Date, default: null },
+    tenancyEndReason: { type: String, default: '', trim: true },
+    tenancyEndRequestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
 );

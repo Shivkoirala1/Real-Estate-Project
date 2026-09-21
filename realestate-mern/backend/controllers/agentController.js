@@ -50,7 +50,7 @@ const buildPerformanceForAgents = async (agentIds) => {
         $group: {
           _id: '$agent',
           rentalCount: { $sum: 1 },
-          rentalValue: { $sum: { $multiply: ['$monthlyRent', '$durationInMonths'] } },
+          rentalValue: { $sum: { $multiply: ['$monthlyRent', { $ifNull: ['$durationInMonths', 1] }] } },
         },
       },
     ]),

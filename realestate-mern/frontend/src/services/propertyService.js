@@ -106,6 +106,36 @@ export const endTenancy = async (id) => {
 };
 
 /**
+ * Owner requests an end of the current tenancy (admin approval required).
+ * PATCH /api/properties/:id/request-end-tenancy { reason? }
+ * response: { success, property }
+ */
+export const requestEndTenancy = async (id, reason) => {
+  const { data } = await api.patch(`/properties/${id}/request-end-tenancy`, { reason });
+  return data;
+};
+
+/**
+ * Admin approves a pending end-of-tenancy request (runs the end-tenancy effect).
+ * PATCH /api/properties/:id/approve-end-tenancy (no body)
+ * response: { success, property }
+ */
+export const approveEndTenancy = async (id) => {
+  const { data } = await api.patch(`/properties/${id}/approve-end-tenancy`);
+  return data;
+};
+
+/**
+ * Admin declines a pending end-of-tenancy request (property stays rented).
+ * PATCH /api/properties/:id/decline-end-tenancy { reason? }
+ * response: { success, property }
+ */
+export const declineEndTenancy = async (id, reason) => {
+  const { data } = await api.patch(`/properties/${id}/decline-end-tenancy`, { reason });
+  return data;
+};
+
+/**
  * Share a property with a friend
  * POST /api/properties/:id/share
  *

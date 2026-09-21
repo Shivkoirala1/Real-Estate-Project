@@ -43,24 +43,27 @@ const SubmitRentalModal = ({ lead, property, open, onClose, onSuccess }) => {
 
   const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  const months = Number(form.durationInMonths);
+  const durationRaw = form.durationInMonths === '' ? null : Number(form.durationInMonths);
+  const months = durationRaw;
   const rent = Number(form.monthlyRent);
+  const hasDuration = months !== null;
   const leaseValue =
-    Number.isFinite(rent) && Number.isFinite(months) ? rent * months : 0;
+    Number.isFinite(rent) && hasDuration && Number.isFinite(months) ? rent * months : null;
 
   const validate = () => {
     const next = {};
     if (!form.tenantName.trim()) next.tenantName = 'Tenant name is required';
     if (form.monthlyRent === '' || !Number.isFinite(rent) || rent <= 0)
       next.monthlyRent = 'Monthly rent must be a number greater than 0';
-    if (!Number.isInteger(months) || months < 1)
-      next.durationInMonths = 'Duration must be a whole number of months (min 1)';
+    // Optional - empty means an open-ended (month-to-month) tenancy.
+    if (form.durationInMonths !== '' && (!Number.isInteger(months) || months < 1 || months > 360))
+      next.durationInMonths = 'Duration must be a whole number of months between 1 and 360, or left empty for open-ended';
     if (!form.startDate) next.startDate = 'Lease start date is required';
     if (form.securityDeposit !== '') {
       const deposit = Number(form.securityDeposit);
       if (!Number.isFinite(deposit) || deposit < 0) {
         next.securityDeposit = 'Security deposit must be a number of at least 0';
-      } else if (Number.isFinite(rent) && Number.isFinite(months) && rent > 0 && months >= 1 && deposit > rent * months) {
+      } else if (hasDuration && Number.isFinite(rent) && rent > 0 && deposit > rent * months) {
         next.securityDeposit = `Security deposit cannot exceed the total lease value (NPR ${(rent * months).toLocaleString()})`;
       }
     }
@@ -161,10 +164,10 @@ const SubmitRentalModal = ({ lead, property, open, onClose, onSuccess }) => {
               {errors.monthlyRent && <p className="mt-1 text-xs text-brick">{errors.monthlyRent}</p>}
             </div>
             <div>
-              <label className="label-field">Duration (months) *</label>
-              <input type="number" min="1" className="input-field text-sm"
+              <label className="label-field">Duration (months)</label>
+              <input type="number" min="1" max="360" className="input-field text-sm"
                 value={form.durationInMonths} onChange={(e) => setField('durationInMonths', e.target.value)}
-                placeholder="e.g. 12" />
+                placeholder="e.g. 12 — empty for open-ended" />
               {errors.durationInMonths && <p className="mt-1 text-xs text-brick">{errors.durationInMonths}</p>}
             </div>
           </div>
@@ -185,12 +188,16 @@ const SubmitRentalModal = ({ lead, property, open, onClose, onSuccess }) => {
             </div>
           </div>
 
-          {leaseValue > 0 && (
+          {leaseValue !== null && leaseValue > 0 ? (
             <p className="text-xs text-slate-ink bg-parchment/60 border border-navy/10 rounded-sm px-3 py-2">
               Total lease value: <span className="font-semibold">NPR {leaseValue.toLocaleString()}</span>{' '}
               — the admin will set the commission when verifying this filing.
             </p>
-          )}
+          ) : Number.isFinite(rent) && rent > 0 && !hasDuration ? (
+            <p className="text-xs text-slate-ink bg-parchment/60 border border-navy/10 rounded-sm px-3 py-2">
+              Open-ended tenancy — no fixed lease value. Commission will be based on one month&apos;s rent.
+            </p>
+          ) : null}
 
           <div>
             <label className="label-field">Remarks</label>

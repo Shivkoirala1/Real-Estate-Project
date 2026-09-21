@@ -109,24 +109,33 @@ const createRental = asyncHandler(async (req, res) => {
     monthlyRent = rent;
   }
   {
-    const duration = Number(durationInMonths);
-    if (!Number.isInteger(duration) || duration < 1 || duration > 360) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Lease duration must be a whole number of months between 1 and 360' });
+    // Optional - absent/empty means an open-ended (month-to-month) tenancy.
+    if (durationInMonths === undefined || durationInMonths === null || durationInMonths === '') {
+      durationInMonths = null;
+    } else {
+      const duration = Number(durationInMonths);
+      if (!Number.isInteger(duration) || duration < 1 || duration > 360) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'Lease duration must be a whole number of months between 1 and 360, or left empty for an open-ended tenancy' });
+      }
+      durationInMonths = duration;
     }
-    durationInMonths = duration;
   }
   {
     const { toFiniteNumber } = require('../utils/validateMoney');
     if (securityDeposit !== undefined && securityDeposit !== null && securityDeposit !== '') {
       const deposit = toFiniteNumber(securityDeposit);
-      const leaseValue = monthlyRent * durationInMonths;
       if (deposit === null || deposit < 0 || deposit > 1e11) {
         return res.status(400).json({ success: false, message: 'Security deposit must be a number between 0 and NPR 100,000,000,000' });
       }
-      if (deposit > leaseValue) {
-        return res.status(400).json({ success: false, message: `Security deposit cannot exceed the lease value (NPR ${leaseValue.toLocaleString()})` });
+      // No lease value exists for open-ended tenancies, so the cap only
+      // applies when a duration was provided.
+      if (durationInMonths !== null) {
+        const leaseValue = monthlyRent * durationInMonths;
+        if (deposit > leaseValue) {
+          return res.status(400).json({ success: false, message: `Security deposit cannot exceed the lease value (NPR ${leaseValue.toLocaleString()})` });
+        }
       }
     }
   }
@@ -202,7 +211,7 @@ const createRental = asyncHandler(async (req, res) => {
     activities: [
       {
         type: 'submitted',
-        message: `Rental filed for "${property.title}" at NPR ${monthlyRent.toLocaleString()}/month × ${durationInMonths} months`,
+        message: `Rental filed for "${property.title}" at NPR ${monthlyRent.toLocaleString()}/month${durationInMonths !== null ? ` × ${durationInMonths} months` : ' (open-ended)'}`,
         by: req.user._id,
         byName: req.user.name,
       },
@@ -220,7 +229,7 @@ const createRental = asyncHandler(async (req, res) => {
     lead.stage = 'pending_verification';
     lead.recordActivity({
       type: 'rental_submitted',
-      message: `Rental submitted for verification (NPR ${monthlyRent.toLocaleString()}/month × ${durationInMonths} months)`,
+      message: `Rental submitted for verification (NPR ${monthlyRent.toLocaleString()}/month${durationInMonths !== null ? ` × ${durationInMonths} months` : ' (open-ended)'})`,
       by: req.user._id,
       byName: req.user.name,
     });
@@ -413,7 +422,11 @@ const verifyRental = asyncHandler(async (req, res) => {
   // the admin-entered amount purely for the existing required field and for
   // reporting consistency with Sale-originated records - it is informational
   // only and never used to recompute or validate the amount.
-  const leaseValue = rental.monthlyRent * rental.durationInMonths;
+  // Open-ended tenancies (no duration) use one month's rent as the basis and
+  // leave rentedUntil unset.
+  const leaseValue = rental.durationInMonths !== null && rental.durationInMonths !== undefined
+    ? rental.monthlyRent * rental.durationInMonths
+    : rental.monthlyRent;
   const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
   const pct = leaseValue > 0 ? round2((commissionAmount / leaseValue) * 100) : 0;
 
@@ -431,9 +444,13 @@ const verifyRental = asyncHandler(async (req, res) => {
 
     property.status = 'rented'; // 🔑 not 'sold'
     property.rentedFrom = rental.startDate;
-    const until = new Date(rental.startDate);
-    until.setMonth(until.getMonth() + rental.durationInMonths);
-    property.rentedUntil = until;
+    if (rental.durationInMonths !== null && rental.durationInMonths !== undefined) {
+      const until = new Date(rental.startDate);
+      until.setMonth(until.getMonth() + rental.durationInMonths);
+      property.rentedUntil = until;
+    } else {
+      property.rentedUntil = null; // open-ended tenancy - no fixed end date
+    }
     property.tenant = rental.tenant.user || null;
     await property.save(opts(session));
 
@@ -472,7 +489,7 @@ const verifyRental = asyncHandler(async (req, res) => {
     message: `Your rental for "${property.title}" was verified by ${req.user.name}. Commission NPR ${commissionAmount.toLocaleString()} recorded.`,
     rental: rental._id,
     property: property._id,
-    link: '/dashboard/agent/rentals',
+    link: '/dashboard/agent/deals?type=rental',
   });
 
   res.json({
@@ -544,7 +561,7 @@ const rejectRental = asyncHandler(async (req, res) => {
     message: `Your rental for "${property.title}" was rejected: ${trimmedReason}`,
     rental: rental._id,
     property: property._id,
-    link: '/dashboard/agent/rentals',
+    link: '/dashboard/agent/deals?type=rental',
   });
 
   res.json({

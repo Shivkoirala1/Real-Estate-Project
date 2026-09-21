@@ -4,7 +4,7 @@ const User = require('../models/User');
 const { PropertyType } = require('../models/Category');
 const asyncHandler = require('../utils/asyncHandler');
 const { validatePropertyInput } = require('../utils/validateProperty');
-const { notifyMany } = require('../utils/notify');
+const { notify, notifyMany } = require('../utils/notify');
 const { effectiveCommissionPercentage, estimatedCommissionAmount } = require('../utils/commission');
 const { awardReward } = require('../utils/rewards');
 
@@ -143,7 +143,7 @@ const getProperties = asyncHandler(async (req, res) => {
   // full details/location, views/shares stay in the detail endpoint).
   // Keyword search still matches title+description at the DB level.
   // Location fields are plain strings now (no District/City populates).
-  const CARD_SELECT = '_id slug title price currency negotiable status saleType commissionPercentage media.coverImage location.province location.district location.municipality location.locality details.bedrooms details.bathrooms details.landArea details.landAreaUnit propertyType createdAt';
+  const CARD_SELECT = '_id slug title price currency negotiable status saleType commissionPercentage media.coverImage location.province location.district location.municipality location.locality details.bedrooms details.bathrooms details.landArea details.landAreaUnit propertyType createdAt tenancyEndRequestedAt tenancyEndReason';
 
   const [properties, total] = await Promise.all([
     Property.find(query)
@@ -510,6 +510,148 @@ const endTenancy = asyncHandler(async (req, res) => {
   res.json({ success: true, property });
 });
 
+// @desc    Property owner requests an end of the current tenancy (admin approval required)
+// @route   PATCH /api/properties/:id/request-end-tenancy
+// @access  Private (owner only - admins use /end-tenancy or /approve-end-tenancy)
+//
+// The property stays 'rented' while the request is pending. Once submitted
+// the owner cannot reverse it - only an admin resolves it via approve/decline.
+const requestEndTenancy = asyncHandler(async (req, res) => {
+  const { reason } = req.body;
+  const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+
+  const property = await Property.findById(req.params.id);
+  if (!property) {
+    return res.status(404).json({ success: false, message: 'Property not found' });
+  }
+  if (String(property.listedBy) !== String(req.user._id)) {
+    return res
+      .status(403)
+      .json({ success: false, message: 'Only the property owner can request an end of tenancy' });
+  }
+  if (property.status !== 'rented') {
+    return res.status(409).json({
+      success: false,
+      message: `An end of tenancy can only be requested while the property is rented (current status: ${property.status}).`,
+    });
+  }
+  if (property.tenancyEndRequestedAt) {
+    return res.status(409).json({
+      success: false,
+      message: 'An end-of-tenancy request is already pending review.',
+    });
+  }
+
+  property.tenancyEndRequestedAt = new Date();
+  property.tenancyEndReason = trimmedReason;
+  property.tenancyEndRequestedBy = req.user._id;
+  await property.save();
+
+  const admins = await User.find({ role: 'admin' }).select('_id');
+  await notifyMany(
+    admins.map((a) => a._id),
+    {
+      type: 'tenancy_end_requested',
+      title: 'End of tenancy requested',
+      message: `${req.user.name} requested to end the tenancy for "${property.title}".`,
+      property: property._id,
+      link: `/dashboard/admin/properties`,
+    }
+  );
+
+  res.json({ success: true, property });
+});
+
+// Shared effect for both tenancy-end paths (owner-requested approval and the
+// direct admin action): clear the occupancy snapshot and stamp the history.
+const applyEndTenancy = async (property, actor) => {
+  property.status = 'available';
+  property.rentedFrom = null;
+  property.rentedUntil = null;
+  property.tenant = null;
+  property.tenancyEndRequestedAt = null;
+  property.tenancyEndReason = '';
+  property.tenancyEndRequestedBy = null;
+  await property.save();
+
+  const rental = await Rental.findOne({ property: property._id, status: 'verified' }).sort({
+    createdAt: -1,
+  });
+  if (rental) {
+    rental.recordActivity({
+      type: 'updated',
+      message: 'Tenancy ended — property returned to available',
+      by: actor._id,
+      byName: actor.name,
+    });
+    await rental.save();
+  }
+};
+
+// @desc    Admin approves an owner-requested end of tenancy
+// @route   PATCH /api/properties/:id/approve-end-tenancy
+// @access  Private (admin)
+const approveEndTenancy = asyncHandler(async (req, res) => {
+  const property = await Property.findById(req.params.id);
+  if (!property) {
+    return res.status(404).json({ success: false, message: 'Property not found' });
+  }
+  if (!property.tenancyEndRequestedAt) {
+    return res.status(409).json({
+      success: false,
+      message: 'There is no pending end-of-tenancy request to approve.',
+    });
+  }
+
+  await applyEndTenancy(property, req.user);
+
+  await notify({
+    recipient: property.listedBy,
+    type: 'tenancy_end_approved',
+    title: 'End of tenancy approved',
+    message: `The tenancy for "${property.title}" has been ended. The property is available again.`,
+    property: property._id,
+    link: '/my-properties',
+  });
+
+  res.json({ success: true, property });
+});
+
+// @desc    Admin declines an owner-requested end of tenancy (property stays rented)
+// @route   PATCH /api/properties/:id/decline-end-tenancy
+// @access  Private (admin)
+const declineEndTenancy = asyncHandler(async (req, res) => {
+  const { reason } = req.body;
+  const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+
+  const property = await Property.findById(req.params.id);
+  if (!property) {
+    return res.status(404).json({ success: false, message: 'Property not found' });
+  }
+  if (!property.tenancyEndRequestedAt) {
+    return res.status(409).json({
+      success: false,
+      message: 'There is no pending end-of-tenancy request to decline.',
+    });
+  }
+
+  property.tenancyEndRequestedAt = null;
+  property.tenancyEndReason = '';
+  property.tenancyEndRequestedBy = null;
+  await property.save();
+
+  await notify({
+    recipient: property.listedBy,
+    type: 'tenancy_end_declined',
+    title: 'End of tenancy declined',
+    message: `Your request to end the tenancy for "${property.title}" was declined${trimmedReason ? `: ${trimmedReason}` : '.'}`,
+    property: property._id,
+    link: '/my-properties',
+  });
+
+  res.json({ success: true, property });
+});
+
 // @desc    Delete property
 // @route   DELETE /api/properties/:id
 // @access  Private (owner or admin)
@@ -613,6 +755,9 @@ module.exports = {
   updateProperty,
   updatePropertyStatus,
   endTenancy,
+  requestEndTenancy,
+  approveEndTenancy,
+  declineEndTenancy,
   deleteProperty,
   getMyProperties,
   toggleFavorite,

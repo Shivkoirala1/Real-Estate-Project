@@ -501,7 +501,7 @@ const verifySale = asyncHandler(async (req, res) => {
     message: `Your sale for "${property.title}" was verified by ${req.user.name}. Commission NPR ${commissionAmount.toLocaleString()} recorded.`,
     sale: sale._id,
     property: property._id,
-    link: '/dashboard/agent/verification-queue',
+    link: '/dashboard/agent/deals?type=sale',
   });
 
   // EMI plan initialization is an admin-only follow-up of the sale
@@ -605,7 +605,7 @@ const rejectSale = asyncHandler(async (req, res) => {
     message: `Your sale for "${property.title}" was rejected: ${trimmedReason}`,
     sale: sale._id,
     property: property._id,
-    link: '/dashboard/agent/verification-queue',
+    link: '/dashboard/agent/deals?type=sale',
   });
 
   res.json({

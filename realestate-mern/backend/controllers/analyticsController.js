@@ -101,7 +101,7 @@ const monthlyRentalGroupStages = (dateField, extraMatch, windowStart) => [
     $group: {
       _id: { y: { $year: `$${dateField}` }, m: { $month: `$${dateField}` } },
       count: { $sum: 1 },
-      value: { $sum: { $multiply: ['$monthlyRent', '$durationInMonths'] } },
+      value: { $sum: { $multiply: ['$monthlyRent', { $ifNull: ['$durationInMonths', 1] }] } },
     },
   },
   { $sort: { '_id.y': 1, '_id.m': 1 } },
@@ -225,7 +225,7 @@ const buildAdminAnalytics = async () => {
         $group: {
           _id: '$agent',
           rentalCount: { $sum: 1 },
-          rentalValue: { $sum: { $multiply: ['$monthlyRent', '$durationInMonths'] } },
+          rentalValue: { $sum: { $multiply: ['$monthlyRent', { $ifNull: ['$durationInMonths', 1] }] } },
         },
       },
       { $sort: { rentalValue: -1 } },
@@ -357,7 +357,7 @@ const buildAgentAnalytics = async (agentId) => {
     // Rental equivalents (lease value = monthlyRent x durationInMonths)
     Rental.aggregate([
       { $match: { agent: agentOid, status: 'verified', reviewedAt: { $ne: null, $gte: thisMonthStart } } },
-      { $group: { _id: null, rentalCount: { $sum: 1 }, rentalValue: { $sum: { $multiply: ['$monthlyRent', '$durationInMonths'] } } } },
+      { $group: { _id: null, rentalCount: { $sum: 1 }, rentalValue: { $sum: { $multiply: ['$monthlyRent', { $ifNull: ['$durationInMonths', 1] }] } } } },
     ]),
     Rental.aggregate([
       {
@@ -367,7 +367,7 @@ const buildAgentAnalytics = async (agentId) => {
           reviewedAt: { $ne: null, $gte: previousMonthStart, $lt: thisMonthStart },
         },
       },
-      { $group: { _id: null, rentalCount: { $sum: 1 }, rentalValue: { $sum: { $multiply: ['$monthlyRent', '$durationInMonths'] } } } },
+      { $group: { _id: null, rentalCount: { $sum: 1 }, rentalValue: { $sum: { $multiply: ['$monthlyRent', { $ifNull: ['$durationInMonths', 1] }] } } } },
     ]),
     // Commission buckets (mirror commissionController.getCommissionSummary)
     CommissionRecord.aggregate([
