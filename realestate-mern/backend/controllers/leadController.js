@@ -58,7 +58,7 @@ const buildLeadQuery = ({ stage, category, assignedAgent, priority, source, sear
 const populateLead = (query) =>
   query
     .populate('assignedAgent', 'name email phone')
-    .populate('property', 'title slug media.coverImage price status')
+    .populate('property', 'title slug media.coverImage price status saleType')
     .populate('contactForm', 'name email subject status createdAt')
     .populate('visit', 'visitType requestedSlot status')
     .populate('user', 'name email');
@@ -68,11 +68,11 @@ const populateLead = (query) =>
 const populateLeadList = (query) =>
   query
     .populate('assignedAgent', '_id name')
-    .populate('property', 'title slug media.coverImage price status');
+    .populate('property', 'title slug media.coverImage price status saleType');
 
 const LEAD_POPULATE = [
   { path: 'assignedAgent', select: 'name email phone' },
-  { path: 'property', select: 'title slug media.coverImage price status' },
+  { path: 'property', select: 'title slug media.coverImage price status saleType' },
   { path: 'contactForm', select: 'name email subject status createdAt' },
   { path: 'visit', select: 'visitType requestedSlot status' },
   { path: 'user', select: 'name email' },

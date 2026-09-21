@@ -1,5 +1,5 @@
 import React from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 
 // Components
 import Navbar from "./components/layout/Navbar";
@@ -55,7 +55,6 @@ import ManageCategories from "./pages/admin/ManageCategories";
 import BlogManagement from "./pages/admin/ManageBlogs";
 import ManageHeroSlides from "./pages/admin/ManageHeroSlides";
 import HeroSlideForm from "./pages/admin/HeroSlideForm";
-import Inquiries from "./pages/admin/RevampedInquiries";
 import Visits from "./pages/admin/Visits";
 import EmiPlans from "./pages/admin/EmiPlans";
 import EmiPlanDetail from "./pages/admin/EmiPlanDetail";
@@ -147,13 +146,13 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* Retired: sent inquiries now live on as conversations - keep
+              old bookmarks working by sending them there. */}
           <Route
             path="/my-properties/inquiries"
             element={
               <ProtectedRoute>
-                <MyPropertiesLayout>
-                  <Inquiries />
-                </MyPropertiesLayout>
+                <Navigate to="/my-conversations" replace />
               </ProtectedRoute>
             }
           />

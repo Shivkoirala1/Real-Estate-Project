@@ -7,7 +7,6 @@ import {
 } from '../../../services/contactFormService';
 import { useToast } from '../../../context/ToastContext';
 import { useConfirm } from '../../../context/ConfirmContext';
-import RespondToContactModal from './RespondToContactModal';
 import ConvertToLeadModal from './ConvertToLeadModal';
 import { timeAgo } from '../../../utils/format';
 
@@ -18,8 +17,9 @@ const FORM_STATUS_STYLES = {
   converted: { label: 'Converted', bg: '#1F2A441A', color: '#1F2A44' },
 };
 
-// Admin inbox for public contact form submissions. Respond inline, mark as
-// read, or convert a submission into a pipeline lead in one click.
+// Admin inbox for public contact form submissions. Mark as read or convert
+// a submission into a pipeline lead (which opens the buyer conversation) in
+// one click.
 const ContactFormsInbox = ({ onConverted }) => {
   const { showToast } = useToast();
   const confirm = useConfirm();
@@ -29,7 +29,6 @@ const ContactFormsInbox = ({ onConverted }) => {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
-  const [respondTarget, setRespondTarget] = useState(null);
   const [convertTarget, setConvertTarget] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
 
@@ -168,12 +167,6 @@ const ContactFormsInbox = ({ onConverted }) => {
                         Convert to Lead
                       </button>
                     )}
-                    {/* <button
-                      onClick={() => setRespondTarget(form)}
-                      className="btn-secondary text-xs px-3 py-1.5"
-                    >
-                      Respond
-                    </button> */}
                     <button
                       onClick={() => handleDelete(form)}
                       className="text-xs text-slate-muted hover:text-brick"
@@ -228,14 +221,6 @@ const ContactFormsInbox = ({ onConverted }) => {
           </div>
         </div>
       )}
-
-      {/* {respondTarget && (
-        <RespondToContactModal
-          contactForm={respondTarget}
-          onClose={() => setRespondTarget(null)}
-          onResponded={loadForms}
-        />
-      )} */}
 
       {convertTarget && (
         <ConvertToLeadModal

@@ -14,7 +14,6 @@ const MyPropertiesLayout = ({ children }) => {
       <nav className="flex flex-wrap gap-2 mb-8 border-b border-navy/10 pb-4">
         <NavLink to="/my-properties" end className={tabClass}>All Listings</NavLink>
         <NavLink to="/my-properties/new" className={tabClass}>Post a Property</NavLink>
-        <NavLink to="/my-properties/inquiries" className={tabClass}>My Inquiries</NavLink>
         <NavLink to="/my-properties/management" className={tabClass}>Management</NavLink>
 
       </nav>

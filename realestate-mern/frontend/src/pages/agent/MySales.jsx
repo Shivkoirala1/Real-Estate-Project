@@ -52,7 +52,7 @@ const DEAL_TYPES = {
     personLabel: 'Tenant',
     amountHeading: 'Monthly Rent',
     emptyHint:
-      'Open a lead on a rent-listed property in the negotiation stage and use "File Rental" to submit the lease for verification.',
+      'Open a lead on a rent-listed property in the negotiation stage and use "Submit Rental" to submit the lease for verification.',
     sorts: [
       { value: 'newest', label: 'Newest' },
       { value: 'oldest', label: 'Oldest' },

@@ -172,9 +172,13 @@ const LeadDetail = () => {
             <button
               onClick={() => setSaleModalOpen(true)}
               className="btn-gold text-sm"
-              title="File a sale for admin verification"
+              title={
+                isRentalProperty
+                  ? 'File a rental for admin verification'
+                  : 'File a sale for admin verification'
+              }
             >
-              Submit Sale
+              {isRentalProperty ? 'Submit Rental' : 'Submit Sale'}
             </button>
           )}
           {user?.role === 'admin' && (

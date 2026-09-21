@@ -3,7 +3,6 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getContactFormById, deleteContactForm } from '../../../services/contactFormService';
 import { useToast } from '../../../context/ToastContext';
 import { useConfirm } from '../../../context/ConfirmContext';
-import RespondToContactModal from './RespondToContactModal';
 import ConvertToLeadModal from './ConvertToLeadModal';
 import { timeAgo } from '../../../utils/format';
 
@@ -17,7 +16,6 @@ const ContactFormDetail = () => {
 
   const [form, setForm] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showRespond, setShowRespond] = useState(false);
   const [showConvert, setShowConvert] = useState(false);
 
   const loadForm = useCallback(async () => {
@@ -107,9 +105,6 @@ const ContactFormDetail = () => {
       )}
 
       <div className="flex flex-wrap gap-3">
-        <button onClick={() => setShowRespond(true)} className="btn-secondary text-sm">
-          {form.response ? 'Update response' : 'Respond'}
-        </button>
         {form.status !== 'converted' ? (
           <button onClick={() => setShowConvert(true)} className="btn-gold text-sm">
             Convert to Lead
@@ -123,14 +118,6 @@ const ContactFormDetail = () => {
           </Link>
         )}
       </div>
-
-      {showRespond && (
-        <RespondToContactModal
-          contactForm={form}
-          onClose={() => setShowRespond(false)}
-          onResponded={loadForm}
-        />
-      )}
 
       {showConvert && (
         <ConvertToLeadModal
