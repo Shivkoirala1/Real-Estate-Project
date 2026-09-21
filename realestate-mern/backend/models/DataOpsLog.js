@@ -11,7 +11,7 @@ const dataOpsLogSchema = new mongoose.Schema(
   {
     job: {
       type: String,
-      enum: ['archive_properties', 'archive_sales', 'archive_rentals', 'archive_emi_plans', 'cleanup_contact_forms', 'cleanup_conversations'],
+      enum: ['archive_properties', 'archive_sales', 'archive_rentals', 'archive_emi_plans', 'cleanup_contact_forms', 'cleanup_conversations', 'cleanup_verification_docs'],
       required: true,
     },
     startedAt: { type: Date, required: true },
