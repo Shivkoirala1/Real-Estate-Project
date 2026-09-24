@@ -49,7 +49,7 @@ describe('Phase 4 avatar direct upload', () => {
     assert.equal(g.status, 201);
     const c = await request(api).post(`/api/uploads/${g.body.upload.uploadId}/complete`).set(auth(u)).send(meta);
     assert.equal(c.status, 200);
-    return { uploadId: g.body.upload.uploadId, publicId: g.body.upload.publicId, sessionId: s.body.session.sessionId };
+    return { uploadId: g.body.upload.uploadId, publicId: `${g.body.upload.folder}/${g.body.upload.publicId}`, sessionId: s.body.session.sessionId };
   };
 
   before(async () => {

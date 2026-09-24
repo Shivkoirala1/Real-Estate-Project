@@ -61,7 +61,7 @@ describe('Phase 2 property direct upload', () => {
     assert.equal(g.status, 201);
     const c = await request(api).post(`/api/uploads/${g.body.upload.uploadId}/complete`).set(auth(user)).send(meta);
     assert.equal(c.status, 200);
-    return { uploadId: g.body.upload.uploadId, publicId: g.body.upload.publicId, sessionId: s.body.session.sessionId };
+    return { uploadId: g.body.upload.uploadId, publicId: `${g.body.upload.folder}/${g.body.upload.publicId}`, sessionId: s.body.session.sessionId };
   };
 
   // Sign + complete a cover and N gallery images inside ONE session.
@@ -74,7 +74,7 @@ describe('Phase 2 property direct upload', () => {
       assert.equal(g.status, 201);
       const c = await request(api).post(`/api/uploads/${g.body.upload.uploadId}/complete`).set(auth(user)).send(meta);
       assert.equal(c.status, 200);
-      return { uploadId: g.body.upload.uploadId, publicId: g.body.upload.publicId };
+      return { uploadId: g.body.upload.uploadId, publicId: `${g.body.upload.folder}/${g.body.upload.publicId}` };
     };
     const cover = await one('property-cover');
     const gallery = [];
@@ -124,7 +124,7 @@ describe('Phase 2 property direct upload', () => {
       assert.equal(g.status, 201);
       const c = await request(api).post(`/api/uploads/${g.body.upload.uploadId}/complete`).set(auth(agent)).send(meta);
       assert.equal(c.status, 200);
-      return { uploadId: g.body.upload.uploadId, publicId: g.body.upload.publicId };
+      return { uploadId: g.body.upload.uploadId, publicId: `${g.body.upload.folder}/${g.body.upload.publicId}` };
     };
     const cover = await signComplete('property-cover');
     const g1 = await signComplete('property-image');

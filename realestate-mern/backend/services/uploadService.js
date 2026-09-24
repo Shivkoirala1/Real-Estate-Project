@@ -168,11 +168,17 @@ const signUpload = async ({ user, sessionId, purpose, refs = {} }) => {
   };
   const signature = signUploadParams(paramsToSign);
 
+  // Cloudinary stores the asset at folder/public_id when BOTH are sent, so
+  // the row must keep the FULL path — the basename alone 404s on delivery
+  // and misses on destroy. The sign response still returns folder + basename
+  // separately because the browser must send exactly what was signed.
+  const fullPublicId = `${policy.folder}/${publicId}`;
+
   const upload = await Upload.create({
     sessionId: session._id,
     userId: user._id,
     purpose,
-    publicId,
+    publicId: fullPublicId,
     folder: policy.folder,
     resourceType: policy.resourceType,
     deliveryType: policy.deliveryType,

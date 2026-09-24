@@ -56,7 +56,7 @@ describe('Phase 3 hero direct upload', () => {
       assert.equal(g.status, 201);
       const c = await request(api).post(`/api/uploads/${g.body.upload.uploadId}/complete`).set(auth(user)).send(meta);
       assert.equal(c.status, 200);
-      return { uploadId: g.body.upload.uploadId, publicId: g.body.upload.publicId };
+      return { uploadId: g.body.upload.uploadId, publicId: `${g.body.upload.folder}/${g.body.upload.publicId}` };
     };
     const media = await one('hero-media', { mediaKind: kind },
       kind === 'video'

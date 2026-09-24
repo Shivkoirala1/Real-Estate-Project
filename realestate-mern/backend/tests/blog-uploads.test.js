@@ -49,7 +49,7 @@ describe('Phase 4 blog cover direct upload', () => {
       bytes: 120000, format: 'jpg', resourceType: 'image',
     });
     assert.equal(c.status, 200);
-    return { uploadId: g.body.upload.uploadId, publicId: g.body.upload.publicId, sessionId: s.body.session.sessionId };
+    return { uploadId: g.body.upload.uploadId, publicId: `${g.body.upload.folder}/${g.body.upload.publicId}`, sessionId: s.body.session.sessionId };
   };
 
   let slugSeq = 0;

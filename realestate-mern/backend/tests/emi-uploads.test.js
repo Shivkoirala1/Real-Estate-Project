@@ -81,7 +81,7 @@ describe('Phase 4 EMI slip direct upload', () => {
       bytes: 150000, format: 'jpg', resourceType: 'image',
     });
     assert.equal(c.status, 200);
-    return { uploadId: g.body.upload.uploadId, publicId: g.body.upload.publicId, sessionId: s.body.session.sessionId };
+    return { uploadId: g.body.upload.uploadId, publicId: `${g.body.upload.folder}/${g.body.upload.publicId}`, sessionId: s.body.session.sessionId };
   };
 
   const submitSlip = (u, planId, n, extra = {}) =>
@@ -290,8 +290,10 @@ describe('Phase 4 EMI slip direct upload', () => {
       const view = await request(api).get(`/api/emi-plans/${plan._id}/installments/1/slip`).set(auth(viewer));
       assert.equal(view.status, 200, `viewer ${viewer.role} got ${view.status}`);
       // Private delivery: authenticated download URL carrying the publicId
-      // and a signature — never a permanent public URL.
-      assert.ok(view.body.url.includes(slip.publicId), view.body.url);
+      // and a signature — never a permanent public URL. (Slashes arrive
+      // percent-encoded in the query string, so decode before comparing.)
+      const decodedUrl = decodeURIComponent(view.body.url);
+      assert.ok(decodedUrl.includes(slip.publicId), view.body.url);
       assert.ok(view.body.url.includes('signature='), view.body.url);
       assert.equal(view.body.legacy, false);
       assert.ok(view.body.expiresAt);
