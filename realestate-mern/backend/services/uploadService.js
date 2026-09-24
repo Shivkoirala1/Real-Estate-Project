@@ -152,11 +152,16 @@ const signUpload = async ({ user, sessionId, purpose, refs = {} }) => {
   const ttlHours = typeof policy.ttlHours === 'function' ? policy.ttlHours() : TTL.resourceHours();
   const timestamp = Math.floor(Date.now() / 1000);
   const publicId = `${policy.idPrefix}-${randomSuffix()}`;
+  // Signed params — IMPORTANT: Cloudinary excludes `file`, `cloud_name`,
+  // `resource_type` and `api_key` from signature computation (`resource_type`
+  // travels in the endpoint path /image|video/upload, not the signed body).
+  // Signing `resource_type` produces "Invalid Signature" on every upload.
+  // `type: 'private'` IS a signable delivery parameter and must stay for
+  // restricted purposes. The frontend must send these exact values.
   const paramsToSign = {
     timestamp,
     folder: policy.folder,
     public_id: publicId,
-    resource_type: policy.resourceType,
     overwrite: false,
     allowed_formats: policy.allowedFormats.join(','),
     ...(policy.deliveryType === 'private' ? { type: 'private' } : {}),

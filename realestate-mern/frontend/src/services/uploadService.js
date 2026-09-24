@@ -60,7 +60,9 @@ export const uploadFileToCloudinary = ({ signed, file, onProgress, signal } = {}
     fd.append('timestamp', String(signed.timestamp));
     fd.append('folder', signed.folder);
     fd.append('public_id', signed.publicId);
-    fd.append('resource_type', signed.resourceType);
+    // NOTE: no `resource_type` field — it travels in the endpoint path
+    // (/image|video/upload) and Cloudinary excludes it from signature
+    // computation. Every other field must match the signed values exactly.
     fd.append('overwrite', 'false');
     fd.append('allowed_formats', signed.allowedFormats.join(','));
     if (signed.deliveryType === 'private') fd.append('type', 'private');

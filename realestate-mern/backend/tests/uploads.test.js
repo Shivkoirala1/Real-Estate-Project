@@ -121,6 +121,48 @@ describe('Phase 1 direct-upload infrastructure', () => {
     assert.ok(!('api_secret' in up) && !('apiSecret' in up));
   });
 
+  it('signatures match Cloudinary-compatible computation (no resource_type)', async () => {
+    // Regression test for the production "Invalid Signature" failure:
+    // Cloudinary excludes `resource_type` (it travels in the endpoint path)
+    // from signature computation, so signing it breaks every direct upload.
+    const { signUploadParams } = require('../utils/cloudinary');
+    const compatible = (up, extra = {}) =>
+      signUploadParams({
+        timestamp: up.timestamp,
+        folder: up.folder,
+        public_id: up.publicId,
+        overwrite: false,
+        allowed_formats: up.allowedFormats.join(','),
+        ...extra,
+      });
+
+    const blogSession = await openSession(admin, 'blog');
+    const blogRes = await sign(admin, blogSession, { purpose: 'blog-cover' });
+    assert.equal(blogRes.status, 201);
+    const blogUp = blogRes.body.upload;
+    assert.equal(blogUp.signature, compatible(blogUp));
+    // Sanity: including resource_type would produce a different (rejected) signature.
+    assert.notEqual(
+      blogUp.signature,
+      signUploadParams({
+        timestamp: blogUp.timestamp,
+        folder: blogUp.folder,
+        public_id: blogUp.publicId,
+        resource_type: blogUp.resourceType,
+        overwrite: false,
+        allowed_formats: blogUp.allowedFormats.join(','),
+      })
+    );
+
+    // Private purposes must keep `type: 'private'` in the signed set.
+    const verifySession = await openSession(pendingUser, 'verification');
+    const verifyRes = await sign(pendingUser, verifySession, { purpose: 'verification-document', docType: 'selfie' });
+    assert.equal(verifyRes.status, 201);
+    const verifyUp = verifyRes.body.upload;
+    assert.equal(verifyUp.deliveryType, 'private');
+    assert.equal(verifyUp.signature, compatible(verifyUp, { type: 'private' }));
+  });
+
   it('rejects unknown purpose (400) and cross-scope purpose (400)', async () => {
     const sessionId = await openSession(verifiedUser, 'property');
     const unknown = await sign(verifiedUser, sessionId, { purpose: 'rocket-ship' });
