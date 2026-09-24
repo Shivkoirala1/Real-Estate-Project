@@ -10,6 +10,8 @@
 
 > Scope: `realestate-mern/` — Express + Mongoose backend (`backend/`) and React frontend (`frontend/src/`).
 > Method: route → controller → Mongoose query/populate/select → `res.json` → frontend service → component/hook/store field reads.
+>
+> **UPDATE (direct uploads, Phases 0–4):** §2.1's upload bullet is superseded — uploads are now direct browser → Cloudinary (signed, purpose-based: `config/uploadPurposes.js`) with ownership in `Upload`/`UploadSession`, mounted at `/api/uploads` (`routes/uploadRoutes.js`), Cloudinary logic centralized in `services/uploadService.js` (so a service layer now exists for uploads). The multer paths in `middleware/upload.js` remain as legacy behind `*_DIRECT_UPLOAD_ENABLED` flags. Direct EMI slips store `paymentSlipPublicId` (private) with signed viewing instead of `paymentSlipUrl`.
 > Phase: AUDIT AND DESIGN ONLY. No code was changed to produce this report.
 
 ---

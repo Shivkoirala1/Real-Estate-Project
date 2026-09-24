@@ -193,7 +193,7 @@ Favorites same card DTO; `me` → `{..., favoriteIds:[], favoritesCount:n}` (kee
 
 **10. Migration:** Lockstep per resource (detail + its modal together). Rollback = restore populate.
 
-**11. Tests:** Modal E2E (sale→EMI init, visit→lead convert); thread open/scroll/send/pagination; EMI verification multipart + progress math; `canManage` gates; slip-URL-in-detail-only assertion.
+**11. Tests:** Modal E2E (sale→EMI init, visit→lead convert); thread open/scroll/send/pagination; EMI verification submit (multipart slip or direct `paymentSlipUploadId` JSON + progress math); `canManage` gates; slip-in-detail-only assertion (legacy `paymentSlipUrl`, or direct `paymentSlipPublicId` with signed viewing).
 
 ### B4 — Contract normalization
 

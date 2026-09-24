@@ -188,6 +188,8 @@ API: POST /auth/register|verify-email|resend-verification|login|forgot-password|
 Backend: authController.js (register 28-85, verify 90-139, resend 144-156, phone 161-212, login 264-294, profile 378-413)
 Model: User.js
 Side effects: referral code gen (pre-save:158-172), rewards on verify/phone/profile-complete, phone change resets isPhoneVerified, doc re-upload resets verificationStatus→pending
+
+> **UPDATE (direct uploads, Phases 0–4):** `PUT /auth/profile` avatar is now direct-JSON (`avatarUploadId`, self-ownership enforced, old row retired) or legacy multipart behind `AVATAR_DIRECT_UPLOAD_ENABLED`. Selfie/citizenship uploads are unchanged (still multer, Phase 5).
 ```
 
 ### 5.2 Discovery → Inquiry → Visit
@@ -238,6 +240,8 @@ Entry: /my-properties/new (ProtectedRoute + PostGate) → AddEditProperty.jsx:13
   → createProperty:219-277 (any verified user) → Property(listedBy=me, isApproved=true default, status=available)
   → management path: saleType=management (no price) + request(status=pending) + notifyMany(admins, management_request_submitted)
 Validation: validatePropertyInput (price required iff not management; images 10MB: upload.js:25-34,53-62,80-89)
+
+> **UPDATE (direct uploads, Phases 0–4):** `POST /properties` now accepts direct JSON (`coverUploadId`/`galleryUploadIds` + `uploadSessionId`, with ownership/session/purpose/state validated server-side and URLs derived from `Upload` rows) or legacy multipart behind `PROPERTY_DIRECT_UPLOAD_ENABLED`. Same 10 MB caps now live in `config/uploadPurposes.js`; cover-required and cover-fallback rules unchanged.
 ```
 
 **CURRENT:** no approval queue — `isApproved default true` (`Property.js:88`), listing visible immediately. Sale vs rent vs management is a single `saleType` enum chosen at create; management properties are priceless.
@@ -506,6 +510,8 @@ Unique: one plan per sale.
 | mark installment (paid sets paidDate/Amount:642-644 + auto-approves pending verification:658-665; pending clears:668-682; waived clears:691-696; paid guards:588-611) | `updateInstallment:549-852` (buyer 403:566-571) | admin | `EmiPlanDetail.jsx:561,577` |
 | submit proof (only pending installment:1075, no dup pending:1082) | `requestVerification:1049-1165` | linked buyer `role='user'` (`emiPlanRoutes.js:24-29` + `1062-1068`) | `MyEMI.jsx:349` (`emiService.js:112-113`, multipart slip) |
 | approve (→paid+approved:1240-1247, overridable) / reject (reason required:1207-1213) | `reviewVerification:1175-1295` | admin | `EmiPlanDetail.jsx` |
+
+> **UPDATE (direct uploads, Phases 0–4):** the slip submit above now also accepts direct JSON (`paymentSlipUploadId`, private delivery, `paymentSlipPublicId` stored instead of a URL) behind `EMI_DIRECT_UPLOAD_ENABLED`, with sign-time + submit-time buyer/plan/installment checks; viewing is via signed `GET .../slip`. Blogs (`POST|PATCH /:id`) likewise accept direct `coverUploadId` JSON behind `BLOG_DIRECT_UPLOAD_ENABLED`; hero media behind `HERO_DIRECT_UPLOAD_ENABLED`. Legacy multipart paths unchanged.
 | reminders (daily 08:00 EMI cron: `server.js`; due-soon today..+3d + overdue; per-recipient-type-plan-per-day dedupe: `emiReminders.js:51-57`) | `runEmiReminders:29-134` | system | — |
 | lead follow-up reminders (daily 09:00 cron, added after audit: `leadFollowupReminders.js`) | `runLeadFollowupReminders` | system | — |
 

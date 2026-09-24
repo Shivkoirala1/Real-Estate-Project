@@ -1064,6 +1064,87 @@ Prerequisite for all RT tests: login establishes socket (WS 101 to Render); logo
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
 
+### UPLOAD-008
+**Test Name:** Direct upload shows progress, retry, and cancel (property)
+**Priority:** P0
+**Preconditions:** Verified user on new-property page (direct path on: `VITE_PROPERTY_DIRECT_UPLOAD` not `false`).
+**Test Data:** cover + 3 valid images; one oversized image.
+**Steps:**
+1. Pick cover: verify progress bar → Uploaded state; submit button shows "Uploading…" while in flight.
+2. Pick an oversized image: verify immediate client-side rejection (no upload attempt).
+3. Throttle network (devtools) mid-upload: verify cancel removes the entry; re-pick and verify retry succeeds.
+4. Submit with one gallery entry failed: verify submit succeeds with the successful subset.
+**Expected Result:** Per-file progress/retry/cancel; submit blocked only while busy or cover missing; failures isolated, never losing successful uploads.
+**Actual Result:** _
+**Status:** PASS / FAIL / BLOCKED / NOT TESTED
+**Evidence:** _
+
+### UPLOAD-009
+**Test Name:** Validation failure → resubmit without re-uploading
+**Priority:** P1
+**Preconditions:** Verified user; cover + gallery fully uploaded (Uploaded state).
+**Steps:**
+1. Clear the title, submit (expect field error).
+2. Restore title, resubmit without touching photos.
+**Expected Result:** Second submit succeeds; no file re-uploads (no new progress bars); same images persist.
+**Actual Result:** _
+**Status:** PASS / FAIL / BLOCKED / NOT TESTED
+**Evidence:** _
+
+### UPLOAD-010
+**Test Name:** Abandoned uploads expire and are cleaned up
+**Priority:** P2
+**Preconditions:** Verified user; backend `cleanup_uploads` job enabled (default).
+**Steps:**
+1. Pick cover + gallery, wait for Uploaded state, close/navigate away WITHOUT submitting.
+2. Check Cloudinary folder + `Upload` rows (admin/DB): records exist as `pending`/`completed`, uncommitted.
+**Expected Result:** No property created; uncommitted rows expire (24 h) and the sweeper destroys the bytes (verify via `cleanup_uploads` DataOpsLog, or dry-run).
+**Actual Result:** _
+**Status:** PASS / FAIL / BLOCKED / NOT TESTED
+**Evidence:** _
+
+### UPLOAD-011
+**Test Name:** Hero video + thumbnail direct upload with failure isolation
+**Priority:** P0
+**Preconditions:** Admin on hero slide form (direct path on).
+**Test Data:** video ≤50 MB (MP4/WebM/MOV) + thumbnail image.
+**Steps:**
+1. Pick video + thumbnail; verify independent progress.
+2. Publish; view homepage carousel.
+3. Edit: replace video only; verify old video bytes retired and thumbnail kept.
+**Expected Result:** Video plays, thumbnail posters; a failed thumbnail never blocks the media submit; replacement retires only the replaced asset.
+**Actual Result:** _
+**Status:** PASS / FAIL / BLOCKED / NOT TESTED
+**Evidence:** _
+
+### UPLOAD-012
+**Test Name:** EMI slip private upload + signed admin viewing
+**Priority:** P0
+**Preconditions:** Buyer with EMI plan + pending installment.
+**Test Data:** valid slip JPG ≤5 MB.
+**Steps:**
+1. Submit verification with slip; verify request goes `pending`.
+2. As admin open the review modal: verify slip loads via "View payment slip" (signed, short-lived URL), NOT a permanent public URL.
+3. As a stranger (or logged out): verify the slip URL from step 2 cannot be reused after expiry, and direct plan access is rejected.
+**Expected Result:** Slip stored as private `paymentSlipPublicId`; admin/buyer/agent viewing works on demand; unauthorized access rejected.
+**Actual Result:** _
+**Status:** PASS / FAIL / BLOCKED / NOT TESTED
+**Evidence:** _
+
+### UPLOAD-013
+**Test Name:** Direct/legacy flag matrix (smoke)
+**Priority:** P1
+**Preconditions:** Staging access to backend env.
+**Steps:**
+1. With flags on (default): submit property + blog + avatar + slip via direct flow.
+2. Set `PROPERTY/BLOG/AVATAR/EMI/HERO_DIRECT_UPLOAD_ENABLED=false` (and `VITE_*` counterparts): repeat via legacy multipart.
+**Expected Result:** Both matrices succeed; direct payloads rejected with 400 when disabled; legacy unaffected.
+**Actual Result:** _
+**Status:** PASS / FAIL / BLOCKED / NOT TESTED
+**Evidence:** _
+
+**NOTE (UPLOAD-003 KYC):** selfie/citizenship uploads are intentionally NOT migrated (Phase 5) — UPLOAD-003 stays valid as written.
+
 ---
 
 ## 18. Sale / Rental Verification (Deal) Test Suite
@@ -2052,6 +2133,7 @@ Final QA notes:
 - `ManageBlogs` uses native `window.confirm` while all other deletes use the app Confirm dialog — note inconsistency, not failure.
 - Typo `SubmitRentalModel.jsx` (Model vs Modal) is code-level only; no user impact.
 - Hero video uploads (≤50 MB, MP4/WebM/MOV) need live Cloudinary credentials to verify end-to-end; API-level validation is covered by automated tests, but the first real video upload should be watched in the Cloudinary dashboard for orphans.
+- Direct uploads (Phases 0–4) additionally need staging sign-off per UPLOAD-008–013: two production regressions are covered by automated signature-compatibility tests but deserve one live pass — (1) signatures must exclude `resource_type`, (2) delivery URLs must carry the full `folder/basename` public ID. Confirm `GET /api/uploads/metrics` (admin) shows direct-submit counts after the pass.
 
 ## Appendix B — Count and Conventions
 

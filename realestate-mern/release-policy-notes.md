@@ -63,3 +63,9 @@ code change accompanies this document.
   identity-document fields; the admin-only agent detail view is unchanged.
 - Dry-run supported via the admin archives job API
   (`cleanup_verification_docs`) before trusting the nightly 03:30 schedule.
+
+## Direct-upload orphan cleanup (Phases 0–4, decided)
+
+- Uncommitted direct uploads (`Upload` rows in `pending`/`completed`, e.g. abandoned forms, failed entity saves) expire after `UPLOAD_RESOURCE_TTL_HOURS` (24 h; 48 h for hero video) and the nightly 04:00 `cleanup_uploads` pass destroys the Cloudinary bytes best-effort with destroy-queue retries (`backend/utils/uploadCleanup.js`, `UPLOAD_CLEANUP_ENABLED`, logged to `DataOpsLog`).
+- Replaced media (property/hero/blog/avatar covers, EMI slips incl. revert-to-pending resets) retires only after the new reference persists; legacy bytes without an `Upload` row are left alone.
+- Verification documents above are untouched by this mechanism (still Phase 5).

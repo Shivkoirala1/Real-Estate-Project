@@ -7,19 +7,21 @@ A full-stack real estate platform built with MongoDB, Express, React, and Node.j
 ```
 realestate-mern/
 ├── backend/            Express + MongoDB REST API (+ Socket.IO realtime delivery)
-│   ├── config/         Database connection
-│   ├── controllers/    Route logic (auth, properties, users, leads, visits, conversations, sales, EMI, …)
-│   ├── middleware/     JWT auth (REST + socket handshake), role authorization, error handling, file uploads
-│   ├── models/         Mongoose schemas (User, Property, Lead, Conversation, Notification, Sale, Rental, EMIPlan, …)
+│   ├── config/         Database connection + upload purpose matrix
+│   ├── controllers/    Route logic (auth, properties, users, leads, visits, conversations, sales, EMI, uploads, …)
+│   ├── middleware/     JWT auth (REST + socket handshake), role authorization, error handling, file uploads, upload rate limits
+│   ├── models/         Mongoose schemas (User, Property, Lead, Conversation, Notification, Sale, Rental, EMIPlan, Upload, UploadSession, …)
 │   ├── routes/         Express route definitions
 │   ├── realtime/       Socket.IO server: event contract, auth, rooms, fail-safe publishers
+│   ├── services/       Shared backend services (direct-upload signing/ownership/cleanup)
 │   ├── tests/          Backend suites (`node --test tests/*.test.js`) + notification type guardrail
-│   ├── utils/          Token generation, async handler, notify(), DB seeder, cron jobs
-│   ├── uploads/         Uploaded property images are stored here
+│   ├── utils/          Token generation, async handler, notify(), DB seeder, cron jobs, Cloudinary client, upload metrics/cleanup
+│   ├── uploads/         Legacy local upload dir (runtime uploads are Cloudinary-only; see below)
 │   └── server.js       App entry point (single HTTP server for REST + Socket.IO)
 └── frontend/           React (Vite) + Tailwind CSS client
     └── src/
         ├── services/    API services + Socket.IO client singleton (`socket.js`)
+        ├── hooks/        Shared hooks (`useDirectUpload`: queued direct uploads with progress/retry/cancel)
         ├── context/      Auth, notification, conversation, toast, and other providers
         ├── components/   Navbar, Footer, PropertyCard, SearchFilterBar, dashboard widgets, etc.
         └── pages/        Public pages + role-based dashboard pages
@@ -108,6 +110,7 @@ npm run check:notifications   # guardrail: every notify() type must exist in the
 ## Recent Fixes & New Features
 
 **New features added:**
+- **Direct Cloudinary uploads** (Phases 0–4): property cover/gallery, hero media/thumbnail, blog cover, avatar, and EMI slips upload straight from the browser with progress, retry, and cancel; entity submits carry authorized `uploadIds`. EMI slips use private delivery with short-lived signed viewing. Legacy proxied uploads remain behind `*_DIRECT_UPLOAD_ENABLED` flags.
 - **Interactive map** (Leaflet + OpenStreetMap, no API key needed): posters click to pin the exact property location; buyers see that pin on the property detail page.
 - **Photo carousel**: property photos now display in a proper sliding gallery with prev/next arrows, a counter, and keyboard arrow-key navigation, on the detail page.
 - **Incremental photo attachment**: the "Add Property" form now lets you click "+ Add photos" multiple times to build up a list (with individual remove buttons), instead of the native file picker replacing your whole selection every time you open it.
@@ -129,7 +132,7 @@ npm run check:notifications   # guardrail: every notify() type must exist in the
 - **Camera access requires a secure context.** Browsers only allow `getUserMedia` (the live selfie capture)
   on `localhost` or over HTTPS. This works out of the box in local development; when you deploy, make sure
   the frontend is served over HTTPS or the registration camera step will fail.
-- Property and identity images are stored via Cloudinary (`backend/middleware/upload.js`, multer storage driver).
+- Property and identity images are stored via Cloudinary. Property, hero, blog, avatar, and EMI-slip uploads go **browser → Cloudinary directly** (signed, purpose-based: `backend/config/uploadPurposes.js`, ownership tracked in `Upload`/`UploadSession`, deferred cleanup via nightly sweeper). The legacy browser → Render → Cloudinary multer path (`backend/middleware/upload.js`) remains behind per-surface feature flags (`*_DIRECT_UPLOAD_ENABLED`); identity/selfie documents still use it (Phase 5).
 - Transactional email goes through Brevo (`backend/utils/sendEmail.js`, needs `BREVO_API_KEY`); SMS sending is stubbed.
 - Property approval workflow, payment gateway, and the other "Future Enhancements"
   listed in the spec are intentionally out of scope for this MVP and are not implemented.

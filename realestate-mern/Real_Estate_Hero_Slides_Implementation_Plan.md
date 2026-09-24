@@ -2,6 +2,8 @@
 
 ## Real Estate MERN Project
 
+> **STATUS: IMPLEMENTED + MIGRATED (direct uploads, Phase 3).** The module below shipped as specified (admin carousel, image/video media, CTA, scheduling, ordering). Media upload has since moved from the multer flow described in §11 to direct browser → Cloudinary (`hero-media`/`hero-thumbnail` purposes, `uploadSessionId` + uploadIds JSON submit) behind `HERO_DIRECT_UPLOAD_ENABLED`; legacy multipart remains available. This document is now the as-built record for scope; see code (`heroSlideController.js`, `HeroSlideForm.jsx`) for current behavior.
+
 > **Purpose:** Implement a reusable, admin-managed hero carousel that supports image/video media, configurable CTA actions, optional property promotion, scheduling, ordering, and responsive public display.
 
 ---
