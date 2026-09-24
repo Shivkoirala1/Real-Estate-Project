@@ -1,5 +1,26 @@
 import React, { useRef } from 'react';
 import { useToast } from '../context/ToastContext';
+import { CLIENT_UPLOAD_LIMITS, useObjectPreview, validateImageFile } from '../utils/imageUpload';
+
+// Single picked-file thumbnail. The object URL is minted once and revoked on
+// unmount/replace (previously a fresh URL was created on every render).
+const PickedThumb = ({ file, onRemove }) => {
+  const preview = useObjectPreview(file);
+  return (
+    <div className="relative w-24 h-24 rounded-sm overflow-hidden border border-brass group">
+      {preview && <img src={preview} alt="" className="w-full h-full object-cover" />}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-brick text-white text-xs leading-5 opacity-0 group-hover:opacity-100 transition-opacity"
+        aria-label="Remove photo"
+      >
+        ×
+      </button>
+      <span className="absolute bottom-0 inset-x-0 bg-brass/90 text-navy text-[10px] text-center font-semibold py-0.5">New</span>
+    </div>
+  );
+};
 
 // A file input that ACCUMULATES selections instead of replacing them - the
 // browser's native <input type="file" multiple> replaces the whole selection
@@ -18,8 +39,19 @@ const MultiImageUpload = ({ files, onFilesChange, existingImages = [], onRemoveE
     if (imagesOnly.length < picked.length) {
       showToast('Only photo files are allowed here - any video files you selected were skipped.', 'error');
     }
-    if (imagesOnly.length === 0) return;
-    onFilesChange([...files, ...imagesOnly]);
+    // Fail fast in the browser (backend 10 MB cap is authoritative) instead
+    // of uploading an oversized file to Render first.
+    const withinLimit = [];
+    for (const file of imagesOnly) {
+      const err = validateImageFile(file, { maxBytes: CLIENT_UPLOAD_LIMITS.propertyImage, label: file.name || 'Photo' });
+      if (err) {
+        showToast(err, 'error');
+        continue;
+      }
+      withinLimit.push(file);
+    }
+    if (withinLimit.length === 0) return;
+    onFilesChange([...files, ...withinLimit]);
     // reset the input so selecting the same file again still fires onChange
     e.target.value = '';
   };
@@ -50,18 +82,7 @@ const MultiImageUpload = ({ files, onFilesChange, existingImages = [], onRemoveE
             </div>
           ))}
           {files.map((file, i) => (
-            <div key={`new-${i}`} className="relative w-24 h-24 rounded-sm overflow-hidden border border-brass group">
-              <img src={URL.createObjectURL(file)} alt="" className="w-full h-full object-cover" />
-              <button
-                type="button"
-                onClick={() => removeFile(i)}
-                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-brick text-white text-xs leading-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                aria-label="Remove photo"
-              >
-                ×
-              </button>
-              <span className="absolute bottom-0 inset-x-0 bg-brass/90 text-navy text-[10px] text-center font-semibold py-0.5">New</span>
-            </div>
+            <PickedThumb key={`new-${i}`} file={file} onRemove={() => removeFile(i)} />
           ))}
         </div>
       )}

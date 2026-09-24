@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -29,6 +29,22 @@ const Register = () => {
   const [citizenshipBack, setCitizenshipBack] = useState(null);
   const [citizenshipBackPreview, setCitizenshipBackPreview] = useState(null);
   const [stepTwoErrors, setStepTwoErrors] = useState({});
+
+  // Track blob previews so they can be revoked on replace/unmount
+  // (previously every pick leaked an object URL).
+  const previewsRef = React.useRef([]);
+  useEffect(() => {
+    previewsRef.current = [selfiePreview, citizenshipFrontPreview, citizenshipBackPreview];
+  });
+  useEffect(() => () => {
+    for (const url of previewsRef.current) {
+      if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+    }
+  }, []);
+  const replacePreview = (oldUrl, newUrl, setPreview) => {
+    if (oldUrl && oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
+    setPreview(newUrl);
+  };
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -61,7 +77,7 @@ const Register = () => {
 
   const handleSelfieCapture = (file, previewUrl) => {
     setSelfieFile(file);
-    setSelfiePreview(previewUrl);
+    replacePreview(selfiePreview, previewUrl, setSelfiePreview);
   };
 
   const validateIdPhoto = (file) => {
@@ -85,7 +101,7 @@ const Register = () => {
     }
     setStepTwoErrors({ ...stepTwoErrors, citizenshipFront: undefined });
     setCitizenshipFront(file);
-    setCitizenshipFrontPreview(URL.createObjectURL(file));
+    replacePreview(citizenshipFrontPreview, URL.createObjectURL(file), setCitizenshipFrontPreview);
   };
 
   const handleCitizenshipBackChange = (e) => {
@@ -99,7 +115,7 @@ const Register = () => {
     }
     setStepTwoErrors({ ...stepTwoErrors, citizenshipBack: undefined });
     setCitizenshipBack(file);
-    setCitizenshipBackPreview(URL.createObjectURL(file));
+    replacePreview(citizenshipBackPreview, URL.createObjectURL(file), setCitizenshipBackPreview);
   };
 
   const validateStepTwo = () => {
@@ -240,7 +256,7 @@ const Register = () => {
             <CameraCapture
               onCapture={handleSelfieCapture}
               capturedImage={selfiePreview}
-              onRetake={() => { setSelfieFile(null); setSelfiePreview(null); }}
+              onRetake={() => { setSelfieFile(null); replacePreview(selfiePreview, null, setSelfiePreview); }}
             />
             {stepTwoErrors.selfie && <p className="text-xs text-brick mt-1">{stepTwoErrors.selfie}</p>}
           </div>

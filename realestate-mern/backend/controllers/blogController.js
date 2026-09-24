@@ -1,10 +1,38 @@
 const BlogPost = require("../models/BlogPost");
 const createSlug = require("../utils/slugify");
 const verifyToken = require('../utils/generateToken').verifyToken;
+// Phase 4 direct-upload: blog covers may arrive as an authorized uploadId
+// (browser → Cloudinary) instead of multipart bytes. Legacy req.file stays
+// intact behind BLOG_DIRECT_UPLOAD_ENABLED.
+const {
+  resolveBlogCover,
+  commitUploads,
+  retireRemovedEntityUploads,
+  publicDeliveryUrl,
+  closeSession,
+} = require("../services/uploadService");
+const { recordSingleSubmit } = require("../utils/uploadMetrics");
+
+const isBlogDirectEnabled = () => process.env.BLOG_DIRECT_UPLOAD_ENABLED !== 'false';
+
+// Tags arrive as a JSON string on legacy multipart, or a real array on
+// direct JSON submits. Invalid legacy strings fall back to [] (preserved).
+const parseBlogTags = (tags) => {
+  if (tags === undefined || tags === null) return [];
+  if (Array.isArray(tags)) return tags.filter((t) => typeof t === 'string');
+  try {
+    const parsed = JSON.parse(tags);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
 
 
 // Create Blog
 const createBlog = async (req, res) => {
+  const startedAt = Date.now();
+  const clientStats = req.body.clientStats && typeof req.body.clientStats === 'object' ? req.body.clientStats : {};
   try {
     const {
       title,
@@ -13,11 +41,40 @@ const createBlog = async (req, res) => {
       status,
     } = req.body;
 
-    const coverImage = req.file
+    const directRequested = req.body.coverUploadId !== undefined;
+    let direct = null;
+    if (directRequested) {
+      if (!isBlogDirectEnabled()) {
+        recordSingleSubmit('blog-cover', 'direct', { durationMs: Date.now() - startedAt, outcome: 'error', clientStats });
+        return res.status(400).json({
+          message: "Direct cover upload is disabled — please use the standard cover upload",
+        });
+      }
+      try {
+        const row = await resolveBlogCover({
+          actor: req.user,
+          sessionId: req.body.uploadSessionId,
+          coverUploadId: req.body.coverUploadId,
+        });
+        direct = row ? { url: publicDeliveryUrl(row), upload: row } : null;
+      } catch (err) {
+        recordSingleSubmit('blog-cover', 'direct', { durationMs: Date.now() - startedAt, outcome: 'validation', clientStats });
+        return res.status(err.statusCode || 500).json({ message: err.message || "Failed to create blog" });
+      }
+    }
+
+    const coverImage = direct ? direct.url : req.file
     ? req.file.path
     : null;
 
     if (!title || !body) {
+      // Direct uploads stay `completed` — resubmit reuses the id.
+      if (direct) {
+        recordSingleSubmit('blog-cover', 'direct', {
+          durationMs: Date.now() - startedAt, hasFile: true,
+          bytes: direct.upload.clientMeta.bytes || 0, outcome: 'validation', clientStats,
+        });
+      }
       return res.status(400).json({
         message: "Title and body are required",
       });
@@ -27,20 +84,18 @@ const createBlog = async (req, res) => {
     const existingBlog = await BlogPost.findOne({ slug });
 
     if (existingBlog) {
+      if (direct) {
+        recordSingleSubmit('blog-cover', 'direct', {
+          durationMs: Date.now() - startedAt, hasFile: true,
+          bytes: direct.upload.clientMeta.bytes || 0, outcome: 'validation', clientStats,
+        });
+      }
       return res.status(409).json({
         message: "A blog with this title already exists",
       });
     }
 
-    let parsedTags = [];
-
-    if (tags) {
-    try {
-        parsedTags = JSON.parse(tags);
-    } catch {
-        parsedTags = [];
-    }
-    }
+    const parsedTags = parseBlogTags(tags);
 
     const blog = await BlogPost.create({
       title,
@@ -55,6 +110,35 @@ const createBlog = async (req, res) => {
           ? new Date()
           : null,
     });
+
+    if (direct) {
+      try {
+        await commitUploads({
+          actor: req.user,
+          sessionId: req.body.uploadSessionId,
+          uploadIds: [String(direct.upload._id)],
+          entityType: 'blog',
+          entityId: String(blog._id),
+        });
+      } catch (err) {
+        await BlogPost.deleteOne({ _id: blog._id });
+        recordSingleSubmit('blog-cover', 'direct', {
+          durationMs: Date.now() - startedAt, hasFile: true,
+          bytes: direct.upload.clientMeta.bytes || 0, outcome: 'error', clientStats,
+        });
+        return res.status(err.statusCode || 500).json({ message: err.message || "Failed to create blog" });
+      }
+      await closeSession(req.body.uploadSessionId, req.user);
+      recordSingleSubmit('blog-cover', 'direct', {
+        durationMs: Date.now() - startedAt, hasFile: true,
+        bytes: direct.upload.clientMeta.bytes || 0, outcome: 'success', clientStats,
+      });
+    } else {
+      recordSingleSubmit('blog-cover', 'legacy', {
+        durationMs: Date.now() - startedAt, hasFile: Boolean(req.file),
+        bytes: (req.file && (req.file.size || req.file.bytes)) || 0, outcome: 'success',
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -233,6 +317,8 @@ const getBlogBySlug = async (req, res) => {
 
 // Update a blog by ID
 const updateBlog = async (req, res) => {
+  const startedAt = Date.now();
+  const clientStats = req.body.clientStats && typeof req.body.clientStats === 'object' ? req.body.clientStats : {};
   try {
     const { title, body, tags, status } = req.body;
 
@@ -242,6 +328,29 @@ const updateBlog = async (req, res) => {
       return res.status(404).json({
         message: "Blog not found",
       });
+    }
+
+    const directRequested = req.body.coverUploadId !== undefined;
+    let direct = null;
+    if (directRequested) {
+      if (!isBlogDirectEnabled()) {
+        recordSingleSubmit('blog-cover', 'direct', { durationMs: Date.now() - startedAt, outcome: 'error', clientStats });
+        return res.status(400).json({
+          message: "Direct cover upload is disabled — please use the standard cover upload",
+        });
+      }
+      try {
+        const row = await resolveBlogCover({
+          actor: req.user,
+          sessionId: req.body.uploadSessionId,
+          coverUploadId: req.body.coverUploadId,
+          forEntityId: blog._id,
+        });
+        direct = row ? { url: publicDeliveryUrl(row), upload: row } : null;
+      } catch (err) {
+        recordSingleSubmit('blog-cover', 'direct', { durationMs: Date.now() - startedAt, outcome: 'validation', clientStats });
+        return res.status(err.statusCode || 500).json({ message: err.message || "Failed to update blog" });
+      }
     }
 
     if (title) {
@@ -254,14 +363,18 @@ const updateBlog = async (req, res) => {
     }
 
     if (tags !== undefined) {
-  try {
-    blog.tags = JSON.parse(tags);
-  } catch (error) {
-    return res.status(400).json({
-      message: "Invalid tags format",
-    });
-  }
-}
+      if (Array.isArray(tags)) {
+        blog.tags = tags.filter((t) => typeof t === 'string');
+      } else {
+        try {
+          blog.tags = JSON.parse(tags);
+        } catch (error) {
+          return res.status(400).json({
+            message: "Invalid tags format",
+          });
+        }
+      }
+    }
 
     if (status !== undefined) {
       blog.status = status;
@@ -275,11 +388,51 @@ const updateBlog = async (req, res) => {
       }
     }
 
-    if (req.file) {
+    if (direct) {
+      // Commit BEFORE save (the blog already exists). A save failure leaves
+      // committed rows pointing at valid bytes — the next update retires
+      // them if replaced; the working cover is untouched.
+      try {
+        await commitUploads({
+          actor: req.user,
+          sessionId: req.body.uploadSessionId,
+          uploadIds: [String(direct.upload._id)],
+          entityType: 'blog',
+          entityId: String(blog._id),
+        });
+      } catch (err) {
+        recordSingleSubmit('blog-cover', 'direct', {
+          durationMs: Date.now() - startedAt, hasFile: true,
+          bytes: direct.upload.clientMeta.bytes || 0, outcome: 'error', clientStats,
+        });
+        return res.status(err.statusCode || 500).json({ message: err.message || "Failed to update blog" });
+      }
+      blog.coverImage = direct.url;
+    } else if (req.file) {
         blog.coverImage = req.file.path;
     }
 
     await blog.save();
+
+    if (direct) {
+      // Deferred retirement of the replaced direct cover (legacy covers
+      // with no Upload row are left alone — ownership unprovable).
+      await retireRemovedEntityUploads({
+        entityType: 'blog',
+        entityId: blog._id,
+        keepUrls: [blog.coverImage],
+      });
+      await closeSession(req.body.uploadSessionId, req.user);
+      recordSingleSubmit('blog-cover', 'direct', {
+        durationMs: Date.now() - startedAt, hasFile: true,
+        bytes: direct.upload.clientMeta.bytes || 0, outcome: 'success', clientStats,
+      });
+    } else {
+      recordSingleSubmit('blog-cover', 'legacy', {
+        durationMs: Date.now() - startedAt, hasFile: Boolean(req.file),
+        bytes: (req.file && (req.file.size || req.file.bytes)) || 0, outcome: 'success',
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -306,6 +459,10 @@ const deleteBlog = async (req, res) => {
         message: "Blog not found",
       });
     }
+
+    // Retire direct-upload covers (destroys bytes best-effort + marks
+    // rows). Legacy covers were never cleaned — preserved behavior.
+    await retireRemovedEntityUploads({ entityType: 'blog', entityId: blog._id, keepUrls: [] });
 
     res.status(200).json({
       message: "Blog deleted successfully",

@@ -1,26 +1,26 @@
 # Youth Real Estate — Real Estate Management System (MERN Stack)
 
-A full-stack MVP real estate platform built with MongoDB, Express, React, and Node.js, based on the
-provided project specification. It supports visitors browsing/searching properties, registered users
-saving favorites, staff/agents managing their own listings, and an administrator with full system control.
+A full-stack real estate platform built with MongoDB, Express, React, and Node.js. It supports visitors browsing/searching properties, registered users saving favorites, staff/agents managing their own listings, and an administrator with full system control. Beyond listings, the platform runs lead pipelines, visit scheduling, buyer/agent conversations with realtime delivery (Socket.IO), notifications, sales/rental verification with commissions, EMI plans, property management, reviews, rewards, analytics, and data archival/retention jobs.
 
 ## Project Structure
 
 ```
 realestate-mern/
-├── backend/            Express + MongoDB REST API
+├── backend/            Express + MongoDB REST API (+ Socket.IO realtime delivery)
 │   ├── config/         Database connection
-│   ├── controllers/    Route logic (auth, properties, users, categories, inquiries, dashboard)
-│   ├── middleware/     JWT auth, role authorization, error handling, file uploads
-│   ├── models/         Mongoose schemas (User, Property, PropertyType, District, City, Inquiry)
+│   ├── controllers/    Route logic (auth, properties, users, leads, visits, conversations, sales, EMI, …)
+│   ├── middleware/     JWT auth (REST + socket handshake), role authorization, error handling, file uploads
+│   ├── models/         Mongoose schemas (User, Property, Lead, Conversation, Notification, Sale, Rental, EMIPlan, …)
 │   ├── routes/         Express route definitions
-│   ├── utils/          Token generation, async handler, DB seeder
+│   ├── realtime/       Socket.IO server: event contract, auth, rooms, fail-safe publishers
+│   ├── tests/          Backend suites (`node --test tests/*.test.js`) + notification type guardrail
+│   ├── utils/          Token generation, async handler, notify(), DB seeder, cron jobs
 │   ├── uploads/         Uploaded property images are stored here
-│   └── server.js       App entry point
+│   └── server.js       App entry point (single HTTP server for REST + Socket.IO)
 └── frontend/           React (Vite) + Tailwind CSS client
     └── src/
-        ├── api/         Axios instance with JWT interceptor
-        ├── context/      Auth + Toast notification providers
+        ├── services/    API services + Socket.IO client singleton (`socket.js`)
+        ├── context/      Auth, notification, conversation, toast, and other providers
         ├── components/   Navbar, Footer, PropertyCard, SearchFilterBar, dashboard widgets, etc.
         └── pages/        Public pages + role-based dashboard pages
 ```
@@ -34,6 +34,10 @@ realestate-mern/
 - **Favorites**: any registered user can save/view favorite properties.
 - **Administrator**: full dashboard (totals, recent listings, pending-verification alert), manage all properties, manage users (activate/deactivate, reset password, remove, promote to admin), manage categories (property types, districts, cities), view all inquiries.
 - **Auth**: JWT-based authentication, bcrypt password hashing, verification-gated route protection.
+- **Realtime**: Socket.IO server→client delivery for notification/conversation unread badges, live conversation messages, and thread open/close status. REST remains the only mutation path and the source of truth; see `real-time-rest-socketio-final-implementation-plan.md` and `real-time-deployment-verification.md`.
+- **Leads, visits & conversations**: unified lead pipeline with stages/follow-ups, visit scheduling with status lifecycle, and participant-scoped conversation threads (inquirer/owner/admin) with unread tracking.
+- **Sales, rentals, commissions & EMI**: admin-verified sale/rental records, commission tracking, EMI plans with installment verification and due/overdue reminders.
+- **Notifications**: ~40 typed notifications fanned out from domain actions plus daily cron reminders, with per-user unread counts.
 - **Search & Filter**: keyword, property type, district, price range, bedrooms, sort by price/date.
 - **Responsive UI** built with Tailwind CSS.
 
@@ -43,7 +47,8 @@ realestate-mern/
 |---|---|---|---|
 | Guest (not logged in) | ✅ | ❌ | ❌ |
 | Registered, unverified | ✅ | ❌ (blocked until admin approval) | ❌ |
-| Registered, verified | ✅ | ✅ | ❌ |
+| Registered, verified (user) | ✅ | ✅ | ❌ |
+| Agent | ✅ | ✅ (own listings + assigned leads/visits) | ❌ |
 | Admin | ✅ | ✅ (any listing) | ✅ |
 
 ## Prerequisites
@@ -56,7 +61,7 @@ realestate-mern/
 ```bash
 cd backend
 npm install
-cp .env.example .env      # then edit .env with your MongoDB URI and a strong JWT_SECRET
+cp .env.example .env      # then edit .env: MONGO_URI, JWT_SECRET, CLIENT_ORIGIN (frontend URL, also gates the Socket.IO handshake)
 npm run seed               # creates admin + sample verified user, starter categories, and 10 sample listings
 npm run dev                 # starts the API on https://real-estate-project-p237.onrender.com
 ```
@@ -87,7 +92,18 @@ npm run build                # outputs static files to frontend/dist
 ```
 
 Serve the `dist` folder with any static host (Nginx, Vercel, Netlify, etc.), and deploy the `backend`
-folder to a Node host (Render, Railway, EC2, etc.) with your production `.env` values.
+folder to a Node host (Render, Railway, EC2, etc.) with your production `.env` values. The frontend
+derives its Socket.IO URL from `VITE_API_URL` (minus `/api`), so no extra realtime configuration is
+needed as long as `VITE_API_URL` points at the backend and `CLIENT_ORIGIN` allows the frontend origin
+(`wss://` follows automatically from `https://`).
+
+## Tests
+
+```bash
+cd backend
+node --test tests/*.test.js   # realtime suites (auth, rooms, messages, status, unread, e2e) + API contract suite
+npm run check:notifications   # guardrail: every notify() type must exist in the Notification enum
+```
 
 ## Recent Fixes & New Features
 
@@ -113,9 +129,8 @@ folder to a Node host (Render, Railway, EC2, etc.) with your production `.env` v
 - **Camera access requires a secure context.** Browsers only allow `getUserMedia` (the live selfie capture)
   on `localhost` or over HTTPS. This works out of the box in local development; when you deploy, make sure
   the frontend is served over HTTPS or the registration camera step will fail.
-- Property and identity images are currently stored on local disk under `backend/uploads`. For production,
-  swap the multer disk storage in `backend/middleware/upload.js` for a cloud storage driver (S3, Cloudinary,
-  etc.) as noted in the spec's "Cloud Storage Support" requirement.
-- Email/SMS notifications, property approval workflow, payment gateway, and the other "Future Enhancements"
+- Property and identity images are stored via Cloudinary (`backend/middleware/upload.js`, multer storage driver).
+- Transactional email goes through Brevo (`backend/utils/sendEmail.js`, needs `BREVO_API_KEY`); SMS sending is stubbed.
+- Property approval workflow, payment gateway, and the other "Future Enhancements"
   listed in the spec are intentionally out of scope for this MVP and are not implemented.
 - Update `JWT_SECRET` and seeded account passwords before deploying to production.

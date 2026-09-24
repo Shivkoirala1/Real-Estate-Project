@@ -33,6 +33,7 @@ const saleRoutes = require('./routes/saleRoutes');
 const rentalRoutes = require('./routes/rentalRoutes');
 const commissionRoutes = require('./routes/commissionRoutes');
 const emiPlanRoutes = require('./routes/emiPlanRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
 const agentRoutes = require('./routes/agentRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const rewardRoutes = require('./routes/rewardRoutes');
@@ -100,6 +101,17 @@ try {
     cron.schedule('30 3 * * *', () => {
       runVerificationRetentionPass().catch((err) => console.error('Verification retention job failed:', err.message));
     });
+
+    // Nightly, 04:00 - destroy expired/uncommitted direct-upload assets and
+    // retry queued Cloudinary deletes (see utils/uploadCleanup.js). Shares
+    // the DATA_LIFECYCLE_JOBS_ENABLED flag; UPLOAD_CLEANUP_ENABLED=false
+    // skips just this job.
+    if (process.env.UPLOAD_CLEANUP_ENABLED !== 'false') {
+      const { runUploadCleanupPass } = require('./utils/uploadCleanup');
+      cron.schedule('0 4 * * *', () => {
+        runUploadCleanupPass().catch((err) => console.error('Upload cleanup job failed:', err.message));
+      });
+    }
   }
 } catch (err) {
   console.error('Data lifecycle schedulers not started:', err.message);
@@ -133,6 +145,9 @@ app.use('/api/property-management', propertyManagementRoutes);
 app.use('/api/management-services', managementServiceRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/hero-slides', heroSlideRoutes);
+// Phase 1 direct-upload infrastructure (additive — legacy multer paths stay
+// mounted until each surface migrates and validates).
+app.use('/api/uploads', uploadRoutes);
 
 // Unified lead management module
 app.use('/api/leads', leadRoutes);

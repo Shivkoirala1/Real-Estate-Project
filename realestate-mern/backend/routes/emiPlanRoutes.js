@@ -27,6 +27,13 @@ router.post(
   upload.paymentSlip.single('paymentSlip'),
   emiPlanController.requestInstallmentVerification
 );
+// Slip viewing: buyer/admin/assigned agent (checked inside) — mints a
+// short-lived signed URL for private direct slips. Multi-segment path, so
+// no conflict with GET /:id above.
+router.get(
+  '/:id/installments/:n/slip',
+  emiPlanController.getInstallmentSlip
+);
 // Admin approves/rejects that request
 router.patch(
   '/:id/installments/:n/verification-request',

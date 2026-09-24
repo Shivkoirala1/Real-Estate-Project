@@ -3,6 +3,17 @@ const Sale = require('../models/Sale');
 const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const { notify, notifyMany } = require('../utils/notify');
+// Phase 4 direct-upload: slip resolution/commit/retire + private viewing.
+// Legacy req.file handling stays intact behind EMI_DIRECT_UPLOAD_ENABLED.
+const {
+  resolveEmiSlip,
+  commitUploads,
+  retireRemovedEntityUploads,
+  closeSession,
+} = require('../services/uploadService');
+const { privateDownloadUrl } = require('../utils/cloudinary');
+const Upload = require('../models/Upload');
+const { recordSingleSubmit } = require('../utils/uploadMetrics');
 
 const PLAN_STATUSES = EMIPlan.STATUSES;
 const INSTALLMENT_STATUSES = EMIPlan.INSTALLMENT_STATUSES;
@@ -603,6 +614,10 @@ const updateInstallment = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'No fields provided to update' });
   }
 
+  // Phase 4: direct-slip publicIds dropped by a revert, retired only after
+  // the save below succeeds.
+  const retiredSlipPublicIds = [];
+
   // ---- validate the body against the CURRENT state before mutating ----
   if (status !== undefined && !INSTALLMENT_STATUSES.includes(status)) {
     return res.status(400).json({ success: false, message: 'Invalid status. Use pending, paid or waived' });
@@ -703,6 +718,12 @@ const updateInstallment = asyncHandler(async (req, res) => {
         installment.verification.requestedAmount = null;
         installment.verification.requestedDate = null;
         installment.verification.paymentSlipUrl = '';
+        // Phase 4: remember the dropped direct slip for post-save
+        // retirement (never retire before the revert itself persists).
+        if (installment.verification.paymentSlipPublicId) {
+          retiredSlipPublicIds.push(installment.verification.paymentSlipPublicId);
+          installment.verification.paymentSlipPublicId = '';
+        }
         installment.verification.note = '';
         installment.verification.submittedAt = null;
         installment.verification.reviewedBy = null;
@@ -780,6 +801,18 @@ const updateInstallment = asyncHandler(async (req, res) => {
   }
 
   await plan.save();
+
+  if (retiredSlipPublicIds.length > 0) {
+    // Revert persisted — now retire dropped direct slips. keepPublicIds is
+    // rebuilt from the SAVED plan so sibling installments' slips survive.
+    await retireRemovedEntityUploads({
+      entityType: 'emi-installment',
+      entityId: plan._id,
+      keepPublicIds: (plan.installments || [])
+        .map((i) => i.verification && i.verification.paymentSlipPublicId)
+        .filter(Boolean),
+    });
+  }
 
   // ---- progress snapshot for the UI ----
   const all = plan.installments || [];
@@ -1076,6 +1109,8 @@ const updateEmiPlan = asyncHandler(async (req, res) => {
  * @access  Private (the plan's linked buyer only)
  */
 const requestInstallmentVerification = asyncHandler(async (req, res) => {
+  const startedAt = Date.now();
+  const clientStats = req.body.clientStats && typeof req.body.clientStats === 'object' ? req.body.clientStats : {};
   const { paidAmount, paidDate, note } = req.body;
 
   const installmentNumber = parseInt(req.params.n, 10);
@@ -1136,11 +1171,43 @@ const requestInstallmentVerification = asyncHandler(async (req, res) => {
   const paymentSlipUrl = req.file ? req.file.path : '';
   const trimmedNote = typeof note === 'string' ? note.trim() : '';
 
+  // Phase 4 direct-upload: the slip may arrive as an authorized uploadId
+  // (browser → Cloudinary, private delivery) instead of multipart bytes.
+  // All business guards above already ran; resolve re-validates the
+  // buyer/plan/installment triple for staleness and returns the private
+  // publicId — no permanent URL ever lands in the verification record.
+  const directRequested = req.body.paymentSlipUploadId !== undefined;
+  let directSlip = null;
+  if (directRequested) {
+    if (process.env.EMI_DIRECT_UPLOAD_ENABLED === 'false') {
+      recordSingleSubmit('emi-slip', 'direct', { durationMs: Date.now() - startedAt, outcome: 'error', clientStats });
+      return res.status(400).json({ success: false, message: 'Direct slip upload is disabled — please use the standard slip upload' });
+    }
+    try {
+      directSlip = await resolveEmiSlip({
+        actor: req.user,
+        sessionId: req.body.uploadSessionId,
+        slipUploadId: req.body.paymentSlipUploadId,
+        planId: req.params.id,
+        installmentNo: installmentNumber,
+      });
+    } catch (err) {
+      recordSingleSubmit('emi-slip', 'direct', { durationMs: Date.now() - startedAt, outcome: 'validation', clientStats });
+      throw err;
+    }
+  }
+
+  // Replacement (after reject/revert): the previous direct slip is retired
+  // once the new reference persists — never before. The retire pass below
+  // keys off keepPublicIds, so no explicit old-slip handling is needed.
+  const prevVerification = installment.verification ? installment.verification.toObject() : null;
+
   installment.verification = {
     status: 'pending',
     requestedAmount,
     requestedDate,
-    paymentSlipUrl,
+    paymentSlipUrl: directSlip ? '' : paymentSlipUrl,
+    paymentSlipPublicId: directSlip ? directSlip.publicId : '',
     note: trimmedNote,
     submittedAt: new Date(),
     reviewedBy: null,
@@ -1150,12 +1217,63 @@ const requestInstallmentVerification = asyncHandler(async (req, res) => {
 
   plan.recordActivity({
     type: 'verification_requested',
-    message: `Buyer submitted payment verification for installment ${installmentNumber} (${npr(requestedAmount)}, ${formatDate(requestedDate)})${paymentSlipUrl ? ' with a payment slip' : ''}`,
+    message: `Buyer submitted payment verification for installment ${installmentNumber} (${npr(requestedAmount)}, ${formatDate(requestedDate)})${paymentSlipUrl || directSlip ? ' with a payment slip' : ''}`,
     by: req.user._id,
     byName: req.user.name,
   });
 
   await plan.save();
+
+  if (directSlip) {
+    try {
+      await commitUploads({
+        actor: req.user,
+        sessionId: req.body.uploadSessionId,
+        uploadIds: [String(directSlip.upload._id)],
+        entityType: 'emi-installment',
+        entityId: String(plan._id),
+      });
+    } catch (err) {
+      // Restore the previous verification so the record never points at an
+      // uncommitted upload (the sweeper could otherwise destroy bytes the
+      // record still references).
+      try {
+        if (prevVerification) {
+          installment.verification = prevVerification;
+          await plan.save();
+        }
+      } catch (restoreErr) {
+        console.error('EMI verification rollback failed:', restoreErr.message);
+      }
+      recordSingleSubmit('emi-slip', 'direct', {
+        durationMs: Date.now() - startedAt, hasFile: true,
+        bytes: directSlip.upload.clientMeta.bytes || 0, outcome: 'error', clientStats,
+      });
+      throw err;
+    }
+    // Retire replaced direct slips. keepPublicIds spans EVERY installment's
+    // current slip (rows are committed per-plan, so a naive "keep just the
+    // new one" would retire sibling installments' slips). Legacy slip URLs
+    // have no Upload row and are left alone.
+    const keepSlipIds = (plan.installments || [])
+      .map((i) => i.verification && i.verification.paymentSlipPublicId)
+      .filter(Boolean);
+    await retireRemovedEntityUploads({
+      entityType: 'emi-installment',
+      entityId: plan._id,
+      keepPublicIds: keepSlipIds,
+    });
+    await closeSession(req.body.uploadSessionId, req.user);
+    recordSingleSubmit('emi-slip', 'direct', {
+      durationMs: Date.now() - startedAt, hasFile: true,
+      bytes: directSlip.upload.clientMeta.bytes || 0, outcome: 'success', clientStats,
+    });
+  } else {
+    recordSingleSubmit('emi-slip', 'legacy', {
+      durationMs: Date.now() - startedAt, hasFile: Boolean(req.file),
+      bytes: (req.file && (req.file.size || req.file.bytes)) || 0, outcome: 'success',
+    });
+  }
   await plan.populate(DETAIL_POPULATE);
 
   const propertyTitle = plan.property && plan.property.title ? plan.property.title : 'your property';
@@ -1192,6 +1310,60 @@ const requestInstallmentVerification = asyncHandler(async (req, res) => {
     message: 'Payment verification request submitted. You will be notified once it is reviewed.',
     plan,
   });
+});
+
+/**
+ * @desc    View an installment's payment slip. Direct-upload slips are
+ *          private Cloudinary assets: this mints a short-lived signed URL
+ *          (5 minutes) after authorization — no permanent slip URL is ever
+ *          stored or returned. Legacy slips (public URL) pass through.
+ * @route   GET /api/emi-plans/:id/installments/:n/slip
+ * @access  Private (admin, assigned agent, or linked buyer — mirrors
+ *          getEmiPlanById; buyers are read-only)
+ */
+const getInstallmentSlip = asyncHandler(async (req, res) => {
+  const installmentNumber = parseInt(req.params.n, 10);
+  if (!Number.isInteger(installmentNumber) || installmentNumber < 1) {
+    return res.status(400).json({ success: false, message: 'Invalid installment number' });
+  }
+  const plan = await EMIPlan.findById(req.params.id);
+  if (!plan) {
+    return res.status(404).json({ success: false, message: 'EMI plan not found' });
+  }
+
+  const isAdmin = req.user.role === 'admin';
+  const agentId = plan.agent && plan.agent._id ? plan.agent._id : plan.agent;
+  const buyerId = plan.buyer && plan.buyer._id ? plan.buyer._id : plan.buyer;
+  const isAgent = Boolean(agentId) && String(agentId) === String(req.user._id);
+  const isBuyer = Boolean(buyerId) && String(buyerId) === String(req.user._id);
+  if (!isAdmin && !isAgent && !isBuyer) {
+    return res.status(403).json({ success: false, message: 'You are not authorized to view this EMI plan' });
+  }
+
+  const installment = (plan.installments || []).find((i) => i.installmentNumber === installmentNumber);
+  if (!installment || !installment.verification) {
+    return res.status(404).json({ success: false, message: 'No verification request for this installment' });
+  }
+
+  const publicId = installment.verification.paymentSlipPublicId || '';
+  if (publicId) {
+    // Format comes from the server-side Upload row (advisory, used only to
+    // build a viewable URL — authorization already happened above).
+    const row = await Upload.findOne({ publicId }).select('clientMeta resourceType status');
+    if (!row || row.status === 'deleted') {
+      return res.status(410).json({ success: false, message: 'Payment slip is no longer available' });
+    }
+    const format = (row.clientMeta && row.clientMeta.format) || 'jpg';
+    const expiresAt = Math.floor(Date.now() / 1000) + 5 * 60;
+    const url = privateDownloadUrl(publicId, { format, resourceType: 'image', expiresAt });
+    return res.json({ success: true, url, expiresAt: new Date(expiresAt * 1000).toISOString(), legacy: false });
+  }
+
+  // Legacy slips remain plain public URLs (unchanged behavior).
+  if (installment.verification.paymentSlipUrl) {
+    return res.json({ success: true, url: installment.verification.paymentSlipUrl, legacy: true });
+  }
+  return res.status(404).json({ success: false, message: 'No payment slip attached' });
 });
 
 /**
@@ -1341,4 +1513,5 @@ module.exports = {
   updateInstallment,
   requestInstallmentVerification,
   reviewInstallmentVerification,
+  getInstallmentSlip,
 };

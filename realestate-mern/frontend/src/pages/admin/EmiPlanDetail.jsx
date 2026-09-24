@@ -4,6 +4,7 @@ import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import {
   getEmiPlanById,
+  getInstallmentSlipUrl,
   updateEmiPlan,
   updateInstallment,
   reviewInstallmentVerification,
@@ -50,6 +51,58 @@ const VERIFICATION_LABEL = {
 };
 
 const npr = (x) => `NPR ${Number(x || 0).toLocaleString()}`;
+
+// Payment-slip viewer. Legacy slips are plain public URLs; direct-upload
+// slips are private — the backend mints a short-lived signed URL on demand
+// (fetched when the reviewer opens it, never stored).
+const SlipView = ({ planId, installmentNumber, verification }) => {
+  const [url, setUrl] = useState(verification.paymentSlipUrl || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const hasPrivateSlip = Boolean(verification.paymentSlipPublicId) && !url;
+
+  const loadPrivate = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await getInstallmentSlipUrl(planId, installmentNumber);
+      setUrl(data.url);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not load the slip.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (url) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" className="inline-block mt-3">
+        <img
+          src={url}
+          alt="Payment slip submitted by buyer"
+          className="max-h-48 rounded-sm border border-navy/10"
+        />
+      </a>
+    );
+  }
+  if (hasPrivateSlip) {
+    return (
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={loadPrivate}
+          disabled={loading}
+          className="text-xs font-medium text-brass hover:underline disabled:opacity-50"
+        >
+          {loading ? 'Loading slip…' : 'View payment slip'}
+        </button>
+        {error && <p className="text-xs text-brick mt-1">{error}</p>}
+      </div>
+    );
+  }
+  return <p className="text-xs text-slate-muted mt-3">No payment slip photo attached.</p>;
+};
 
 // Local-timezone yyyy-mm-dd for <input type="date">
 const toDateInput = (value) => {
@@ -278,7 +331,7 @@ const EditRemarksModal = ({ inst, busy, onClose, onSubmit }) => {
 };
 
 // Buyer submitted proof of payment - admin approves (marks paid) or rejects with a reason
-const ReviewVerificationModal = ({ inst, busy, onClose, onSubmit }) => {
+const ReviewVerificationModal = ({ planId, inst, busy, onClose, onSubmit }) => {
   const verification = inst.verification || {};
   const [action, setAction] = useState('approve');
   const [paidAmount, setPaidAmount] = useState(String(verification.requestedAmount ?? inst.amount ?? ''));
@@ -316,19 +369,8 @@ const ReviewVerificationModal = ({ inst, busy, onClose, onSubmit }) => {
         {verification.note && (
           <p className="mt-2 text-xs text-slate-ink border-t border-navy/10 pt-2">Note: {verification.note}</p>
         )}
-        {verification.paymentSlipUrl ? (
-          <a
-            href={verification.paymentSlipUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block mt-3"
-          >
-            <img
-              src={verification.paymentSlipUrl}
-              alt="Payment slip submitted by buyer"
-              className="max-h-48 rounded-sm border border-navy/10"
-            />
-          </a>
+        {verification.paymentSlipUrl || verification.paymentSlipPublicId ? (
+          <SlipView planId={planId} installmentNumber={inst.installmentNumber} verification={verification} />
         ) : (
           <p className="text-xs text-slate-muted mt-3">No payment slip photo attached.</p>
         )}
@@ -933,6 +975,7 @@ const EmiPlanDetail = () => {
       {canManage && editor?.mode === 'reviewVerification' && (
         <ReviewVerificationModal
           key={`review-verification-${editor.inst.installmentNumber}`}
+          planId={plan._id}
           inst={editor.inst}
           busy={busy}
           onClose={() => setEditor(null)}

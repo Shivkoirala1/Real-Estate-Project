@@ -1,4 +1,4 @@
-const cloudinary = require('cloudinary').v2;
+const { cloudinary, publicIdFromUrl } = require('./cloudinary');
 const User = require('../models/User');
 const DataOpsLog = require('../models/DataOpsLog');
 
@@ -30,26 +30,6 @@ const RETENTION_DAYS = {
 };
 
 const PHOTO_FIELDS = ['selfiePhoto', 'citizenshipPhotoFront', 'citizenshipPhotoBack'];
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-// Extracts a Cloudinary public_id from a delivery URL so the bytes can be
-// destroyed. Returns null for non-Cloudinary URLs (legacy /uploads paths,
-// external links), which are simply unlinked rather than deleted.
-const publicIdFromUrl = (url) => {
-  if (typeof url !== 'string' || !url.includes('res.cloudinary.com')) return null;
-  const marker = '/upload/';
-  const idx = url.indexOf(marker);
-  if (idx === -1) return null;
-  let rest = url.slice(idx + marker.length).split('?')[0];
-  rest = rest.replace(/^v\d+\//, '');
-  rest = rest.replace(/\.[a-zA-Z0-9]+$/, '');
-  return rest || null;
-};
 
 const cleanupVerificationDocs = async ({ dryRun = false } = {}) => {
   const cutoff = daysAgo(RETENTION_DAYS.verificationDocs());

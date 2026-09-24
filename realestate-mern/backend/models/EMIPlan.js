@@ -68,6 +68,12 @@ const emiPlanSchema = new mongoose.Schema(
           requestedAmount: { type: Number, default: null, min: 0 },
           requestedDate: { type: Date, default: null }, // date the buyer claims they paid
           paymentSlipUrl: { type: String, default: '' },
+          // Phase 4 direct-upload: restricted slips store the Cloudinary
+          // publicId (private delivery) instead of a permanent URL.
+          // Viewers obtain short-lived signed access via
+          // GET /api/emi-plans/:id/installments/:n/slip. Legacy slips keep
+          // using paymentSlipUrl above.
+          paymentSlipPublicId: { type: String, default: '' },
           note: { type: String, default: '', trim: true }, // buyer's note to the reviewer
           submittedAt: { type: Date, default: null },
           reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

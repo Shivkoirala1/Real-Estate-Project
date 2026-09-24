@@ -7,7 +7,7 @@ import { getPropertyTypes } from '../../services/categoryService';
 import SearchFilterBar from '../../components/SearchFilterBar';
 import PropertyCard from '../../components/PropertyCard';
 import PropertyCategories from '../../components/PropertyCategories';
-import { openContactModal } from '../../utils/contactModal';
+import AgentShowcase from '../../components/AgentShowcase';
 
 const Home = () => {
   const [featured, setFeatured] = useState([]);
@@ -139,33 +139,28 @@ const Home = () => {
         )}
       </section>
 
+      {/* Agents — admin-showcased only; hidden when empty */}
+      <AgentShowcase />
+
       {/* Why choose us */}
-      <section className="max-w-7xl mx-auto px-5 md:px-8 mt-24 grid grid-cols-1 md:grid-cols-2 gap-14 items-center">
-        <div>
-          <p className="eyebrow mb-2">Why Youth Real Estate</p>
-          <h2 className="text-3xl mb-6">A platform built on trust</h2>
-          <div className="space-y-6">
-            {[
-              ['Verified Listings', 'Every property is reviewed by our team before it goes live.'],
-              ['Dedicated Agents', 'Speak directly with the agent responsible for each listing.'],
-              ['Transparent Pricing', 'See negotiable status and full specifications up front.'],
-            ].map(([title, desc]) => (
-              <div key={title} className="flex gap-4">
-                <div className="w-10 h-10 rounded-full bg-sage-light flex items-center justify-center text-sage font-display flex-shrink-0">✓</div>
-                <div>
-                  <p className="font-semibold text-navy mb-1">{title}</p>
-                  <p className="text-sm text-slate-muted leading-relaxed">{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="bg-navy rounded-sm p-10 text-ivory">
-          <p className="font-display text-2xl mb-4">Have a property to sell?</p>
-          <p className="text-ivory/70 mb-6 leading-relaxed">
-            Get in touch with our agent team and we'll help you list, price, and market your property.
-          </p>
-          <button type="button" onClick={openContactModal} className="btn-gold">Contact us</button>
+      <section className="max-w-7xl mx-auto px-5 md:px-8 mt-24 mb-20 text-center">
+        <p className="eyebrow mb-2">Why Youth Real Estate</p>
+        <h2 className="text-3xl mb-3">A platform built on trust</h2>
+        <p className="text-sm text-slate-muted max-w-xl mx-auto mb-10 leading-relaxed">
+          Verified listings, dedicated agents, and transparent pricing — everything you need to decide with confidence.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-left">
+          {[
+            ['Verified Listings', 'Every property is reviewed by our team before it goes live.'],
+            ['Dedicated Agents', 'Speak directly with the agent responsible for each listing.'],
+            ['Transparent Pricing', 'See negotiable status and full specifications up front.'],
+          ].map(([title, desc]) => (
+            <div key={title} className="bg-white border border-navy/10 rounded-sm p-8 shadow-card hover:border-brass/50 hover:shadow-lifted transition-all">
+              <div className="w-10 h-10 rounded-full bg-sage-light flex items-center justify-center text-sage font-display mb-4">✓</div>
+              <p className="font-semibold text-navy mb-1.5">{title}</p>
+              <p className="text-sm text-slate-muted leading-relaxed">{desc}</p>
+            </div>
+          ))}
         </div>
       </section>
     </div>

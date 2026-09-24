@@ -9,6 +9,20 @@ const {
   effectiveState,
   toPublicSlide,
 } = require('../utils/heroSlideMedia');
+// Phase 3 direct-upload: hero media may arrive as authorized uploadIds
+// (browser → Cloudinary) instead of multipart bytes (browser → Render).
+// Legacy req.files handling stays intact behind HERO_DIRECT_UPLOAD_ENABLED.
+const {
+  resolveHeroUploads,
+  commitUploads,
+  retireRemovedEntityUploads,
+  destroyIfOrphaned,
+  releaseEntityUploads,
+  closeSession,
+} = require('../services/uploadService');
+const { recordHeroSubmit } = require('../utils/uploadMetrics');
+
+const isHeroDirectEnabled = () => process.env.HERO_DIRECT_UPLOAD_ENABLED !== 'false';
 
 const IMAGE_MAX_BYTES = 10 * 1024 * 1024; // consistent with property photos
 const URL_RE = /^https?:\/\/.+/i;
@@ -237,13 +251,39 @@ const getHeroSlideById = asyncHandler(async (req, res) => {
 // @route   POST /api/hero-slides
 // @access  Private (admin)
 const createHeroSlide = asyncHandler(async (req, res) => {
+  const startedAt = Date.now();
+  const clientStats = req.body.clientStats && typeof req.body.clientStats === 'object' ? req.body.clientStats : {};
   const files = req.files || {};
   const { errors, normalized } = validateSlideBody(req.body);
 
-  const mediaFile = Array.isArray(files.media) ? files.media[0] : null;
-  if (!mediaFile) errors.push('Slide media file is required');
+  // Direct flow: media arrives as authorized uploadIds (no bytes through
+  // Render). Legacy flow: multer already streamed req.files to Cloudinary.
+  const directRequested = req.body.mediaUploadId !== undefined || req.body.thumbnailUploadId !== undefined;
+  let direct = null;
+  if (directRequested) {
+    if (!isHeroDirectEnabled()) {
+      recordHeroSubmit('direct', { durationMs: Date.now() - startedAt, outcome: 'error', clientStats });
+      return res.status(400).json({ success: false, message: 'Direct hero upload is disabled — please use the standard media upload' });
+    }
+    try {
+      direct = await resolveHeroUploads({
+        actor: req.user,
+        sessionId: req.body.uploadSessionId,
+        mediaUploadId: req.body.mediaUploadId,
+        thumbnailUploadId: req.body.thumbnailUploadId,
+        mediaType: req.body.mediaType,
+        requireMedia: true,
+      });
+    } catch (err) {
+      recordHeroSubmit('direct', { durationMs: Date.now() - startedAt, outcome: 'validation', clientStats });
+      throw err;
+    }
+  }
 
-  let mediaType = null;
+  const mediaFile = Array.isArray(files.media) ? files.media[0] : null;
+  if (direct ? !direct.mediaUrl : !mediaFile) errors.push('Slide media file is required');
+
+  let mediaType = direct ? direct.mediaResourceType : null;
   if (mediaFile) {
     if (mediaFile.mimetype.startsWith('video/')) mediaType = 'video';
     else if (mediaFile.mimetype.startsWith('image/')) mediaType = 'image';
@@ -255,7 +295,21 @@ const createHeroSlide = asyncHandler(async (req, res) => {
     }
   }
 
-  if (errors.length > 0) return failValidation(res, files, errors);
+  if (errors.length > 0) {
+    // Direct uploads stay `completed` — resubmit reuses the ids, no re-upload.
+    if (direct) {
+      recordHeroSubmit('direct', {
+        durationMs: Date.now() - startedAt,
+        kind: direct.mediaResourceType || '',
+        hasThumbnail: Boolean(direct.thumbUrl),
+        bytes: direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0),
+        outcome: 'validation',
+        clientStats,
+      });
+      return res.status(400).json({ success: false, message: errors.join(', ') });
+    }
+    return failValidation(res, files, errors);
+  }
 
   const cta = normalized.cta || { enabled: false, label: '', actionType: 'none', actionValue: '' };
   const { propertyId, handled } = await resolveCtaProperty(cta, null, res);
@@ -273,10 +327,10 @@ const createHeroSlide = asyncHandler(async (req, res) => {
     description: normalized.description ?? '',
     media: {
       type: mediaType,
-      url: mediaFile.path,
-      publicId: mediaFile.filename || null,
-      thumbnailUrl: thumbnailFile ? thumbnailFile.path : null,
-      thumbnailPublicId: thumbnailFile ? thumbnailFile.filename || null : null,
+      url: direct ? direct.mediaUrl : mediaFile.path,
+      publicId: direct ? direct.mediaPublicId : mediaFile.filename || null,
+      thumbnailUrl: direct ? direct.thumbUrl : thumbnailFile ? thumbnailFile.path : null,
+      thumbnailPublicId: direct ? direct.thumbPublicId : thumbnailFile ? thumbnailFile.filename || null : null,
       altText: normalized.altText ?? '',
     },
     cta: { ...cta, actionValue: cta.actionType === 'property' && propertyId ? String(propertyId) : cta.actionValue },
@@ -293,8 +347,67 @@ const createHeroSlide = asyncHandler(async (req, res) => {
   try {
     await slide.save();
   } catch (err) {
+    if (direct) {
+      // Uploads stay committed-less (completed) — resubmit reuses them.
+      // The unsaved slide never exists, so nothing dangles.
+      recordHeroSubmit('direct', {
+        durationMs: Date.now() - startedAt,
+        kind: direct.mediaResourceType || '',
+        hasThumbnail: Boolean(direct.thumbUrl),
+        bytes: direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0),
+        outcome: 'error',
+        clientStats,
+      });
+      throw err;
+    }
     await destroyUploadedFiles(files);
     throw err;
+  }
+
+  if (direct && direct.uploads.length > 0) {
+    // Commit AFTER create (the entity must exist first). On commit failure
+    // the just-created slide is removed again — same compensation as the
+    // Phase 2 property flow.
+    try {
+      await commitUploads({
+        actor: req.user,
+        sessionId: req.body.uploadSessionId,
+        uploadIds: direct.uploads.map((u) => String(u._id)),
+        entityType: 'heroslide',
+        entityId: String(slide._id),
+      });
+    } catch (err) {
+      await HeroSlide.deleteOne({ _id: slide._id });
+      recordHeroSubmit('direct', {
+        durationMs: Date.now() - startedAt,
+        kind: direct.mediaResourceType || '',
+        hasThumbnail: Boolean(direct.thumbUrl),
+        bytes: direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0),
+        outcome: 'error',
+        clientStats,
+      });
+      throw err;
+    }
+    await closeSession(req.body.uploadSessionId, req.user);
+  }
+
+  if (direct) {
+    recordHeroSubmit('direct', {
+      durationMs: Date.now() - startedAt,
+      kind: direct.mediaResourceType || '',
+      hasThumbnail: Boolean(direct.thumbUrl),
+      bytes: direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0),
+      outcome: 'success',
+      clientStats,
+    });
+  } else {
+    recordHeroSubmit('legacy', {
+      durationMs: Date.now() - startedAt,
+      kind: mediaType || '',
+      hasThumbnail: Boolean(thumbnailFile),
+      bytes: (mediaFile ? mediaFile.size || 0 : 0) + (thumbnailFile ? thumbnailFile.size || 0 : 0),
+      outcome: 'success',
+    });
   }
 
   res.status(201).json({ success: true, message: 'Hero slide created successfully', slide });
@@ -304,6 +417,8 @@ const createHeroSlide = asyncHandler(async (req, res) => {
 // @route   PUT /api/hero-slides/:id
 // @access  Private (admin)
 const updateHeroSlide = asyncHandler(async (req, res) => {
+  const startedAt = Date.now();
+  const clientStats = req.body.clientStats && typeof req.body.clientStats === 'object' ? req.body.clientStats : {};
   const slide = await HeroSlide.findById(req.params.id);
   if (!slide) {
     await destroyUploadedFiles(req.files);
@@ -313,8 +428,31 @@ const updateHeroSlide = asyncHandler(async (req, res) => {
   const files = req.files || {};
   const { errors, normalized } = validateSlideBody(req.body, { isUpdate: true });
 
+  const directRequested = req.body.mediaUploadId !== undefined || req.body.thumbnailUploadId !== undefined;
+  let direct = null;
+  if (directRequested) {
+    if (!isHeroDirectEnabled()) {
+      recordHeroSubmit('direct', { durationMs: Date.now() - startedAt, outcome: 'error', clientStats });
+      return res.status(400).json({ success: false, message: 'Direct hero upload is disabled — please use the standard media upload' });
+    }
+    try {
+      direct = await resolveHeroUploads({
+        actor: req.user,
+        sessionId: req.body.uploadSessionId,
+        mediaUploadId: req.body.mediaUploadId,
+        thumbnailUploadId: req.body.thumbnailUploadId,
+        mediaType: req.body.mediaType,
+        requireMedia: false,
+        forEntityId: slide._id,
+      });
+    } catch (err) {
+      recordHeroSubmit('direct', { durationMs: Date.now() - startedAt, outcome: 'validation', clientStats });
+      throw err;
+    }
+  }
+
   const mediaFile = Array.isArray(files.media) ? files.media[0] : null;
-  let mediaType = null;
+  let mediaType = direct && direct.mediaUrl ? direct.mediaResourceType : null;
   if (mediaFile) {
     if (mediaFile.mimetype.startsWith('video/')) mediaType = 'video';
     else if (mediaFile.mimetype.startsWith('image/')) mediaType = 'image';
@@ -326,6 +464,8 @@ const updateHeroSlide = asyncHandler(async (req, res) => {
     }
   }
   const thumbnailFile = Array.isArray(files.thumbnail) ? files.thumbnail[0] : null;
+  const newMedia = direct ? Boolean(direct.mediaUrl) : Boolean(mediaFile);
+  const newThumbnail = direct ? Boolean(direct.thumbUrl) : Boolean(thumbnailFile);
 
   // Schedule cross-check against the merged (existing + incoming) bounds.
   const mergedStart = normalized.startAt !== undefined ? normalized.startAt : slide.startAt;
@@ -356,13 +496,53 @@ const updateHeroSlide = asyncHandler(async (req, res) => {
     }
   }
 
-  const oldMedia = mediaFile
+  const oldMedia = newMedia
     ? { publicId: slide.media.publicId, url: slide.media.url, resourceType: slide.media.type }
     : null;
   const oldThumbnail =
-    thumbnailFile && slide.media.thumbnailPublicId
+    newThumbnail && slide.media.thumbnailPublicId
       ? { publicId: slide.media.thumbnailPublicId, url: slide.media.thumbnailUrl }
       : null;
+
+  if (direct && direct.uploads.length > 0) {
+    // New flow surfaces body-validation problems BEFORE committing, so a
+    // 400 never consumes uploads (resubmit reuses the ids). Legacy behavior
+    // below is untouched.
+    if (errors.length > 0) {
+      recordHeroSubmit('direct', {
+        durationMs: Date.now() - startedAt,
+        kind: direct.mediaResourceType || slide.media.type,
+        hasThumbnail: newThumbnail || Boolean(slide.media.thumbnailUrl),
+        bytes: direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0),
+        outcome: 'validation',
+        clientStats,
+      });
+      return res.status(400).json({ success: false, message: errors.join(', ') });
+    }
+    // Commit BEFORE save here (the entity already exists). A save failure
+    // afterwards leaves committed rows pointing at valid Cloudinary bytes —
+    // the next update's retire pass reconciles, and existing slide media is
+    // untouched, so the live slide never breaks.
+    try {
+      await commitUploads({
+        actor: req.user,
+        sessionId: req.body.uploadSessionId,
+        uploadIds: direct.uploads.map((u) => String(u._id)),
+        entityType: 'heroslide',
+        entityId: String(slide._id),
+      });
+    } catch (err) {
+      recordHeroSubmit('direct', {
+        durationMs: Date.now() - startedAt,
+        kind: direct.mediaResourceType || slide.media.type,
+        hasThumbnail: newThumbnail || Boolean(slide.media.thumbnailUrl),
+        bytes: direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0),
+        outcome: 'error',
+        clientStats,
+      });
+      throw err;
+    }
+  }
 
   if (normalized.title !== undefined) slide.title = normalized.title;
   if (normalized.subtitle !== undefined) slide.subtitle = normalized.subtitle;
@@ -381,18 +561,67 @@ const updateHeroSlide = asyncHandler(async (req, res) => {
     slide.media.type = mediaType;
     slide.media.url = mediaFile.path;
     slide.media.publicId = mediaFile.filename || null;
+  } else if (direct && direct.mediaUrl) {
+    slide.media.type = direct.mediaResourceType;
+    slide.media.url = direct.mediaUrl;
+    slide.media.publicId = direct.mediaPublicId;
   }
   if (thumbnailFile) {
     slide.media.thumbnailUrl = thumbnailFile.path;
     slide.media.thumbnailPublicId = thumbnailFile.filename || null;
+  } else if (direct && direct.thumbUrl) {
+    slide.media.thumbnailUrl = direct.thumbUrl;
+    slide.media.thumbnailPublicId = direct.thumbPublicId;
   }
   slide.updatedBy = req.user._id;
 
   try {
     await slide.save();
   } catch (err) {
+    if (direct) {
+      recordHeroSubmit('direct', {
+        durationMs: Date.now() - startedAt,
+        kind: direct.mediaResourceType || slide.media.type,
+        hasThumbnail: newThumbnail || Boolean(slide.media.thumbnailUrl),
+        bytes: direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0),
+        outcome: 'error',
+        clientStats,
+      });
+      throw err;
+    }
     await destroyUploadedFiles(files);
     throw err;
+  }
+
+  if (direct) {
+    // Replacement lifecycle (deferred, never on the critical path):
+    // committed rows no longer referenced are retired via the sweeper
+    // pattern; replaced LEGACY bytes (no Upload row) are destroyed here.
+    await retireRemovedEntityUploads({
+      entityType: 'heroslide',
+      entityId: slide._id,
+      keepUrls: [slide.media.url, slide.media.thumbnailUrl],
+    });
+    if (oldMedia) {
+      await destroyIfOrphaned({
+        publicId: oldMedia.publicId,
+        entityId: slide._id,
+        resourceType: oldMedia.resourceType === 'video' ? 'video' : 'image',
+      });
+    }
+    if (oldThumbnail) {
+      await destroyIfOrphaned({ publicId: oldThumbnail.publicId, entityId: slide._id, resourceType: 'image' });
+    }
+    await closeSession(req.body.uploadSessionId, req.user);
+    recordHeroSubmit('direct', {
+      durationMs: Date.now() - startedAt,
+      kind: slide.media.type,
+      hasThumbnail: Boolean(slide.media.thumbnailUrl),
+      bytes: direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0),
+      outcome: 'success',
+      clientStats,
+    });
+    return res.json({ success: true, message: 'Hero slide updated successfully', slide });
   }
 
   // Replacement lifecycle: old bytes are deleted only after the new upload
@@ -405,6 +634,14 @@ const updateHeroSlide = asyncHandler(async (req, res) => {
   }
   if (oldThumbnail) await destroyByPublicId(oldThumbnail.publicId, 'image');
 
+  recordHeroSubmit('legacy', {
+    durationMs: Date.now() - startedAt,
+    kind: slide.media.type,
+    hasThumbnail: Boolean(slide.media.thumbnailUrl),
+    bytes: (mediaFile ? mediaFile.size || 0 : 0) + (thumbnailFile ? thumbnailFile.size || 0 : 0),
+    outcome: 'success',
+  });
+
   res.json({ success: true, message: 'Hero slide updated successfully', slide });
 });
 
@@ -416,6 +653,9 @@ const deleteHeroSlide = asyncHandler(async (req, res) => {
   if (!slide) return res.status(404).json({ success: false, message: 'Hero slide not found' });
   await destroySlideMedia(slide);
   await slide.deleteOne();
+  // Bookkeeping for direct-upload rows: bytes were just destroyed above via
+  // the stored publicIds, so release the rows without re-destroying.
+  await releaseEntityUploads({ entityType: 'heroslide', entityId: slide._id });
   res.json({ success: true, message: 'Hero slide deleted successfully' });
 });
 

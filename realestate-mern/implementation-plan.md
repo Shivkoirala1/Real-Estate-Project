@@ -1,5 +1,11 @@
 # Implementation Plan — Rental, Lead, and Cross-Module Fixes
 
+> **STATUS (2026-09-18): implemented through Phase 3 — frozen as historical record.**
+> Checklist boxes below were intentionally left unchecked; completion lives in the
+> Phase notes (§Phase 1A/2A/2B/3) and in code. Per-environment data-migration
+> confirmations (stale-index `dropIndex`, `$rename` sequencing, inquirer counts)
+> still belong to the deployer — see Risks. Do not extend this plan; start a new one.
+
 This plan implements the 13 decisions finalized in the Development Decision Audit, exactly as decided, against the actual current codebase (every reference below was re-verified against the live files, not assumed). It does not reopen any decision. Where a decision left an implementation detail unspecified, that detail is filled in using the smallest change consistent with the decision and with the codebase's existing patterns, and is called out explicitly as "**Implementation detail (not re-litigating the decision):**".
 
 ## Quick-Reference: Decisions Being Implemented

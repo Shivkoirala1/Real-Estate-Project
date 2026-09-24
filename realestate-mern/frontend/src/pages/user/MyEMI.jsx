@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useToast } from "../../context/ToastContext";
 import { formatPrice } from "../../utils/format";
 import {
   getEmiPlans,
   requestInstallmentVerification,
 } from "../../services/emiService";
+import { FILE_STATES, useDirectUpload } from "../../hooks/useDirectUpload";
 
 const PLAN_BADGE = {
   active: "bg-brass/15 text-brass-dark",
@@ -62,18 +63,36 @@ const toDateInput = (value) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
-const RequestVerificationModal = ({ inst, busy, onClose, onSubmit }) => {
+const RequestVerificationModal = ({ planId, inst, busy, onClose, onSubmit }) => {
   const [paidAmount, setPaidAmount] = useState(String(inst.amount ?? ""));
   const [paidDate, setPaidDate] = useState(toDateInput());
   const [note, setNote] = useState("");
   const [file, setFile] = useState(null);
   const [error, setError] = useState("");
 
+  // Phase 4 direct-upload: the slip uploads immediately (browser →
+  // Cloudinary, private delivery) through an emi session bound to this
+  // plan+installment; submit carries only the uploadId.
+  // Kill-switch: VITE_EMI_DIRECT_UPLOAD=false restores legacy multipart.
+  const directSlip = import.meta.env.VITE_EMI_DIRECT_UPLOAD !== "false";
+  const slipUp = useDirectUpload({ scope: "emi", concurrency: 1 });
+  const [slipClientId, setSlipClientId] = useState(null);
+  const slipStartRef = useRef(null);
+  const slipEntry = slipUp.files.find((f) => f.clientId === slipClientId) || null;
+  const slipBusy = slipUp.files.some((f) =>
+    [FILE_STATES.QUEUED, FILE_STATES.SIGNING, FILE_STATES.UPLOADING, FILE_STATES.COMPLETING].includes(f.status)
+  );
+  const slipUploadId = slipEntry && slipEntry.status === FILE_STATES.SUCCESS ? slipEntry.uploadId : null;
+
   const wasRejected = inst.verification?.status === "rejected";
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const f = e.target.files?.[0];
-    if (!f) return setFile(null);
+    e.target.value = "";
+    if (!f) {
+      if (!directSlip) setFile(null);
+      return;
+    }
     if (!f.type.startsWith("image/")) {
       setError("Please attach an image file (JPG, PNG or WEBP).");
       return;
@@ -83,7 +102,34 @@ const RequestVerificationModal = ({ inst, busy, onClose, onSubmit }) => {
       return;
     }
     setError("");
-    setFile(f);
+    if (!directSlip) {
+      setFile(f);
+      return;
+    }
+    if (slipClientId) {
+      try {
+        await slipUp.cancel(slipClientId);
+      } catch {
+        // Already gone — continue with the new pick.
+      }
+    }
+    if (!slipStartRef.current) slipStartRef.current = Date.now();
+    const [clientId] = slipUp.addFiles([f], {
+      purpose: "emi-slip",
+      refs: { planId, installmentNo: inst.installmentNumber },
+    });
+    setSlipClientId(clientId || null);
+  };
+
+  const removeDirectSlip = async () => {
+    if (slipClientId) {
+      try {
+        await slipUp.cancel(slipClientId);
+      } catch {
+        // Already gone — just clear the reference.
+      }
+      setSlipClientId(null);
+    }
   };
 
   const handleSubmit = (e) => {
@@ -99,6 +145,29 @@ const RequestVerificationModal = ({ inst, busy, onClose, onSubmit }) => {
       return setError("Payment amount is too large.");
     }
     if (!paidDate) return setError("Paid date is required.");
+    if (directSlip) {
+      if (slipBusy) return setError("Slip photo is still uploading — please wait before submitting.");
+      if (slipEntry && slipEntry.status === FILE_STATES.FAILED) {
+        return setError("Slip photo upload failed — retry it, remove it, or submit without a slip.");
+      }
+      setError("");
+      onSubmit({
+        paidAmount: amount,
+        paidDate,
+        note: note.trim(),
+        // Explicit null (not dropped) so the backend takes the direct path
+        // even when no slip was attached — the slip is optional.
+        paymentSlipUploadId: slipUploadId || null,
+        uploadSessionId: slipUp.sessionId,
+        clientStats: {
+          uploadDurationMs: slipStartRef.current ? Date.now() - slipStartRef.current : 0,
+          retries: slipUp.files.reduce((s, f) => s + (f.attempts || 0), 0),
+          failures: slipUp.files.filter((f) => f.status === FILE_STATES.FAILED).length,
+          timeouts: 0,
+        },
+      });
+      return;
+    }
     setError("");
     onSubmit({ paidAmount: amount, paidDate, note: note.trim(), paymentSlip: file });
   };
@@ -180,7 +249,42 @@ const RequestVerificationModal = ({ inst, busy, onClose, onSubmit }) => {
               <p className="text-[11px] text-slate-muted mt-1.5">
                 A photo of your receipt or bank transfer slip helps admin verify faster. JPG, PNG or WEBP, up to 5MB.
               </p>
-              {file && <p className="text-xs text-sage mt-1.5">Selected: {file.name}</p>}
+              {directSlip ? (
+                slipEntry && (
+                  <div className="mt-1.5">
+                    <p className="text-xs text-slate-muted truncate">
+                      {slipEntry.file?.name || "Slip photo"}
+                      {slipEntry.status === FILE_STATES.SUCCESS ? " — uploaded ✓" : ` — ${Math.round((slipEntry.progress || 0) * 100)}%`}
+                    </p>
+                    {slipEntry.status !== FILE_STATES.SUCCESS && (
+                      <div className="h-1 bg-navy/10 rounded-full overflow-hidden mt-1 max-w-xs">
+                        <div
+                          className="h-full bg-brass transition-all"
+                          style={{ width: `${Math.round((slipEntry.progress || 0) * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                    {slipEntry.status === FILE_STATES.FAILED && (
+                      <p className="text-xs text-brick mt-1">
+                        Upload failed — {slipEntry.error || "please retry."}{" "}
+                        <button type="button" onClick={() => slipUp.retry(slipEntry.clientId)} className="font-medium underline">
+                          Retry
+                        </button>{" "}
+                        <button type="button" onClick={removeDirectSlip} className="underline">
+                          Remove
+                        </button>
+                      </p>
+                    )}
+                    {slipEntry.status === FILE_STATES.SUCCESS && (
+                      <button type="button" onClick={removeDirectSlip} className="text-xs text-slate-muted hover:underline mt-1">
+                        Remove slip
+                      </button>
+                    )}
+                  </div>
+                )
+              ) : (
+                file && <p className="text-xs text-sage mt-1.5">Selected: {file.name}</p>
+              )}
             </div>
             <div>
               <label className="label-field" htmlFor="req-note">Note (optional)</label>
@@ -198,8 +302,8 @@ const RequestVerificationModal = ({ inst, busy, onClose, onSubmit }) => {
             <button type="button" onClick={onClose} className="btn-secondary text-sm px-4 py-2">
               Cancel
             </button>
-            <button type="submit" className="btn-primary text-sm px-4 py-2" disabled={busy}>
-              {busy ? "Submitting..." : "Submit for Verification"}
+            <button type="submit" className="btn-primary text-sm px-4 py-2" disabled={busy || (directSlip && slipBusy)}>
+              {busy ? "Submitting..." : directSlip && slipBusy ? "Uploading slip..." : "Submit for Verification"}
             </button>
           </div>
         </form>
@@ -415,6 +519,7 @@ export default function MyEMI() {
       {modalCtx && (
         <RequestVerificationModal
           key={`${modalCtx.plan._id}-${modalCtx.inst.installmentNumber}`}
+          planId={modalCtx.plan._id}
           inst={modalCtx.inst}
           busy={busy}
           onClose={() => setModalCtx(null)}

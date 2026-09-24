@@ -7,6 +7,18 @@ const { validatePropertyInput } = require('../utils/validateProperty');
 const { notify, notifyMany } = require('../utils/notify');
 const { effectiveCommissionPercentage, estimatedCommissionAmount } = require('../utils/commission');
 const { awardReward } = require('../utils/rewards');
+// Phase 2 direct-upload: property media may arrive as authorized uploadIds
+// (browser → Cloudinary) instead of multipart bytes (browser → Render).
+// Legacy req.files handling stays intact behind PROPERTY_DIRECT_UPLOAD_ENABLED.
+const {
+  resolvePropertyUploads,
+  commitUploads,
+  retireRemovedEntityUploads,
+  closeSession,
+} = require('../services/uploadService');
+const { recordPropertySubmit } = require('../utils/uploadMetrics');
+
+const isPropertyDirectEnabled = () => process.env.PROPERTY_DIRECT_UPLOAD_ENABLED !== 'false';
 
 // Normalizes incoming location payloads (which may arrive as JSON strings
 // via multipart/form-data) to the canonical shape
@@ -231,7 +243,14 @@ const getProperty = asyncHandler(async (req, res) => {
 // @route   POST /api/properties
 // @access  Private (any verified user, admin)
 const createProperty = asyncHandler(async (req, res) => {
+  const startedAt = Date.now();
   const body = { ...req.body };
+  const clientStats = body.clientStats && typeof body.clientStats === 'object' ? body.clientStats : {};
+  // Never persist upload-plumbing fields on the property document.
+  delete body.coverUploadId;
+  delete body.galleryUploadIds;
+  delete body.uploadSessionId;
+  delete body.clientStats;
 
   // location and details may arrive as JSON strings via multipart/form-data
   if (typeof body.location === 'string') {
@@ -259,8 +278,32 @@ const createProperty = asyncHandler(async (req, res) => {
   body.commissionPercentage = commission.value === undefined ? null : commission.value;
 
 const files = req.files || {};
-const images = files.images ? files.images.map((f) => f.path) : [];
-const coverImage = files.coverImage ? files.coverImage[0].path : (images[0] || '');
+// Direct flow: media arrives as authorized uploadIds (no bytes through
+// Render). Legacy flow: multer already streamed req.files to Cloudinary.
+const directRequested =
+  req.body.coverUploadId !== undefined || req.body.galleryUploadIds !== undefined;
+let direct = null;
+if (directRequested) {
+  if (!isPropertyDirectEnabled()) {
+    recordPropertySubmit('direct', { durationMs: Date.now() - startedAt, outcome: 'error', clientStats });
+    return res.status(400).json({ success: false, message: 'Direct photo upload is disabled — please use the standard photo upload' });
+  }
+  try {
+    direct = await resolvePropertyUploads({
+      actor: req.user,
+      sessionId: req.body.uploadSessionId,
+      coverUploadId: req.body.coverUploadId,
+      galleryUploadIds: req.body.galleryUploadIds,
+    });
+  } catch (err) {
+    recordPropertySubmit('direct', { durationMs: Date.now() - startedAt, outcome: 'validation', clientStats });
+    throw err;
+  }
+}
+const images = direct ? direct.galleryUrls : files.images ? files.images.map((f) => f.path) : [];
+const coverImage = direct
+  ? direct.coverUrl || direct.galleryUrls[0] || ''
+  : files.coverImage ? files.coverImage[0].path : (images[0] || '');
 
   // The Land vs House/Apartment/etc. posting forms ask for different
   // required fields - look up which one this listing's type maps to so
@@ -278,6 +321,15 @@ const coverImage = files.coverImage ? files.coverImage[0].path : (images[0] || '
   const validationErrors = validatePropertyInput(body, category, purpose);
   if (!coverImage && purpose !== 'management') validationErrors.push('A cover image is required');
   if (validationErrors.length > 0) {
+    // Uploads stay `completed` — the client resubmits with the same ids,
+    // no re-upload needed.
+    recordPropertySubmit(direct ? 'direct' : 'legacy', {
+      durationMs: Date.now() - startedAt,
+      fileCount: images.length + (coverImage ? 1 : 0),
+      bytes: direct ? direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0) : 0,
+      outcome: 'validation',
+      clientStats,
+    });
     return res.status(400).json({ success: false, message: validationErrors[0], errors: validationErrors });
   }
 
@@ -287,6 +339,44 @@ const coverImage = files.coverImage ? files.coverImage[0].path : (images[0] || '
     listedBy: req.user._id,
   });
 
+  if (direct && direct.uploads.length > 0) {
+    // Commit AFTER create (the entity must exist first). On commit failure
+    // the just-created property is removed again so no half-attached
+    // listing survives — Cloudinary itself stays outside any transaction,
+    // the sweeper covers that boundary.
+    try {
+      await commitUploads({
+        actor: req.user,
+        sessionId: req.body.uploadSessionId,
+        uploadIds: direct.uploads.map((u) => String(u._id)),
+        entityType: 'property',
+        entityId: String(property._id),
+      });
+    } catch (err) {
+      await Property.deleteOne({ _id: property._id });
+      recordPropertySubmit('direct', {
+        durationMs: Date.now() - startedAt,
+        fileCount: images.length + (coverImage ? 1 : 0),
+        bytes: direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0),
+        outcome: 'error',
+        clientStats,
+      });
+      throw err;
+    }
+    await closeSession(req.body.uploadSessionId, req.user);
+  }
+
+  recordPropertySubmit(direct ? 'direct' : 'legacy', {
+    durationMs: Date.now() - startedAt,
+    fileCount: images.length + (coverImage ? 1 : 0),
+    bytes: direct
+      ? direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0)
+      : (files.images || []).reduce((s, f) => s + (f.size || f.bytes || 0), 0) +
+        (files.coverImage ? files.coverImage.reduce((s, f) => s + (f.size || f.bytes || 0), 0) : 0),
+    outcome: 'success',
+    clientStats,
+  });
+
   res.status(201).json({ success: true, property });
 });
 
@@ -294,6 +384,7 @@ const coverImage = files.coverImage ? files.coverImage[0].path : (images[0] || '
 // @route   PUT /api/properties/:id
 // @access  Private (owner or admin)
 const updateProperty = asyncHandler(async (req, res) => {
+  const startedAt = Date.now();
   const property = await Property.findById(req.params.id);
   if (!property) {
     return res.status(404).json({ success: false, message: 'Property not found' });
@@ -305,6 +396,11 @@ const updateProperty = asyncHandler(async (req, res) => {
   }
 
   const body = { ...req.body };
+  const clientStats = body.clientStats && typeof body.clientStats === 'object' ? body.clientStats : {};
+  delete body.coverUploadId;
+  delete body.galleryUploadIds;
+  delete body.uploadSessionId;
+  delete body.clientStats;
   // Status changes must go through PATCH /:id/status, which enforces the
   // one-way Available -> Reserved -> Sold rule - stripped here so it can't
   // be slipped past that check through the general edit form instead.
@@ -337,9 +433,8 @@ const updateProperty = asyncHandler(async (req, res) => {
   const currentMedia = property.media.toObject ? property.media.toObject() : property.media;
   const files = req.files || {};
 
-  // Which of the property's existing "additional images" should be kept -
-  // the client sends the full list of URLs it wants to retain (letting
-  // users actually remove photos, not just add more).
+  // existingImages arrives as a JSON string on legacy multipart, or a real
+  // array on direct JSON submits — accept both.
   let keptExisting = currentMedia.images || [];
   if (typeof body.existingImages === 'string') {
     try {
@@ -348,12 +443,38 @@ const updateProperty = asyncHandler(async (req, res) => {
     } catch (e) {
       return res.status(400).json({ success: false, message: 'Invalid existing images data submitted' });
     }
+  } else if (Array.isArray(body.existingImages)) {
+    keptExisting = body.existingImages;
   }
 
- const newImages = files.images ? files.images.map((f) => f.path) : [];
-const finalImages = [...keptExisting, ...newImages];
+  const directRequested =
+    req.body.coverUploadId !== undefined || req.body.galleryUploadIds !== undefined;
+  let direct = null;
+  if (directRequested) {
+    if (!isPropertyDirectEnabled()) {
+      recordPropertySubmit('direct', { durationMs: Date.now() - startedAt, outcome: 'error', clientStats });
+      return res.status(400).json({ success: false, message: 'Direct photo upload is disabled — please use the standard photo upload' });
+    }
+    try {
+      direct = await resolvePropertyUploads({
+        actor: req.user,
+        sessionId: req.body.uploadSessionId,
+        coverUploadId: req.body.coverUploadId,
+        galleryUploadIds: req.body.galleryUploadIds,
+        forEntityId: property._id,
+      });
+    } catch (err) {
+      recordPropertySubmit('direct', { durationMs: Date.now() - startedAt, outcome: 'validation', clientStats });
+      throw err;
+    }
+  }
 
-const newCoverImage = files.coverImage ? files.coverImage[0].path : currentMedia.coverImage;
+  const newImages = direct ? direct.galleryUrls : files.images ? files.images.map((f) => f.path) : [];
+  const finalImages = [...keptExisting, ...newImages];
+
+  const newCoverImage = direct
+    ? direct.coverUrl || currentMedia.coverImage
+    : files.coverImage ? files.coverImage[0].path : currentMedia.coverImage;
 
   body.media = {
     coverImage: newCoverImage || finalImages[0] || '',
@@ -378,11 +499,63 @@ const newCoverImage = files.coverImage ? files.coverImage[0].path : currentMedia
   const validationErrors = validatePropertyInput(merged, propertyTypeCategory, mergedPurpose);
   if (!body.media.coverImage && mergedPurpose !== 'management') validationErrors.push('A cover image is required');
   if (validationErrors.length > 0) {
+    // New uploads stay `completed` — resubmit reuses them, no re-upload.
+    recordPropertySubmit(direct ? 'direct' : 'legacy', {
+      durationMs: Date.now() - startedAt,
+      fileCount: newImages.length + (direct && direct.coverUrl ? 1 : 0),
+      bytes: direct ? direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0) : 0,
+      outcome: 'validation',
+      clientStats,
+    });
     return res.status(400).json({ success: false, message: validationErrors[0], errors: validationErrors });
+  }
+
+  if (direct && direct.uploads.length > 0) {
+    // Commit BEFORE save here (the entity already exists, so its id is
+    // known). A save failure afterwards leaves committed rows pointing at
+    // valid Cloudinary bytes — the next update's retire pass reconciles.
+    try {
+      await commitUploads({
+        actor: req.user,
+        sessionId: req.body.uploadSessionId,
+        uploadIds: direct.uploads.map((u) => String(u._id)),
+        entityType: 'property',
+        entityId: String(property._id),
+      });
+    } catch (err) {
+      recordPropertySubmit('direct', {
+        durationMs: Date.now() - startedAt,
+        fileCount: newImages.length + (direct.coverUrl ? 1 : 0),
+        bytes: direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0),
+        outcome: 'error',
+        clientStats,
+      });
+      throw err;
+    }
   }
 
   Object.assign(property, body);
   await property.save();
+
+  // Deferred cleanup of replaced/removed direct-upload assets (legacy URLs
+  // with no Upload row are ignored — ownership unprovable). Never fails
+  // the response.
+  await retireRemovedEntityUploads({
+    entityType: 'property',
+    entityId: property._id,
+    keepUrls: [body.media.coverImage, ...body.media.images],
+  });
+  if (direct) await closeSession(req.body.uploadSessionId, req.user);
+
+  recordPropertySubmit(direct ? 'direct' : 'legacy', {
+    durationMs: Date.now() - startedAt,
+    fileCount: newImages.length + (direct && direct.coverUrl ? 1 : 0),
+    bytes: direct
+      ? direct.uploads.reduce((s, u) => s + (u.clientMeta.bytes || 0), 0)
+      : (files.images || []).reduce((s, f) => s + (f.size || f.bytes || 0), 0),
+    outcome: 'success',
+    clientStats,
+  });
 
   res.json({ success: true, property });
 });

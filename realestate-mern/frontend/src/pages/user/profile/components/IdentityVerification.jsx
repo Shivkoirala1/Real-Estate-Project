@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../../../context/AuthContext';
 import { useToast } from '../../../../context/ToastContext';
 import { updateProfile } from '../../../../services/authService';
@@ -40,13 +40,30 @@ const IdentityVerification = ({ onSelfiePreview }) => {
     else setCitizenshipBack(file);
   };
 
+  // Blobs minted by CameraCapture leak unless revoked — the component hands
+  // us the URL, so ownership of cleanup lives here.
+  const previewsRef = React.useRef(null);
+  useEffect(() => {
+    previewsRef.current = selfiePreview;
+  });
+  useEffect(() => () => {
+    if (previewsRef.current && previewsRef.current.startsWith('blob:')) {
+      URL.revokeObjectURL(previewsRef.current);
+    }
+  }, []);
+  const clearSelfiePreview = () => {
+    if (selfiePreview && selfiePreview.startsWith('blob:')) URL.revokeObjectURL(selfiePreview);
+  };
+
   const handleSelfieCapture = (file, previewUrl) => {
+    clearSelfiePreview();
     setSelfieFile(file);
     setSelfiePreview(previewUrl);
     onSelfiePreview?.(previewUrl);
   };
 
   const handleSelfieRetake = () => {
+    clearSelfiePreview();
     setSelfieFile(null);
     setSelfiePreview(null);
     onSelfiePreview?.(null);
@@ -66,6 +83,7 @@ const IdentityVerification = ({ onSelfiePreview }) => {
       const data = await updateProfile(fd);
       updateUser(data.user);
       setSelfieFile(null);
+      clearSelfiePreview();
       setSelfiePreview(null);
       onSelfiePreview?.(null);
       setCitizenshipFront(null);

@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { openContactModal } from '../../utils/contactModal';
-import { getShowcasedAgents } from '../../services/agentService';
 
 const journeySteps = ['Discover', 'Compare', 'Verify', 'Finance', 'Buy', 'Build', 'Manage', 'Grow'];
 
@@ -37,28 +36,6 @@ const leadership = [
 ];
 
 const About = () => {
-  // Agents the admin chose to spotlight (public endpoint, safe fields
-  // only). The section hides entirely when none are showcased.
-  const [agents, setAgents] = useState([]);
-  const [agentsLoading, setAgentsLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    getShowcasedAgents()
-      .then((data) => {
-        if (active) setAgents(data.agents || []);
-      })
-      .catch(() => {
-        if (active) setAgents([]);
-      })
-      .finally(() => {
-        if (active) setAgentsLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
   const [founder, ...supporters] = leadership;
 
   return (
@@ -203,33 +180,6 @@ const About = () => {
           </div>
         </div>
       </section>
-
-      {/* Listing agents — admin-showcased only; hidden when empty */}
-      {!agentsLoading && agents.length > 0 && (
-        <section className="max-w-5xl mx-auto px-5 md:px-8 py-16">
-          <p className="eyebrow mb-2">Talk to a human</p>
-          <h2 className="text-3xl mb-4">Meet our agents</h2>
-          <p className="text-slate-ink leading-relaxed mb-10 max-w-2xl">
-            Our licensed agents help you discover, verify, and close the right property deal.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {agents.map((agent) => (
-              <div key={agent._id} className="bg-white border border-navy/10 rounded-sm shadow-card p-6 text-center hover:border-brass/50 hover:shadow-lifted transition-all">
-                <div className="w-20 h-20 rounded-full bg-navy text-brass-light flex items-center justify-center font-display text-2xl mx-auto mb-4 overflow-hidden">
-                  {agent.avatar ? (
-                    <img src={agent.avatar} alt={agent.name} className="w-full h-full object-cover" />
-                  ) : (
-                    (agent.name || '?').charAt(0).toUpperCase()
-                  )}
-                </div>
-                <p className="font-display text-lg text-navy leading-snug">{agent.name}</p>
-                <p className="text-xs font-semibold uppercase tracking-wide text-brass mt-1 mb-3">Listing Agent</p>
-                {agent.phone && <p className="text-sm text-slate-muted">{agent.phone}</p>}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* CTA */}
       <section className="max-w-5xl mx-auto px-5 md:px-8 py-16 text-center">

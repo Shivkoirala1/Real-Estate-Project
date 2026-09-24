@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   getPropertyTypes,
@@ -18,6 +18,8 @@ import MultiImageUpload from '../../components/MultiImageUpload';
 import LandUnitConverter from '../../components/LandUnitConverter';
 import { SQFT_PER_UNIT } from '../../utils/landUnits';
 import { NEPAL_PROVINCES, getDistrictsByProvince, getMunicipalitiesByDistrict, hasVerifiedMunicipalities, isValidDistrict } from '../../utils/nepalGeography';
+import { CLIENT_UPLOAD_LIMITS, downscaleImage, useObjectPreview, validateImageFile } from '../../utils/imageUpload';
+import { FILE_STATES, useDirectUpload } from '../../hooks/useDirectUpload';
 
 // Land area unit choices for the dropdown - the two traditional Nepali
 // systems plus standard units. Values match the keys landUnits.js knows how
@@ -98,6 +100,13 @@ const initialState = {
   video: '',
 };
 
+// Thumbnail for a direct-upload entry (object URL owned by this component).
+const EntryThumb = ({ file, alt = '' }) => {
+  const preview = useObjectPreview(file);
+  if (!preview) return null;
+  return <img src={preview} alt={alt} className="w-full h-full object-cover" />;
+};
+
 const errorInputClass = (hasError) => (hasError ? 'border-brick focus:border-brick focus:ring-brick' : '');
 
 const AddEditProperty = () => {
@@ -137,6 +146,36 @@ const AddEditProperty = () => {
   const [mgmtServices, setMgmtServices] = useState([]);
   const [mgmtServiceOptions, setMgmtServiceOptions] = useState([]);
   const [mgmtNote, setMgmtNote] = useState('');
+
+  // Phase 2 direct-upload: cover + gallery go browser → Cloudinary via one
+  // shared property session (cover is queued first, so it holds upload
+  // priority). Legacy File states below stay for the flag-off path.
+  // Kill-switch: VITE_PROPERTY_DIRECT_UPLOAD=false restores pure legacy.
+  const directMedia = import.meta.env.VITE_PROPERTY_DIRECT_UPLOAD !== 'false';
+  const mediaUp = useDirectUpload({ scope: 'property', concurrency: 3 });
+  const [coverClientId, setCoverClientId] = useState(null);
+  const mediaStartRef = useRef(null);
+  const markMediaStart = () => {
+    if (!mediaStartRef.current) mediaStartRef.current = Date.now();
+  };
+  const coverEntry = mediaUp.files.find((f) => f.clientId === coverClientId) || null;
+  const galleryEntries = mediaUp.files.filter((f) => f.purpose === 'property-image');
+  const mediaBusy = mediaUp.files.some((f) =>
+    [FILE_STATES.QUEUED, FILE_STATES.SIGNING, FILE_STATES.UPLOADING, FILE_STATES.COMPLETING].includes(f.status)
+  );
+  const coverUploadId = coverEntry && coverEntry.status === FILE_STATES.SUCCESS ? coverEntry.uploadId : null;
+  const coverPreviewRef = React.useRef(null);
+  const galleryInputRef = React.useRef(null);
+  // Revoke the blob cover preview on unmount (per-change revokes happen in
+  // handleCoverChange).
+  useEffect(() => () => {
+    if (coverPreviewRef.current && coverPreviewRef.current.startsWith('blob:')) {
+      URL.revokeObjectURL(coverPreviewRef.current);
+    }
+  }, []);
+  useEffect(() => {
+    coverPreviewRef.current = coverPreview;
+  }, [coverPreview]);
 
   useEffect(() => {
     let active = true;
@@ -292,7 +331,7 @@ const AddEditProperty = () => {
     ? getMunicipalitiesByDistrict(form.location.district)
     : [];
 
-  const handleCoverChange = (e) => {
+  const handleCoverChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -300,12 +339,97 @@ const AddEditProperty = () => {
       e.target.value = '';
       return;
     }
-    setCoverImage(file);
-    setCoverPreview(URL.createObjectURL(file));
+    const sizeErr = validateImageFile(file, { maxBytes: CLIENT_UPLOAD_LIMITS.propertyImage, label: 'Cover image' });
+    if (sizeErr) {
+      showToast(sizeErr, 'error');
+      e.target.value = '';
+      return;
+    }
+    // Downscale large marketing photos in-browser so the legacy proxied
+    // upload moves fewer bytes; identity docs are never compressed.
+    const optimized = await downscaleImage(file);
+    if (coverPreview && coverPreview.startsWith('blob:')) URL.revokeObjectURL(coverPreview);
+    setCoverImage(optimized);
+    setCoverPreview(URL.createObjectURL(optimized));
   };
 
   const removeExistingImage = (index) => {
     setExistingImages((imgs) => imgs.filter((_, i) => i !== index));
+  };
+
+  // Direct flow: cover uploads immediately (browser → Cloudinary) so the
+  // submit carries only an uploadId. Replaces any previous cover entry —
+  // the old record is deleted, the bytes expire via the backend sweeper.
+  const handleDirectCover = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Only photo files are allowed for the cover image', 'error');
+      return;
+    }
+    const sizeErr = validateImageFile(file, { maxBytes: CLIENT_UPLOAD_LIMITS.propertyImage, label: 'Cover image' });
+    if (sizeErr) {
+      showToast(sizeErr, 'error');
+      return;
+    }
+    const optimized = await downscaleImage(file);
+    if (coverClientId) {
+      try {
+        await mediaUp.cancel(coverClientId);
+      } catch {
+        // Entry already gone — continue with the new pick.
+      }
+    }
+    markMediaStart();
+    const [clientId] = mediaUp.addFiles([optimized], { purpose: 'property-cover' });
+    setCoverClientId(clientId || null);
+    clearFieldError('coverImage');
+  };
+
+  const removeDirectCover = async () => {
+    if (coverClientId) {
+      try {
+        await mediaUp.cancel(coverClientId);
+      } catch {
+        // Already gone — just clear the reference.
+      }
+      setCoverClientId(null);
+    }
+  };
+
+  // Direct flow: gallery files queue behind the cover (cover was added
+  // first, so it keeps upload priority under the concurrency cap).
+  const handleDirectGallery = async (e) => {
+    const picked = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (picked.length === 0) return;
+    const imagesOnly = picked.filter((f) => f.type.startsWith('image/'));
+    if (imagesOnly.length < picked.length) {
+      showToast('Only photo files are allowed here - any video files you selected were skipped.', 'error');
+    }
+    const withinLimit = [];
+    for (const file of imagesOnly) {
+      const err = validateImageFile(file, { maxBytes: CLIENT_UPLOAD_LIMITS.propertyImage, label: file.name || 'Photo' });
+      if (err) {
+        showToast(err, 'error');
+        continue;
+      }
+      withinLimit.push(file);
+    }
+    if (withinLimit.length === 0) return;
+    markMediaStart();
+    mediaUp.addFiles(withinLimit, { purpose: 'property-image' });
+  };
+
+  const directClientStats = () => {
+    const entries = mediaUp.files;
+    return {
+      uploadDurationMs: mediaStartRef.current ? Date.now() - mediaStartRef.current : 0,
+      retries: entries.reduce((s, f) => s + (f.attempts || 0), 0),
+      failures: entries.filter((f) => f.status === FILE_STATES.FAILED).length,
+      timeouts: 0, // XHR direct uploads run without a client timeout; progress is visible instead
+    };
   };
 
   // Practical, real-world validation for a property listing - beyond "is it
@@ -432,7 +556,11 @@ const AddEditProperty = () => {
       }
     }
 
-    if (!coverImage && !currentCoverImage && !isManagement) {
+    // Minimum-image rule (unchanged business rule, both flows): a listing
+    // needs a cover unless it is management-purpose.
+    const hasDirectCover = directMedia && (coverUploadId || currentCoverImage);
+    const hasLegacyCover = !directMedia && (coverImage || currentCoverImage);
+    if (!hasDirectCover && !hasLegacyCover && !isManagement) {
       next.coverImage = 'Please add a cover image for this property';
     }
 
@@ -491,6 +619,56 @@ const AddEditProperty = () => {
         });
         showToast('Property registered and management requested');
         navigate(user?.role === 'admin' ? '/dashboard/admin/property-management' : '/my-properties/management');
+        return;
+      }
+      // Direct flow: photos already live on Cloudinary — submit authorized
+      // uploadIds, never bytes. Failed gallery entries are excluded
+      // (failure isolation); a failed cover blocks unless an existing cover
+      // is kept. Completed uploads survive validation failures, so a
+      // resubmit reuses the same ids with no re-upload.
+      if (directMedia && !isMgmtWizard) {
+        if (mediaBusy) {
+          setError('Your photos are still uploading — please wait for them to finish before submitting.');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+        }
+        if (coverEntry && coverEntry.status === FILE_STATES.FAILED && !currentCoverImage) {
+          setFieldErrors({ coverImage: 'Cover photo upload failed — retry it or pick another photo.' });
+          setError('Please fix the highlighted fields below before submitting.');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+        }
+        const galleryUploadIds = galleryEntries
+          .filter((f) => f.status === FILE_STATES.SUCCESS && f.uploadId)
+          .map((f) => f.uploadId);
+        const location = { ...form.location };
+        if (!location.mapLocation?.lat || !location.mapLocation?.lng) delete location.mapLocation;
+        const payload = {
+          title: form.title,
+          description: form.description,
+          propertyType: form.propertyType,
+          saleType: form.saleType,
+          price: form.price,
+          currency: 'NPR',
+          negotiable: form.negotiable,
+          commissionPercentage: form.commissionPercentage === '' ? null : form.commissionPercentage,
+          video: form.video,
+          location,
+          details: form.details,
+          existingImages,
+          uploadSessionId: mediaUp.sessionId,
+          coverUploadId: coverUploadId || undefined,
+          galleryUploadIds,
+          clientStats: directClientStats(),
+        };
+        if (isEdit) {
+          await updateProperty(id, payload);
+          showToast('Property updated successfully');
+        } else {
+          await createProperty(payload);
+          showToast('Property added successfully');
+        }
+        navigate(user?.role === 'admin' ? '/dashboard/admin/properties' : '/my-properties');
         return;
       }
       const fd = new FormData();
@@ -1023,35 +1201,170 @@ const AddEditProperty = () => {
         <section className="bg-white border border-navy/10 rounded-sm p-6 space-y-6">
           <h2 className="text-lg font-semibold text-navy">Photos</h2>
 
-          <div>
-            <label className="label-field">Cover Photo {!isEdit && <span className="text-brick">*</span>}</label>
-            {(coverPreview || currentCoverImage) && (
-              <img
-                src={coverPreview || currentCoverImage}
-                alt="Cover preview"
-                className="w-40 h-28 object-cover rounded-sm border border-navy/15 mb-2"
+          {directMedia ? (
+            <div>
+              <label className="label-field">Cover Photo {!isEdit && <span className="text-brick">*</span>}</label>
+              {coverEntry ? (
+                <div className="mb-2 max-w-xs">
+                  <div className="relative w-40 h-28 rounded-sm overflow-hidden border border-navy/15 mb-2">
+                    <EntryThumb file={coverEntry.file} alt="Cover preview" />
+                    {coverEntry.status === FILE_STATES.SUCCESS && (
+                      <button
+                        type="button"
+                        onClick={removeDirectCover}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-brick text-white text-xs leading-5"
+                        aria-label="Remove cover photo"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                  {coverEntry.status !== FILE_STATES.SUCCESS && (
+                    <div>
+                      <div className="h-1.5 bg-navy/10 rounded-full overflow-hidden mb-1">
+                        <div
+                          className="h-full bg-brass transition-all"
+                          style={{ width: `${Math.round((coverEntry.progress || 0) * 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-slate-muted">
+                        {coverEntry.status === FILE_STATES.FAILED
+                          ? `Upload failed — ${coverEntry.error || 'please retry.'}`
+                          : `Uploading cover… ${Math.round((coverEntry.progress || 0) * 100)}%`}
+                      </p>
+                      <div className="flex gap-2 mt-1">
+                        {coverEntry.status === FILE_STATES.FAILED && (
+                          <button type="button" onClick={() => mediaUp.retry(coverEntry.clientId)} className="text-xs font-medium text-brass hover:underline">
+                            Retry
+                          </button>
+                        )}
+                        <button type="button" onClick={removeDirectCover} className="text-xs text-slate-muted hover:underline">
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                currentCoverImage && (
+                  <img
+                    src={currentCoverImage}
+                    alt="Current cover"
+                    className="w-40 h-28 object-cover rounded-sm border border-navy/15 mb-2"
+                  />
+                )
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                className={`input-field ${errorInputClass(fieldErrors.coverImage)}`}
+                onChange={(e) => { handleDirectCover(e); }}
               />
-            )}
-            <input
-              type="file"
-              accept="image/*"
-              className={`input-field ${errorInputClass(fieldErrors.coverImage)}`}
-              onChange={(e) => { handleCoverChange(e); clearFieldError('coverImage'); }}
-            />
-            {fieldErrors.coverImage ? (
-              <p className="text-xs text-brick mt-1">{fieldErrors.coverImage}</p>
-            ) : (
-              <p className="text-xs text-slate-muted mt-1">This is the main photo shown on listing cards. Photos only - no videos.</p>
-            )}
-          </div>
+              {fieldErrors.coverImage ? (
+                <p className="text-xs text-brick mt-1">{fieldErrors.coverImage}</p>
+              ) : (
+                <p className="text-xs text-slate-muted mt-1">This is the main photo shown on listing cards. It uploads first, before the gallery. Photos only - no videos.</p>
+              )}
+            </div>
+          ) : (
+            <div>
+              <label className="label-field">Cover Photo {!isEdit && <span className="text-brick">*</span>}</label>
+              {(coverPreview || currentCoverImage) && (
+                <img
+                  src={coverPreview || currentCoverImage}
+                  alt="Cover preview"
+                  className="w-40 h-28 object-cover rounded-sm border border-navy/15 mb-2"
+                />
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                className={`input-field ${errorInputClass(fieldErrors.coverImage)}`}
+                onChange={(e) => { handleCoverChange(e); clearFieldError('coverImage'); }}
+              />
+              {fieldErrors.coverImage ? (
+                <p className="text-xs text-brick mt-1">{fieldErrors.coverImage}</p>
+              ) : (
+                <p className="text-xs text-slate-muted mt-1">This is the main photo shown on listing cards. Photos only - no videos.</p>
+              )}
+            </div>
+          )}
 
-          <MultiImageUpload
-            label="Additional Photos"
-            files={images}
-            onFilesChange={setImages}
-            existingImages={existingImages}
-            onRemoveExisting={removeExistingImage}
-          />
+          {directMedia ? (
+            <div>
+              <label className="label-field">Additional Photos</label>
+              {(existingImages.length > 0 || galleryEntries.length > 0) && (
+                <div className="flex flex-wrap gap-3 mb-3">
+                  {existingImages.map((img, i) => (
+                    <div key={`existing-${i}`} className="relative w-24 h-24 rounded-sm overflow-hidden border border-navy/15 group">
+                      <img src={img} alt="" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => removeExistingImage(i)}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-brick text-white text-xs leading-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Remove photo"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {galleryEntries.map((entry) => (
+                    <div key={entry.clientId} className="relative w-24 h-24 rounded-sm overflow-hidden border border-brass group">
+                      <EntryThumb file={entry.file} alt="" />
+                      {entry.status !== FILE_STATES.SUCCESS && (
+                        <span className="absolute inset-x-0 bottom-0 h-1 bg-navy/20">
+                          <span className="block h-full bg-brass transition-all" style={{ width: `${Math.round((entry.progress || 0) * 100)}%` }} />
+                        </span>
+                      )}
+                      <span className={`absolute top-1 left-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-sm ${entry.status === FILE_STATES.SUCCESS ? 'bg-sage text-white' : entry.status === FILE_STATES.FAILED ? 'bg-brick text-white' : 'bg-brass text-navy'}`}>
+                        {entry.status === FILE_STATES.SUCCESS ? 'Uploaded' : entry.status === FILE_STATES.FAILED ? 'Failed' : `${Math.round((entry.progress || 0) * 100)}%`}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => mediaUp.cancel(entry.clientId)}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-brick text-white text-xs leading-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Remove photo"
+                      >
+                        ×
+                      </button>
+                      {entry.status === FILE_STATES.FAILED && (
+                        <button
+                          type="button"
+                          onClick={() => mediaUp.retry(entry.clientId)}
+                          className="absolute bottom-1 left-1 text-[10px] font-semibold bg-white/90 text-navy px-1.5 py-0.5 rounded-sm"
+                        >
+                          Retry
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                ref={galleryInputRef}
+                onChange={handleDirectGallery}
+              />
+              <button type="button" onClick={() => galleryInputRef.current?.click()} className="btn-secondary text-sm py-2 px-4">
+                + Add photos
+              </button>
+              <span className="text-xs text-slate-muted ml-3">Photos upload as you pick them — failed ones are skipped on submit, not lost with the rest</span>
+              {galleryEntries.some((f) => f.status === FILE_STATES.FAILED) && (
+                <p className="text-xs text-brick mt-2">Some photos failed to upload and will be skipped — retry or remove them before submitting.</p>
+              )}
+            </div>
+          ) : (
+            <MultiImageUpload
+              label="Additional Photos"
+              files={images}
+              onFilesChange={setImages}
+              existingImages={existingImages}
+              onRemoveExisting={removeExistingImage}
+            />
+          )}
 
           <div>
             <label className="label-field">Video Link (optional)</label>
@@ -1120,8 +1433,8 @@ const AddEditProperty = () => {
           </>
         )}
 
-        <button disabled={saving} type="submit" className="btn-primary px-8">
-          {saving ? 'Saving...' : isEdit ? 'Update Property' : form.saleType === 'management' ? 'Submit Management Request' : 'Add Property'}
+        <button disabled={saving || (directMedia && mediaBusy)} type="submit" className="btn-primary px-8">
+          {saving ? 'Saving...' : directMedia && mediaBusy ? 'Uploading photos...' : isEdit ? 'Update Property' : form.saleType === 'management' ? 'Submit Management Request' : 'Add Property'}
         </button>
       </form>
     </div>

@@ -1,4 +1,4 @@
-import api from "../utils/axios";
+import api, { multipartConfig } from "../utils/axios";
 
 /**
  * Get properties
@@ -61,23 +61,31 @@ export const getMyListings = async () => {
 
 /**
  * Create a property listing
- * POST /api/properties  (multipart — coverImage/images go through Cloudinary middleware)
+ * POST /api/properties
+ * - FormData: legacy flow (coverImage/images bytes via Cloudinary middleware)
+ * - Object: direct flow (coverUploadId/galleryUploadIds JSON, no bytes)
  */
-export const createProperty = async (formData) => {
-  const { data } = await api.post("/properties", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+export const createProperty = async (body) => {
+  if (body instanceof FormData) {
+    const { data } = await api.post("/properties", body, multipartConfig());
+    return data;
+  }
+  const { data } = await api.post("/properties", body);
   return data;
 };
 
 /**
  * Update a property listing
- * PUT /api/properties/:id  (multipart — only send coverImage/images that changed)
+ * PUT /api/properties/:id
+ * - FormData: legacy flow (only send coverImage/images that changed)
+ * - Object: direct flow (uploadIds + existingImages JSON, no bytes)
  */
-export const updateProperty = async (id, formData) => {
-  const { data } = await api.put(`/properties/${id}`, formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+export const updateProperty = async (id, body) => {
+  if (body instanceof FormData) {
+    const { data } = await api.put(`/properties/${id}`, body, multipartConfig());
+    return data;
+  }
+  const { data } = await api.put(`/properties/${id}`, body);
   return data;
 };
 

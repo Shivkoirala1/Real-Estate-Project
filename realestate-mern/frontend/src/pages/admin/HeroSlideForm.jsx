@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   createHeroSlide,
@@ -7,6 +7,15 @@ import {
 } from "../../services/heroSlideService";
 import { getProperties, getPropertyByIdorSlug } from "../../services/propertyService";
 import { nepaliInputToUTC, utcToNepaliInputLocal } from "../../utils/timeConverter";
+import { CLIENT_UPLOAD_LIMITS, useObjectPreview, validateImageFile } from "../../utils/imageUpload";
+import { FILE_STATES, useDirectUpload } from "../../hooks/useDirectUpload";
+
+// Blob preview owned by this component (revoked on replace/unmount).
+const DirectPreview = ({ file, alt = "", className = "w-full h-full object-cover" }) => {
+  const preview = useObjectPreview(file);
+  if (!preview) return null;
+  return <img src={preview} alt={alt} className={className} />;
+};
 
 // Stored instants are UTC; the datetime-local inputs show and accept Nepal
 // wall time. Converting on both ends (instead of passing the raw input
@@ -52,6 +61,25 @@ export default function HeroSlideForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const searchTimer = useRef(null);
+
+  // Phase 3 direct-upload: media + thumbnail go browser → Cloudinary through
+  // one shared hero session (at most 2 files — no batching complexity).
+  // Kill-switch: VITE_HERO_DIRECT_UPLOAD=false restores pure legacy.
+  const directMedia = import.meta.env.VITE_HERO_DIRECT_UPLOAD !== "false";
+  const heroUp = useDirectUpload({ scope: "hero", concurrency: 2 });
+  const [mediaClientId, setMediaClientId] = useState(null);
+  const [thumbClientId, setThumbClientId] = useState(null);
+  const mediaStartRef = useRef(null);
+  const markMediaStart = () => {
+    if (!mediaStartRef.current) mediaStartRef.current = Date.now();
+  };
+  const mediaEntry = heroUp.files.find((f) => f.clientId === mediaClientId) || null;
+  const thumbEntry = heroUp.files.find((f) => f.clientId === thumbClientId) || null;
+  const mediaBusy = heroUp.files.some((f) =>
+    [FILE_STATES.QUEUED, FILE_STATES.SIGNING, FILE_STATES.UPLOADING, FILE_STATES.COMPLETING].includes(f.status)
+  );
+  const mediaUploadId = mediaEntry && mediaEntry.status === FILE_STATES.SUCCESS ? mediaEntry.uploadId : null;
+  const thumbnailUploadId = thumbEntry && thumbEntry.status === FILE_STATES.SUCCESS ? thumbEntry.uploadId : null;
 
   // hooks must always run in the same order, so effects are unconditional —
   // only the fetch logic inside is gated on isEditing
@@ -127,6 +155,14 @@ export default function HeroSlideForm() {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    // Direct flow: a picked media file is bound to its type at pick time
+    // (purpose + signed params). Switching type invalidates it — drop with
+    // an explanation rather than submitting a guaranteed 400.
+    if (directMedia && name === "mediaType" && value !== form.mediaType && mediaClientId) {
+      heroUp.cancel(mediaClientId).catch(() => {});
+      setMediaClientId(null);
+      setError("Media type changed — the previously selected file was removed. Please pick a matching file.");
+    }
     setForm((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -136,15 +172,90 @@ export default function HeroSlideForm() {
     if (name === "ctaActionType") setPropertyTitle("");
   };
 
+  // Direct flow picks upload immediately (browser → Cloudinary); submit
+  // carries only uploadIds. Purpose/mediaKind come from the actual file —
+  // the client never controls folders, sizes or formats.
+  const handleDirectMedia = (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const wantVideo = form.mediaType === "video";
+    if (wantVideo ? !file.type.startsWith("video/") : !file.type.startsWith("image/")) {
+      setError(wantVideo ? "Media must be a video file (MP4, WebM, MOV)." : "Media must be an image file (JPG, PNG, WEBP, GIF).");
+      return;
+    }
+    const cap = wantVideo ? CLIENT_UPLOAD_LIMITS.heroVideo : CLIENT_UPLOAD_LIMITS.heroImage;
+    if (file.size > cap) {
+      setError(wantVideo ? "Video is too large — maximum is 50 MB." : "Image is too large — maximum is 10 MB.");
+      return;
+    }
+    setError(null);
+    if (mediaClientId) heroUp.cancel(mediaClientId).catch(() => {});
+    markMediaStart();
+    const [clientId] = heroUp.addFiles([file], { purpose: "hero-media", refs: { mediaKind: wantVideo ? "video" : "image" } });
+    setMediaClientId(clientId || null);
+  };
+
+  const handleDirectThumb = (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const err = validateImageFile(file, { maxBytes: CLIENT_UPLOAD_LIMITS.heroImage, label: "Thumbnail" });
+    if (err) {
+      setError(err);
+      return;
+    }
+    setError(null);
+    if (thumbClientId) heroUp.cancel(thumbClientId).catch(() => {});
+    markMediaStart();
+    const [clientId] = heroUp.addFiles([file], { purpose: "hero-thumbnail" });
+    setThumbClientId(clientId || null);
+  };
+
+  const directClientStats = () => ({
+    uploadDurationMs: mediaStartRef.current ? Date.now() - mediaStartRef.current : 0,
+    retries: heroUp.files.reduce((s, f) => s + (f.attempts || 0), 0),
+    failures: heroUp.files.filter((f) => f.status === FILE_STATES.FAILED).length,
+    timeouts: 0, // XHR direct uploads run without a client timeout; progress is visible instead
+  });
+
   const validate = () => {
     if (!form.title.trim()) return "Slide title is required.";
-    if (!isEditing && !mediaFile) return "A media file is required.";
-    if (mediaFile) {
-      const isVideo = mediaFile.type.startsWith("video/");
-      const isImage = mediaFile.type.startsWith("image/");
-      if (!isVideo && !isImage) return "Media must be an image or a video file.";
-      if ((form.mediaType === "video") !== isVideo) {
-        return "Media type does not match the selected file.";
+    if (directMedia) {
+      // Upload bytes (when any) are pre-validated at pick time; here we
+      // only gate on presence/state. Backend remains authoritative.
+      if (!isEditing && !mediaUploadId) {
+        if (mediaEntry && mediaEntry.status === FILE_STATES.FAILED) {
+          return "Media upload failed — retry it or pick another file.";
+        }
+        return "A media file is required.";
+      }
+      if (mediaEntry && mediaEntry.status === FILE_STATES.FAILED && !existingMedia?.url) {
+        return "Media upload failed — retry it or pick another file.";
+      }
+    } else {
+      if (!isEditing && !mediaFile) return "A media file is required.";
+      if (mediaFile) {
+        const isVideo = mediaFile.type.startsWith("video/");
+        const isImage = mediaFile.type.startsWith("image/");
+        if (!isVideo && !isImage) return "Media must be an image or a video file.";
+        if ((form.mediaType === "video") !== isVideo) {
+          return "Media type does not match the selected file.";
+        }
+        // Fail fast in the browser (backend caps are authoritative: 10 MB
+        // images in the controller, 50 MB files in multer).
+        const cap = isVideo ? CLIENT_UPLOAD_LIMITS.heroVideo : CLIENT_UPLOAD_LIMITS.heroImage;
+        if (mediaFile.size > cap) {
+          return isVideo
+            ? "Video is too large — maximum is 50 MB."
+            : "Image is too large — maximum is 10 MB.";
+        }
+      }
+    }
+    if (thumbnailFile) {
+      if (!thumbnailFile.type.startsWith("image/")) return "Thumbnail must be an image file.";
+      if (thumbnailFile.size > CLIENT_UPLOAD_LIMITS.heroImage) {
+        return "Thumbnail is too large — maximum is 10 MB.";
       }
     }
     if (form.ctaEnabled) {
@@ -175,6 +286,51 @@ export default function HeroSlideForm() {
     }
     setSubmitting(true);
     setError(null);
+    // Direct flow: media already lives on Cloudinary — submit authorized
+    // uploadIds, never bytes. A failed media blocks (unless existing media
+    // is kept); a failed thumbnail is excluded, never fatal. Completed
+    // uploads survive validation failures, so resubmits reuse the ids.
+    if (directMedia) {
+      if (mediaBusy) {
+        setSubmitting(false);
+        setError("Media is still uploading — please wait for it to finish before saving.");
+        return;
+      }
+      try {
+        const payload = {
+          title: form.title.trim(),
+          subtitle: form.subtitle,
+          description: form.description,
+          altText: form.altText,
+          mediaType: form.mediaType,
+          mediaUploadId: mediaUploadId || undefined,
+          thumbnailUploadId: thumbnailUploadId || undefined,
+          uploadSessionId: heroUp.sessionId,
+          clientStats: directClientStats(),
+          ctaEnabled: form.ctaEnabled,
+          ctaLabel: form.ctaLabel,
+          ctaActionType: form.ctaActionType,
+          ctaActionValue: form.ctaEnabled ? form.ctaActionValue : "",
+          startAt: form.startAt ? nepaliInputToUTC(form.startAt) : "",
+          endAt: form.endAt ? nepaliInputToUTC(form.endAt) : "",
+          displayOrder: form.displayOrder === "" ? undefined : form.displayOrder,
+          duration: form.duration,
+          status,
+        };
+        if (isEditing) {
+          await updateHeroSlide(params.id, payload);
+        } else {
+          await createHeroSlide(payload);
+        }
+        navigate("/dashboard/admin/hero-slides");
+      } catch (err) {
+        console.error("Failed to save hero slide:", err);
+        setError(err?.response?.data?.message || "Failed to save hero slide. Please try again.");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     const payload = {
       title: form.title.trim(),
       subtitle: form.subtitle,
@@ -212,14 +368,30 @@ export default function HeroSlideForm() {
     return <p className="text-slate-muted max-w-3xl mx-auto">Loading...</p>;
   }
 
-  const previewUrl = mediaFile
-    ? URL.createObjectURL(mediaFile)
-    : form.mediaType === "image"
-      ? existingMedia?.url
-      : null;
-  const previewThumb = thumbnailFile
-    ? URL.createObjectURL(thumbnailFile)
-    : existingMedia?.thumbnailUrl || previewUrl;
+  // Memoized blob previews with cleanup (previously minted inline during
+  // render, leaking a URL per render and never revoking). In direct mode the
+  // preview comes from the hook entry's File; otherwise the legacy state.
+  const effMediaFile = directMedia ? mediaEntry?.file ?? null : mediaFile;
+  const effThumbFile = directMedia ? thumbEntry?.file ?? null : thumbnailFile;
+  const previewUrl = useMemo(() => {
+    if (!effMediaFile) return null;
+    return URL.createObjectURL(effMediaFile);
+  }, [effMediaFile]);
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+  const previewThumb = useMemo(() => {
+    if (!effThumbFile) return null;
+    return URL.createObjectURL(effThumbFile);
+  }, [effThumbFile]);
+  useEffect(() => () => {
+    if (previewThumb) URL.revokeObjectURL(previewThumb);
+  }, [previewThumb]);
+
+  const resolvedPreviewUrl =
+    previewUrl || (form.mediaType === "image" ? existingMedia?.url : null);
+  const resolvedPreviewThumb =
+    previewThumb || existingMedia?.thumbnailUrl || resolvedPreviewUrl;
 
   return (
     <form
@@ -245,17 +417,17 @@ export default function HeroSlideForm() {
         <div className="relative h-48">
           {form.mediaType === "video" ? (
             <video
-              key={mediaFile ? previewUrl : existingMedia?.url}
-              src={mediaFile ? previewUrl : existingMedia?.url}
-              poster={previewThumb || undefined}
+              key={previewUrl || existingMedia?.url}
+              src={previewUrl || existingMedia?.url}
+              poster={resolvedPreviewThumb || undefined}
               muted
               loop
               playsInline
               controls={!!(mediaFile || existingMedia?.url)}
               className="w-full h-full object-cover"
             />
-          ) : previewUrl ? (
-            <img src={previewUrl} alt={form.altText || form.title} className="w-full h-full object-cover" />
+          ) : resolvedPreviewUrl ? (
+            <img src={resolvedPreviewUrl} alt={form.altText || form.title} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-ivory/40 text-sm">
               Media preview appears here
@@ -338,28 +510,159 @@ export default function HeroSlideForm() {
             {form.mediaType === "video" ? "Upload Video (MP4, WebM, MOV)" : "Upload Image (JPG, PNG, WEBP, GIF)"}
             {!isEditing && " *"}
           </label>
-          <input
-            type="file"
-            accept={form.mediaType === "video" ? "video/*" : "image/*"}
-            onChange={(e) => setMediaFile(e.target.files[0] ?? null)}
-            className="text-sm text-slate-muted"
-          />
-          {mediaFile && <p className="text-xs text-slate-muted mt-1">Selected: {mediaFile.name}</p>}
-          {isEditing && existingMedia?.url && !mediaFile && (
-            <p className="text-xs text-slate-muted mt-1">Current file kept unless you select a new one.</p>
+          {directMedia ? (
+            <div>
+              {mediaEntry ? (
+                <div className="mb-2 max-w-xs">
+                  <div className="relative rounded-sm overflow-hidden border border-navy/15 mb-2 bg-navy/5">
+                    {mediaEntry.file.type.startsWith("image/") ? (
+                      <DirectPreview file={mediaEntry.file} alt={form.altText || form.title} />
+                    ) : (
+                      <p className="text-xs text-slate-muted px-3 py-6 text-center truncate">{mediaEntry.file.name}</p>
+                    )}
+                    {mediaEntry.status === FILE_STATES.SUCCESS && (
+                      <button
+                        type="button"
+                        onClick={() => { heroUp.cancel(mediaEntry.clientId).catch(() => {}); setMediaClientId(null); }}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-brick text-white text-xs leading-5"
+                        aria-label="Remove media"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                  {mediaEntry.status !== FILE_STATES.SUCCESS && (
+                    <div>
+                      <div className="h-1.5 bg-navy/10 rounded-full overflow-hidden mb-1">
+                        <div
+                          className="h-full bg-brass transition-all"
+                          style={{ width: `${Math.round((mediaEntry.progress || 0) * 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-slate-muted">
+                        {mediaEntry.status === FILE_STATES.FAILED
+                          ? `Upload failed — ${mediaEntry.error || "please retry."}`
+                          : `Uploading… ${Math.round((mediaEntry.progress || 0) * 100)}%`}
+                      </p>
+                      <div className="flex gap-2 mt-1">
+                        {mediaEntry.status === FILE_STATES.FAILED && (
+                          <button type="button" onClick={() => heroUp.retry(mediaEntry.clientId)} className="text-xs font-medium text-brass hover:underline">
+                            Retry
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => { heroUp.cancel(mediaEntry.clientId).catch(() => {}); setMediaClientId(null); }}
+                          className="text-xs text-slate-muted hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                isEditing && existingMedia?.url && (
+                  <p className="text-xs text-slate-muted mt-1 mb-2">Current file kept unless you select a new one.</p>
+                )
+              )}
+              <input
+                type="file"
+                accept={form.mediaType === "video" ? "video/*" : "image/*"}
+                onChange={handleDirectMedia}
+                className="text-sm text-slate-muted"
+              />
+              <p className="text-xs text-slate-muted mt-1">Uploads straight to media storage with progress — the 50 MB video cap still applies.</p>
+            </div>
+          ) : (
+            <>
+              <input
+                type="file"
+                accept={form.mediaType === "video" ? "video/*" : "image/*"}
+                onChange={(e) => setMediaFile(e.target.files[0] ?? null)}
+                className="text-sm text-slate-muted"
+              />
+              {mediaFile && <p className="text-xs text-slate-muted mt-1">Selected: {mediaFile.name}</p>}
+              {isEditing && existingMedia?.url && !mediaFile && (
+                <p className="text-xs text-slate-muted mt-1">Current file kept unless you select a new one.</p>
+              )}
+            </>
           )}
         </div>
         <div>
           <label className="block mb-2 font-medium text-navy">
             Thumbnail {form.mediaType === "video" ? "(recommended for videos)" : "(optional)"}
           </label>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setThumbnailFile(e.target.files[0] ?? null)}
-            className="text-sm text-slate-muted"
-          />
-          {thumbnailFile && <p className="text-xs text-slate-muted mt-1">Selected: {thumbnailFile.name}</p>}
+          {directMedia ? (
+            <div>
+              {thumbEntry ? (
+                <div className="mb-2 max-w-xs">
+                  <div className="relative w-40 h-28 rounded-sm overflow-hidden border border-navy/15 mb-2">
+                    <DirectPreview file={thumbEntry.file} alt="Thumbnail preview" />
+                    {thumbEntry.status === FILE_STATES.SUCCESS && (
+                      <button
+                        type="button"
+                        onClick={() => { heroUp.cancel(thumbEntry.clientId).catch(() => {}); setThumbClientId(null); }}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-brick text-white text-xs leading-5"
+                        aria-label="Remove thumbnail"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                  {thumbEntry.status !== FILE_STATES.SUCCESS && (
+                    <div>
+                      <div className="h-1.5 bg-navy/10 rounded-full overflow-hidden mb-1">
+                        <div
+                          className="h-full bg-brass transition-all"
+                          style={{ width: `${Math.round((thumbEntry.progress || 0) * 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-slate-muted">
+                        {thumbEntry.status === FILE_STATES.FAILED
+                          ? `Upload failed — ${thumbEntry.error || "please retry."} A failed thumbnail never blocks the media.`
+                          : `Uploading… ${Math.round((thumbEntry.progress || 0) * 100)}%`}
+                      </p>
+                      <div className="flex gap-2 mt-1">
+                        {thumbEntry.status === FILE_STATES.FAILED && (
+                          <button type="button" onClick={() => heroUp.retry(thumbEntry.clientId)} className="text-xs font-medium text-brass hover:underline">
+                            Retry
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => { heroUp.cancel(thumbEntry.clientId).catch(() => {}); setThumbClientId(null); }}
+                          className="text-xs text-slate-muted hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                isEditing && existingMedia?.thumbnailUrl && (
+                  <p className="text-xs text-slate-muted mt-1 mb-2">Current thumbnail kept unless you select a new one.</p>
+                )
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleDirectThumb}
+                className="text-sm text-slate-muted"
+              />
+            </div>
+          ) : (
+            <>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setThumbnailFile(e.target.files[0] ?? null)}
+                className="text-sm text-slate-muted"
+              />
+              {thumbnailFile && <p className="text-xs text-slate-muted mt-1">Selected: {thumbnailFile.name}</p>}
+            </>
+          )}
         </div>
         <div>
           <label className="block mb-2 font-medium text-navy">Alt text (accessibility)</label>
@@ -555,19 +858,19 @@ export default function HeroSlideForm() {
       <div className="flex flex-wrap gap-3 pt-2">
         <button
           type="button"
-          disabled={submitting}
+          disabled={submitting || (directMedia && mediaBusy)}
           onClick={() => handleSubmit("draft")}
           className="btn-secondary text-sm py-2.5 px-6 disabled:opacity-50"
         >
-          {submitting ? "Saving..." : "Save Draft"}
+          {submitting ? "Saving..." : directMedia && mediaBusy ? "Uploading…" : "Save Draft"}
         </button>
         <button
           type="button"
-          disabled={submitting}
+          disabled={submitting || (directMedia && mediaBusy)}
           onClick={() => handleSubmit("published")}
           className="btn-gold text-sm py-2.5 px-6 disabled:opacity-50"
         >
-          {submitting ? "Saving..." : isEditing ? "Save & Publish" : "Publish"}
+          {submitting ? "Saving..." : directMedia && mediaBusy ? "Uploading…" : isEditing ? "Save & Publish" : "Publish"}
         </button>
         <Link to="/dashboard/admin/hero-slides" className="text-sm text-slate-muted hover:underline self-center">
           Cancel

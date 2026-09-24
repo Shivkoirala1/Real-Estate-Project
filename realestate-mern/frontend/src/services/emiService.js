@@ -1,4 +1,4 @@
-import api from '../utils/axios';
+import api, { multipartConfig } from '../utils/axios';
 
 // ------------------------------------------------------------------
 // EMI plans service (Spec v2 - Feature 3).
@@ -102,18 +102,37 @@ export const updateInstallment = async (planId, installmentNumber, payload) => {
  * payload: { paidAmount?, paidDate?, note?, paymentSlip?: File }
  * response: { success, message, plan }
  */
-export const requestInstallmentVerification = async (planId, installmentNumber, { paidAmount, paidDate, note, paymentSlip } = {}) => {
-  const formData = new FormData();
-  if (paidAmount !== undefined && paidAmount !== null && paidAmount !== '') formData.append('paidAmount', paidAmount);
-  if (paidDate) formData.append('paidDate', paidDate);
-  if (note) formData.append('note', note);
-  if (paymentSlip) formData.append('paymentSlip', paymentSlip);
+export const requestInstallmentVerification = async (planId, installmentNumber, { paidAmount, paidDate, note, paymentSlip, paymentSlipUploadId, uploadSessionId, clientStats } = {}) => {
+  // paymentSlip as File → legacy multipart; paymentSlipUploadId → direct JSON.
+  if (paymentSlip instanceof File) {
+    const formData = new FormData();
+    if (paidAmount !== undefined && paidAmount !== null && paidAmount !== '') formData.append('paidAmount', paidAmount);
+    if (paidDate) formData.append('paidDate', paidDate);
+    if (note) formData.append('note', note);
+    if (paymentSlip) formData.append('paymentSlip', paymentSlip);
+
+    const { data } = await api.post(
+      `/emi-plans/${planId}/installments/${installmentNumber}/verification-request`,
+      formData,
+      multipartConfig()
+    );
+    return data;
+  }
 
   const { data } = await api.post(
     `/emi-plans/${planId}/installments/${installmentNumber}/verification-request`,
-    formData,
-    { headers: { 'Content-Type': 'multipart/form-data' } }
+    { paidAmount, paidDate, note, paymentSlipUploadId, uploadSessionId, clientStats }
   );
+  return data;
+};
+
+/**
+ * Fetch short-lived slip access for one installment.
+ * GET /api/emi-plans/:planId/installments/:n/slip
+ * response: { success, url, expiresAt?, legacy }
+ */
+export const getInstallmentSlipUrl = async (planId, installmentNumber) => {
+  const { data } = await api.get(`/emi-plans/${planId}/installments/${installmentNumber}/slip`);
   return data;
 };
 

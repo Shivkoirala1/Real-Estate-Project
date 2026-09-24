@@ -1,7 +1,12 @@
 # Real-Time Architecture: Final Implementation Plan (REST + Socket.IO)
 
-> Status: **PLAN — not implemented.** This document is detailed enough to execute phase-by-phase without rediscovering the architecture.
-> Context: combines (1) the original REST + Socket.IO repository audit and (2) the Open-Question Decisions report. Both are treated as authoritative; nothing below re-audits from scratch.
+> Status: **IMPLEMENTED — Phases 1–12 complete (2026-09-18).**
+> Backend realtime (`backend/realtime/`, `middleware/socketAuth.js`), frontend
+> lifecycle (`services/socket.js`, contexts, thread views), polling removed,
+> 108 backend tests green. This document is now the as-built record; see
+> `real-time-deployment-verification.md` for the testing-deployment sign-off.
+
+> Context (historical): combined (1) the original REST + Socket.IO repository audit and (2) the Open-Question Decisions report.
 > Project stage: **testing-only deployment, not live to end users** — prioritize clean and correct over migration-safe. No feature flags, no zero-downtime machinery, no Redis.
 
 Legend: **[FACT]** = verified against the current repo · **[DECISION]** = already approved · **[RECOMMENDATION]** = proposed implementation detail · **[APPROVAL]** = still needs a human yes.

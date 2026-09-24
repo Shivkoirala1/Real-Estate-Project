@@ -1,5 +1,12 @@
 # Client-Facing Polling Audit: Notifications, Conversations & Time-Sensitive Flows
 
+> **STATUS (2026-09-18): point-in-time audit — superseded by implementation.**
+> The 20s/30s badge loops (F1/F2) were removed in realtime Phase 10; live thread
+> delivery (F3) shipped in Phase 5 via Socket.IO (the SSE recommendation was
+> superseded by the approved REST + Socket.IO decision). No `setInterval` API
+> polling remains in `frontend/src` (only the VerifyEmail cooldown). Kept as the
+> evidence record; for current state see `real-time-rest-socketio-final-implementation-plan.md`.
+
 > Scope: React frontend → Express API only. Backend-to-backend (cron, Brevo email, SMS stub) excluded per brief. **No code modified — report only.**
 
 ## Summary Table

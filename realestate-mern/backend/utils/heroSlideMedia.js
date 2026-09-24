@@ -1,36 +1,4 @@
-const cloudinary = require('cloudinary').v2;
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-// Extracts a Cloudinary public_id from a delivery URL so the bytes can be
-// destroyed. Returns null for non-Cloudinary URLs, which are simply
-// unlinked rather than deleted. Same convention as
-// utils/verificationRetention.js.
-const publicIdFromUrl = (url) => {
-  if (typeof url !== 'string' || !url.includes('res.cloudinary.com')) return null;
-  const marker = '/upload/';
-  const idx = url.indexOf(marker);
-  if (idx === -1) return null;
-  let rest = url.slice(idx + marker.length).split('?')[0];
-  rest = rest.replace(/^v\d+\//, '');
-  rest = rest.replace(/\.[a-zA-Z0-9]+$/, '');
-  return rest || null;
-};
-
-// Best-effort Cloudinary destroy — never throws, so media cleanup can
-// never break the API response. Failures are logged for ops follow-up.
-const destroyByPublicId = async (publicId, resourceType = 'image') => {
-  if (!publicId) return;
-  try {
-    await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
-  } catch (err) {
-    console.error(`HeroSlide media cleanup failed (${publicId}):`, err.message);
-  }
-};
+const { publicIdFromUrl, destroyByPublicId } = require('./cloudinary');
 
 // Destroys every Cloudinary asset referenced by a slide document.
 // Prefers stored publicIds (exact even if the delivery URL changed);

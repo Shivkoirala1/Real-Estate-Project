@@ -4,6 +4,17 @@ const api = axios.create({
   timeout : 60000,
 });
 
+// Phase 0 (direct-upload migration): the legacy multipart entity endpoints
+// proxy bytes through Render, so large galleries / hero videos need a longer
+// per-request window than the 60 s JSON default. Scoped to multipart calls
+// only — the global default above is unchanged.
+export const MULTIPART_TIMEOUT_MS = 180000;
+export const multipartConfig = (extra = {}) => ({
+  headers: { 'Content-Type': 'multipart/form-data' },
+  timeout: MULTIPART_TIMEOUT_MS,
+  ...extra,
+});
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
   if (token) {

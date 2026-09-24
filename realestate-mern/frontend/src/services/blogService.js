@@ -1,4 +1,4 @@
-import api from "../utils/axios";
+import api, { multipartConfig } from "../utils/axios";
 
 // GET /api/blogs?page=&limit=&status=&search=  (admin — all blogs, any status)
 export const getAllBlogs = async ({ page = 1, limit = 10, status, search, orderBy } = {}) => {
@@ -28,32 +28,56 @@ export const getBlogById = async (id) => {
   return data; // blog
 };
 
-// POST /api/blogs  (multipart — coverImage goes through Cloudinary middleware)
-export const createBlog = async ({ title, body, tags, status, coverImage }) => {
-  const formData = new FormData();
-  formData.append("title", title);
-  formData.append("body", body);
-  formData.append("status", status || "draft");
-  if (tags) formData.append("tags", JSON.stringify(tags));
-  if (coverImage) formData.append("coverImage", coverImage);
+// POST /api/blogs
+// - coverImage as File: legacy flow (multipart via Cloudinary middleware)
+// - coverUploadId: direct flow (JSON, no bytes)
+export const createBlog = async ({ title, body, tags, status, coverImage, coverUploadId, uploadSessionId, clientStats }) => {
+  if (coverImage instanceof File) {
+    const formData = new FormData();
+    formData.append("title", title);
+    formData.append("body", body);
+    formData.append("status", status || "draft");
+    if (tags) formData.append("tags", JSON.stringify(tags));
+    if (coverImage) formData.append("coverImage", coverImage);
 
-  const { data } = await api.post("/blogs", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
+    const { data } = await api.post("/blogs", formData, multipartConfig());
+    return data; // { message, blog }
+  }
+  const { data } = await api.post("/blogs", {
+    title,
+    body,
+    status: status || "draft",
+    tags,
+    coverUploadId,
+    uploadSessionId,
+    clientStats,
   });
   return data; // { message, blog }
 };
 
-// PATCH /api/blogs/:id  (multipart — only send coverImage if it changed)
-export const updateBlog = async (id, { title, body, tags, status, coverImage }) => {
-  const formData = new FormData();
-  if (title !== undefined) formData.append("title", title);
-  if (body !== undefined) formData.append("body", body);
-  if (status !== undefined) formData.append("status", status);
-  if (tags !== undefined) formData.append("tags", JSON.stringify(tags));
-  if (coverImage) formData.append("coverImage", coverImage);
+// PATCH /api/blogs/:id
+// - coverImage as File: legacy flow (multipart, only when changed)
+// - coverUploadId: direct flow (JSON, no bytes)
+export const updateBlog = async (id, { title, body, tags, status, coverImage, coverUploadId, uploadSessionId, clientStats }) => {
+  if (coverImage instanceof File) {
+    const formData = new FormData();
+    if (title !== undefined) formData.append("title", title);
+    if (body !== undefined) formData.append("body", body);
+    if (status !== undefined) formData.append("status", status);
+    if (tags !== undefined) formData.append("tags", JSON.stringify(tags));
+    if (coverImage) formData.append("coverImage", coverImage);
 
-  const { data } = await api.patch(`/blogs/${id}`, formData, {
-    headers: { "Content-Type": "multipart/form-data" },
+    const { data } = await api.patch(`/blogs/${id}`, formData, multipartConfig());
+    return data; // { message, blog }
+  }
+  const { data } = await api.patch(`/blogs/${id}`, {
+    title,
+    body,
+    status,
+    tags,
+    coverUploadId,
+    uploadSessionId,
+    clientStats,
   });
   return data; // { message, blog }
 };

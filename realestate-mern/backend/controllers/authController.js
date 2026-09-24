@@ -5,6 +5,19 @@ const sendEmail = require('../utils/sendEmail');
 const sendSMS = require('../utils/sendSMS');
 const { generateCode, hashCode, CODE_TTL_MS } = require('../utils/otp');
 const { awardReward } = require('../utils/rewards');
+// Phase 4 direct-upload: avatars may arrive as an authorized uploadId
+// (browser → Cloudinary) instead of multipart bytes. All other profile
+// fields (including Phase 5 verification documents) keep legacy handling.
+const {
+  resolveAvatar,
+  commitUploads,
+  retireRemovedEntityUploads,
+  publicDeliveryUrl,
+  closeSession,
+} = require('../services/uploadService');
+const { recordSingleSubmit } = require('../utils/uploadMetrics');
+
+const isAvatarDirectEnabled = () => process.env.AVATAR_DIRECT_UPLOAD_ENABLED !== 'false';
 
 const normalizeEmail = (email = '') => email.toLowerCase().trim();
 
@@ -391,6 +404,7 @@ const getMe = asyncHandler(async (req, res) => {
 // @route   PUT /api/auth/profile
 // @access  Private
 const updateProfile = asyncHandler(async (req, res) => {
+  const startedAt = Date.now();
   const { name, phone, avatar, dateOfBirth } = req.body;
   const user = await User.findById(req.user._id);
 
@@ -415,8 +429,73 @@ const updateProfile = asyncHandler(async (req, res) => {
   // A profile-photo change is cosmetic only — unlike identity documents, it
   // never sends the account back to pending review.
   if (files.avatar) user.avatar = files.avatar[0].path;
+
+  // Direct avatar flow: resolve the caller's own completed upload (self
+  // ownership is enforced in the service — a profile is always self-only)
+  // and persist the server-derived URL. Legacy body.avatar/files.avatar
+  // handling above is preserved for the flag-off path.
+  const directAvatarRequested = req.body.avatarUploadId !== undefined;
+  let directAvatar = null;
+  if (directAvatarRequested) {
+    if (!isAvatarDirectEnabled()) {
+      recordSingleSubmit('avatar', 'direct', { durationMs: Date.now() - startedAt, outcome: 'error' });
+      return res.status(400).json({ success: false, message: 'Direct avatar upload is disabled — please use the standard photo upload' });
+    }
+    try {
+      const row = await resolveAvatar({
+        actor: req.user,
+        sessionId: req.body.uploadSessionId,
+        avatarUploadId: req.body.avatarUploadId,
+      });
+      directAvatar = row ? { url: publicDeliveryUrl(row), upload: row } : null;
+    } catch (err) {
+      recordSingleSubmit('avatar', 'direct', { durationMs: Date.now() - startedAt, outcome: 'validation' });
+      throw err;
+    }
+  }
   if (files.selfiePhoto || files.citizenshipPhotoFront || files.citizenshipPhotoBack) {
     user.verificationStatus = 'pending';
+  }
+
+  if (directAvatar) {
+    user.avatar = directAvatar.url;
+    // Commit BEFORE save (the user already exists): a save failure leaves
+    // committed rows pointing at valid bytes, reconciled by the next
+    // avatar change's retire pass. The working avatar is never clobbered
+    // by a failed save.
+    try {
+      await commitUploads({
+        actor: req.user,
+        sessionId: req.body.uploadSessionId,
+        uploadIds: [String(directAvatar.upload._id)],
+        entityType: 'user',
+        entityId: String(user._id),
+      });
+    } catch (err) {
+      recordSingleSubmit('avatar', 'direct', {
+        durationMs: Date.now() - startedAt, hasFile: true,
+        bytes: directAvatar.upload.clientMeta.bytes || 0, outcome: 'error',
+      });
+      throw err;
+    }
+  }
+
+  await user.save();
+
+  if (directAvatar) {
+    // Deferred retirement of the replaced direct avatar (legacy avatar URLs
+    // with no Upload row are left alone).
+    await retireRemovedEntityUploads({ entityType: 'user', entityId: user._id, keepUrls: [user.avatar] });
+    await closeSession(req.body.uploadSessionId, req.user);
+    recordSingleSubmit('avatar', 'direct', {
+      durationMs: Date.now() - startedAt, hasFile: true,
+      bytes: directAvatar.upload.clientMeta.bytes || 0, outcome: 'success',
+    });
+  } else if (files.avatar) {
+    recordSingleSubmit('avatar', 'legacy', {
+      durationMs: Date.now() - startedAt, hasFile: true,
+      bytes: (files.avatar[0].size || files.avatar[0].bytes) || 0, outcome: 'success',
+    });
   }
 
   await user.save();

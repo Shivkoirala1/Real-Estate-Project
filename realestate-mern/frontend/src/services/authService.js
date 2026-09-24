@@ -1,4 +1,4 @@
-import api from "../utils/axios";
+import api, { multipartConfig } from "../utils/axios";
 
 /**
  * Register a new user
@@ -8,11 +8,7 @@ import api from "../utils/axios";
  * requires selfie and citizenship images.
  */
 export const registerUser = async (formData) => {
-  const response = await api.post("/auth/register", formData, {
-    headers: {
-      "Content-Type": "multipart/form-data",
-    },
-  });
+  const response = await api.post("/auth/register", formData, multipartConfig());
 
   return response.data;
 };
@@ -102,17 +98,18 @@ export const getCurrentUser = async () => {
  * Supports:
  * - name
  * - phone
- * - avatar
+ * - avatar (File: legacy multipart | avatarUploadId: direct JSON)
  * - selfiePhoto
  * - citizenshipPhotoFront
  * - citizenshipPhotoBack
  */
 export const updateProfile = async (formData) => {
-  const response = await api.put("/auth/profile", formData, {
-    headers: {
-      "Content-Type": "multipart/form-data",
-    },
-  });
+  if (formData instanceof FormData) {
+    const response = await api.put("/auth/profile", formData, multipartConfig());
+
+    return response.data;
+  }
+  const response = await api.put("/auth/profile", formData);
 
   return response.data;
 };

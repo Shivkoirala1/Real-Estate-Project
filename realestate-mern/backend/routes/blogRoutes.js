@@ -15,12 +15,13 @@ const upload = require("../middleware/upload");
 
 const router = express.Router();
 
-// Admin
+// Admin — auth runs BEFORE the upload middleware so unauthenticated bytes
+// never reach Cloudinary (previously upload.single ran first).
 router.post(
   "/",
-  upload.single("coverImage"),
   protect,
   authorize("admin"),
+  upload.single("coverImage"),
   createBlog
 );
 
@@ -29,9 +30,9 @@ router.get("/",   protect,
 
 router.patch(
   "/:id",
-  upload.single("coverImage"),
   protect,
   authorize("admin"),
+  upload.single("coverImage"),
   updateBlog
 );
 

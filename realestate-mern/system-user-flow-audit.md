@@ -566,7 +566,7 @@ Flow: admin create draft → edit → publish → public visibility (/blogs, /bl
 
 ## 20. Notification Flows
 
-Infra: `notify()` swallows errors (`notify.js:12-51`), `notifyMany()` dedupes recipients (`54-57`); types enum `Notification.js:7-55` (~40 + 4 legacy `inquiry_*`); controller scoped `recipient=req.user._id` (`notificationController.js:7-81`); frontend `notificationService.js:12,23,32,41,50` + `NotificationContext.jsx:15-112` (30-item fetch, unread-count, 20s poll) + `NotificationBell.jsx:376` + `Notifications.jsx:3`.
+Infra: `notify()` swallows errors (`notify.js:12-51`), `notifyMany()` dedupes recipients (`54-57`); types enum `Notification.js:7-55` (~40 + 4 legacy `inquiry_*`); controller scoped `recipient=req.user._id` (`notificationController.js:7-81`); frontend `notificationService.js:12,23,32,41,50` + `NotificationContext.jsx:15-112` (30-item fetch, unread-count, 20s poll) + `NotificationBell.jsx:376` + `Notifications.jsx:3`. **UPDATE (realtime Phases 1–12, 2026-09-18): the 20s badge poll is removed; badge delivery is Socket.IO push (`v1.notification.unread`) + REST resync — see `real-time-*.md`. Table below unchanged.**
 
 | Event | Recipient | Type | Implemented? |
 |---|---|---|---|
