@@ -12,7 +12,7 @@ const uploadSessionSchema = new mongoose.Schema(
     // config/uploadPurposes.js SESSION_SCOPES).
     scope: {
       type: String,
-      enum: ['property', 'hero', 'blog', 'avatar', 'verification', 'emi'],
+      enum: ['property', 'hero', 'blog', 'avatar', 'verification', 'emi', 'innovation'],
       required: true,
     },
     status: {

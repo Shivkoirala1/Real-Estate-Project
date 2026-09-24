@@ -7,6 +7,7 @@ import { getPropertyTypes } from '../../services/categoryService';
 import SearchFilterBar from '../../components/SearchFilterBar';
 import PropertyCard from '../../components/PropertyCard';
 import PropertyCategories from '../../components/PropertyCategories';
+import InnovationShowcase from '../../components/InnovationShowcase';
 import AgentShowcase from '../../components/AgentShowcase';
 
 const Home = () => {
@@ -138,6 +139,9 @@ const Home = () => {
           </div>
         )}
       </section>
+
+      {/* Innovations — latest visible community ideas; hidden when empty */}
+      <InnovationShowcase />
 
       {/* Agents — admin-showcased only; hidden when empty */}
       <AgentShowcase />

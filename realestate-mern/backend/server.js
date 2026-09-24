@@ -19,6 +19,7 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const blogRoutes = require('./routes/blogRoutes');
 const heroSlideRoutes = require('./routes/heroSlideRoutes');
+const innovationRoutes = require('./routes/innovationRoutes');
 const visitRoutes = require('./routes/visitRoutes');
 const propertyManagementRoutes = require('./routes/propertyManagementRoutes');
 const managementServiceRoutes = require('./routes/managementServiceRoutes');
@@ -145,6 +146,7 @@ app.use('/api/property-management', propertyManagementRoutes);
 app.use('/api/management-services', managementServiceRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/hero-slides', heroSlideRoutes);
+app.use('/api/innovations', innovationRoutes);
 // Phase 1 direct-upload infrastructure (additive — legacy multer paths stay
 // mounted until each surface migrates and validates).
 app.use('/api/uploads', uploadRoutes);

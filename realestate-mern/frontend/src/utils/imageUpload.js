@@ -36,6 +36,8 @@ export const CLIENT_UPLOAD_LIMITS = {
   paymentSlip: 5 * 1024 * 1024,
   avatar: 2 * 1024 * 1024,
   blogCover: 10 * 1024 * 1024,
+  innovationImage: 10 * 1024 * 1024,
+  innovationVideo: 50 * 1024 * 1024,
 };
 
 // Lightweight downscale for marketing photos (property gallery/cover, blog

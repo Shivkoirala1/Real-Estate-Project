@@ -117,6 +117,11 @@ const adminNavGroups = [
         end: true,
       },
       {
+        label: 'Innovations',
+        to: '/dashboard/admin/innovations',
+        end: true,
+      },
+      {
         label: 'Property Categories',
         to: '/dashboard/admin/categories',
       },

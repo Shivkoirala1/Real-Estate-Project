@@ -19,6 +19,8 @@ const uploadSchema = new mongoose.Schema(
         'avatar',
         'verification-document',
         'emi-slip',
+        'innovation-image',
+        'innovation-video',
       ],
       required: true,
     },

@@ -136,6 +136,36 @@ const PURPOSES = {
     maxPerSession: 1,
     entityType: 'emi-installment',
   },
+  // Innovation ideas (V1): user-submitted community content. Images mirror
+  // the property-photo constraints; a single video mirrors the hero-video
+  // constraints. No separate thumbnail purpose - the video poster is
+  // derived from Cloudinary in the controller. Only verified users and
+  // admins may submit (agents are view-only in V1).
+  'innovation-image': {
+    folder: 'youth-real-estate/innovations',
+    idPrefix: 'innov',
+    resourceType: 'image',
+    allowedFormats: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
+    maxBytes: 10 * MB,
+    deliveryType: 'public',
+    requireVerified: true,
+    roles: ['user', 'admin'],
+    maxPerSession: 5,
+    entityType: 'innovation',
+  },
+  'innovation-video': {
+    folder: 'youth-real-estate/innovations/videos',
+    idPrefix: 'innov-vid',
+    resourceType: 'video',
+    allowedFormats: ['mp4', 'webm', 'mov'],
+    maxBytes: 50 * MB,
+    deliveryType: 'public',
+    requireVerified: true,
+    roles: ['user', 'admin'],
+    maxPerSession: 1,
+    entityType: 'innovation',
+    ttlHours: () => TTL.videoResourceHours(),
+  },
 };
 
 // Upload-session scopes → purposes allowed inside the session.
@@ -146,6 +176,7 @@ const SESSION_SCOPES = {
   avatar: ['avatar'],
   verification: ['verification-document'],
   emi: ['emi-slip'],
+  innovation: ['innovation-image', 'innovation-video'],
 };
 
 const isVerifiedForPurpose = (user, purpose) => {

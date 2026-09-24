@@ -25,6 +25,7 @@ import About from "./pages/public/About";
 import LandConverter from "./pages/public/LandConverter";
 import BlogList from "./pages/public/BlogList";
 import BlogDetail from "./pages/public/BlogDetail";
+import Innovations from "./pages/Innovations";
 import NotFound from "./pages/public/NotFound";
 
 // User pages
@@ -35,6 +36,8 @@ import MyVisits from "./pages/user/MyVisits";
 import Conversations from "./pages/user/Conversations";
 import Wallet from "./pages/user/Wallet";
 import MyEMI from "./pages/user/MyEMI";
+import MyInnovations from "./pages/user/MyInnovations";
+import InnovationFormPage from "./pages/user/InnovationForm";
 
 // Agent and Admin dashboards
 import AgentDashboard from "./pages/agent/AgentDashboard";
@@ -55,6 +58,8 @@ import ManageCategories from "./pages/admin/ManageCategories";
 import BlogManagement from "./pages/admin/ManageBlogs";
 import ManageHeroSlides from "./pages/admin/ManageHeroSlides";
 import HeroSlideForm from "./pages/admin/HeroSlideForm";
+import ManageInnovations from "./pages/admin/ManageInnovations";
+import AdminInnovationForm from "./pages/admin/InnovationForm";
 import Visits from "./pages/admin/Visits";
 import EmiPlans from "./pages/admin/EmiPlans";
 import EmiPlanDetail from "./pages/admin/EmiPlanDetail";
@@ -86,6 +91,7 @@ function App() {
           <Route path="/about" element={<About />} />
           <Route path="/blogs" element={<BlogList />} />
           <Route path="/blogs/:slug" element={<BlogDetail />} />
+          <Route path="/innovations" element={<Innovations />} />
           <Route path="/land-converter" element={<LandConverter />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -197,6 +203,34 @@ function App() {
             element={
               <ProtectedRoute roles={["user"]}>
                 <Conversations />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-innovations"
+            element={
+              <ProtectedRoute roles={["user"]}>
+                <MyInnovations />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-innovations/new"
+            element={
+              <ProtectedRoute roles={["user"]}>
+                <PostGate>
+                  <InnovationFormPage />
+                </PostGate>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-innovations/:id/edit"
+            element={
+              <ProtectedRoute roles={["user"]}>
+                <PostGate>
+                  <InnovationFormPage />
+                </PostGate>
               </ProtectedRoute>
             }
           />
@@ -582,6 +616,26 @@ function App() {
               <ProtectedRoute roles={["admin"]}>
                 <DashboardLayout>
                   <HeroSlideForm />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin/innovations"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <ManageInnovations />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin/innovations/:id/edit"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <AdminInnovationForm />
                 </DashboardLayout>
               </ProtectedRoute>
             }

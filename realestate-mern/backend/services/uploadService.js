@@ -95,6 +95,15 @@ const createSession = async ({ user, scope, ref = '' }) => {
   if (scope === 'property' && user.role !== 'admin' && user.verificationStatus !== 'verified') {
     throw fail(403, 'Your account must be verified before uploading property media');
   }
+  // Innovation ideas mirror the emi-scope pattern: only verified users and
+  // admins may open a session at all (agents are view-only in V1). The
+  // per-purpose role/verification check at sign time stays as defense in depth.
+  if (
+    scope === 'innovation' &&
+    !(user.role === 'admin' || (user.role === 'user' && user.verificationStatus === 'verified'))
+  ) {
+    throw fail(403, 'Your account must be verified before uploading innovation media');
+  }
   const session = await UploadSession.create({
     userId: user._id,
     scope,
@@ -285,6 +294,7 @@ const ENTITY_PURPOSES = {
   blog: ['blog-cover'],
   user: ['avatar', 'verification-document'],
   'emi-installment': ['emi-slip'],
+  innovation: ['innovation-image', 'innovation-video'],
 };
 
 const commitUploads = async ({ actor, sessionId, uploadIds, entityType, entityId, mongoSession = null }) => {
@@ -641,6 +651,63 @@ const resolvePropertyUploads = async ({ actor, sessionId, coverUploadId, gallery
   };
 };
 
+// Innovation media resolution. Same trust model as the property resolver:
+// same session, owner-or-admin, exact purpose, completed state (or
+// committed-to-same-entity for idempotent resubmits). Returns
+// server-derived delivery URLs - the innovation controller persists THESE,
+// never client-supplied URLs. The video thumbnail/poster is derived from
+// Cloudinary in the controller; there is no separate thumbnail purpose.
+const resolveInnovationUploads = async ({ actor, sessionId, imageUploadIds, videoUploadId, forEntityId = null }) => {
+  const imageIds = normalizeIdList(imageUploadIds);
+  const videoId = videoUploadId && mongoose.Types.ObjectId.isValid(String(videoUploadId))
+    ? String(videoUploadId)
+    : null;
+  if (imageIds.length === 0 && !videoId) return { imageUrls: [], videoUrl: '', videoUpload: null, uploads: [] };
+  if (!sessionId) throw fail(400, 'uploadSessionId is required with direct-upload media');
+  const session = await assertSessionUsable(sessionId, actor);
+  if (session.scope !== 'innovation') throw fail(400, 'Upload session is not an innovation session');
+  if (imageIds.length > 5) throw fail(400, 'An idea holds at most 5 images');
+
+  const ids = [...imageIds, ...(videoId ? [videoId] : [])];
+  const rows = await Upload.find({ _id: { $in: ids } });
+  if (rows.length !== ids.length) throw fail(404, 'One or more uploads not found');
+  const byId = new Map(rows.map((r) => [String(r._id), r]));
+
+  const resolveOne = (id, expectedPurpose) => {
+    const upload = byId.get(String(id));
+    if (String(upload.sessionId) !== String(session._id)) {
+      throw fail(403, `Upload ${id} does not belong to this session`);
+    }
+    if (String(upload.userId) !== String(actor._id) && actor.role !== 'admin') {
+      throw fail(403, `Upload ${id} belongs to another user`);
+    }
+    if (upload.purpose !== expectedPurpose) {
+      throw fail(422, `Upload ${id} (purpose ${upload.purpose}) cannot be used here`);
+    }
+    if (upload.status === 'committed') {
+      // Idempotent resubmit to the same idea only.
+      if (forEntityId && String(upload.committedTo?.entityId) === String(forEntityId)) {
+        return upload;
+      }
+      throw fail(409, `Upload ${id} is already attached to another idea`);
+    }
+    if (upload.status !== 'completed') {
+      throw fail(409, `Upload ${id} is ${upload.status} — finish uploading before submitting`);
+    }
+    if (upload.expiresAt < new Date()) throw fail(410, `Upload ${id} has expired`);
+    return upload;
+  };
+
+  const imageRows = imageIds.map((id) => resolveOne(id, 'innovation-image'));
+  const videoRow = videoId ? resolveOne(videoId, 'innovation-video') : null;
+  return {
+    imageUrls: imageRows.map(publicDeliveryUrl),
+    videoUrl: videoRow ? publicDeliveryUrl(videoRow) : '',
+    videoUpload: videoRow,
+    uploads: [...imageRows, ...(videoRow ? [videoRow] : [])],
+  };
+};
+
 // Phase 2 — deferred cleanup of replaced/removed entity media. Compares the
 // entity's committed Upload rows against the URLs (or, for private assets
 // with no delivery URL, the publicIds) it still references; rows no longer
@@ -713,6 +780,7 @@ module.exports = {
   resolveBlogCover,
   resolveAvatar,
   resolveEmiSlip,
+  resolveInnovationUploads,
   assertEmiSlipAllowed,
   retireRemovedEntityUploads,
   destroyIfOrphaned,

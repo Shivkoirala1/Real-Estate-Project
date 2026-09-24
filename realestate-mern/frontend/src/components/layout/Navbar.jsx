@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { FiHome, FiGrid, FiRepeat, FiFileText, FiInfo, FiLogIn } from 'react-icons/fi';
+import { FiHome, FiGrid, FiRepeat, FiFileText, FiInfo, FiLogIn, FiZap } from 'react-icons/fi';
 
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
@@ -37,6 +37,11 @@ const publicNavItems = [
     label: 'Blog',
     to: '/blogs',
     icon: FiFileText,
+  },
+  {
+    label: 'Innovations',
+    to: '/innovations',
+    icon: FiZap,
   },
   {
     label: 'About',
