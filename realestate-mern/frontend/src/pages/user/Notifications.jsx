@@ -8,7 +8,18 @@ const typeMeta = {
   inquiry_read: { label: 'Viewed', tint: 'bg-navy/10 text-navy' },
   inquiry_responded: { label: 'Response', tint: 'bg-sage-light text-sage' },
   inquiry_followup: { label: 'New reply', tint: 'bg-navy/10 text-navy' },
+  contact_form_received: { label: 'New enquiry', tint: 'bg-brass-light/25 text-brass-dark' },
+  contact_form_responded: { label: 'Response', tint: 'bg-sage-light text-sage' },
   property_sold: { label: 'Sold', tint: 'bg-brick-light text-brick' },
+  visit_requested: { label: 'Visit requested', tint: 'bg-brass-light/25 text-brass-dark' },
+  visit_confirmed: { label: 'Visit confirmed', tint: 'bg-sage-light text-sage' },
+  visit_rejected: { label: 'Visit rejected', tint: 'bg-brick-light text-brick' },
+  visit_cancelled: { label: 'Visit cancelled', tint: 'bg-brick-light text-brick' },
+  visit_completed: { label: 'Visit completed', tint: 'bg-navy/10 text-navy' },
+  visit_rescheduled: { label: 'Rescheduled', tint: 'bg-navy/10 text-navy' },
+  lead_assigned: { label: 'Lead assigned', tint: 'bg-brass-light/25 text-brass-dark' },
+  lead_created: { label: 'New lead', tint: 'bg-brass-light/25 text-brass-dark' },
+  lead_stage_changed: { label: 'Stage changed', tint: 'bg-navy/10 text-navy' },
   sale_submitted: { label: 'Sale submitted', tint: 'bg-brass-light/25 text-brass-dark' },
   sale_verified: { label: 'Sale verified', tint: 'bg-sage-light text-sage' },
   sale_rejected: { label: 'Sale rejected', tint: 'bg-brick-light text-brick' },
@@ -27,15 +38,13 @@ const typeMeta = {
   emi_verification_rejected: { label: 'Verification rejected', tint: 'bg-brick-light text-brick' },
   conversation_message: { label: 'Message', tint: 'bg-sage-light text-sage' },
   conversation_followup: { label: 'Follow-up', tint: 'bg-navy/10 text-navy' },
+  review_posted: { label: 'New review', tint: 'bg-sage-light text-sage' },
+  review_reply: { label: 'Review reply', tint: 'bg-navy/10 text-navy' },
   lead_followup_due: { label: 'Follow-up overdue', tint: 'bg-brick-light text-brick' },
   lead_closed: { label: 'Lead closed', tint: 'bg-navy text-ivory' },
   management_request_submitted: { label: 'Management request', tint: 'bg-brass-light/25 text-brass-dark' },
   management_request_accepted: { label: 'Request accepted', tint: 'bg-sage-light text-sage' },
   management_request_declined: { label: 'Request declined', tint: 'bg-brick-light text-brick' },
-  management_request_approved: { label: 'Request approved', tint: 'bg-sage-light text-sage' },
-  management_request_rejected: { label: 'Request rejected', tint: 'bg-brick-light text-brick' },
-  management_agent_assigned: { label: 'Agent assigned', tint: 'bg-navy/10 text-navy' },
-  management_status_changed: { label: 'Status changed', tint: 'bg-navy/10 text-navy' },
   management_terminated: { label: 'Terminated', tint: 'bg-brick-light text-brick' },
   management_termination_requested: { label: 'Termination requested', tint: 'bg-brass-light/25 text-brass-dark' },
   tenancy_end_requested: { label: 'End of tenancy requested', tint: 'bg-brass-light/25 text-brass-dark' },
@@ -43,6 +52,16 @@ const typeMeta = {
   tenancy_end_declined: { label: 'End of tenancy declined', tint: 'bg-brick-light text-brick' },
   system: { label: 'System', tint: 'bg-parchment text-slate-ink' },
 };
+
+// Category tabs (display order). `system` is backend-taxonomy only and is
+// intentionally not rendered as a tab — those rows stay under All.
+const CATEGORY_TABS = [
+  { key: 'messages', label: 'Messages' },
+  { key: 'visits', label: 'Visits' },
+  { key: 'deals', label: 'Deals' },
+  { key: 'management', label: 'Management' },
+  { key: 'payments', label: 'Payments' },
+];
 
 const groupByDay = (items) => {
   const groups = {};
@@ -62,14 +81,35 @@ const groupByDay = (items) => {
 };
 
 const Notifications = () => {
-  const { notifications, unreadCount, loading, fetchNotifications, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
+  const { notifications, unreadCount, unreadByCategory, loading, fetchNotifications, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
   const [filter, setFilter] = useState('all');
+  const [category, setCategory] = useState('all');
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchNotifications(filter);
+    fetchNotifications(filter, category);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter]);
+  }, [filter, category]);
+
+  const selectTab = (nextFilter, nextCategory) => {
+    setFilter(nextFilter);
+    setCategory(nextCategory);
+  };
+
+  const badge = (count) => (count > 0 ? ` (${count})` : '');
+
+  const tabs = [
+    { key: 'all', label: 'All', filter: 'all', category: 'all' },
+    { key: 'unread', label: `Unread${badge(unreadCount)}`, filter: 'unread', category: 'all' },
+    ...CATEGORY_TABS.map((tab) => ({
+      key: tab.key,
+      label: `${tab.label}${badge(unreadByCategory?.[tab.key] ?? 0)}`,
+      filter: 'all',
+      category: tab.key,
+    })),
+  ];
+
+  const activeTab = filter === 'unread' ? 'unread' : category;
 
   const handleClick = (n) => {
     if (!n.isRead) markAsRead(n._id);
@@ -90,16 +130,13 @@ const Notifications = () => {
         )}
       </div>
 
-      <div className="flex gap-2 mb-6 border-b border-navy/10 pb-4">
-        {[
-          { key: 'all', label: 'All' },
-          { key: 'unread', label: `Unread${unreadCount > 0 ? ` (${unreadCount})` : ''}` },
-        ].map((tab) => (
+      <div className="flex gap-2 mb-6 border-b border-navy/10 pb-4 flex-wrap">
+        {tabs.map((tab) => (
           <button
             key={tab.key}
-            onClick={() => setFilter(tab.key)}
+            onClick={() => selectTab(tab.filter, tab.category)}
             className={`px-4 py-2 text-sm font-medium rounded-sm transition-colors ${
-              filter === tab.key ? 'bg-navy text-ivory' : 'text-slate-ink hover:bg-parchment'
+              activeTab === tab.key ? 'bg-navy text-ivory' : 'text-slate-ink hover:bg-parchment'
             }`}
           >
             {tab.label}
@@ -112,7 +149,11 @@ const Notifications = () => {
       ) : notifications.length === 0 ? (
         <div className="text-center py-16 border border-dashed border-navy/20 rounded-sm">
           <p className="text-slate-muted">
-            {filter === 'unread' ? "You're all caught up — no unread notifications." : 'No notifications yet. Activity on your inquiries and listings will show up here.'}
+            {filter === 'unread'
+              ? "You're all caught up — no unread notifications."
+              : category !== 'all'
+                ? `No ${CATEGORY_TABS.find((t) => t.key === category)?.label.toLowerCase() ?? ''} notifications yet.`
+                : 'No notifications yet. Activity on your inquiries and listings will show up here.'}
           </p>
         </div>
       ) : (

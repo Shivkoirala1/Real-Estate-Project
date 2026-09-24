@@ -9,6 +9,11 @@ const {
   requiredNoteMessage,
   optionalNoteMessage,
 } = require('../utils/validateNotes');
+const {
+  ALLOWED_TRANSITIONS,
+  isFrozenForManualMove,
+  frozenReason,
+} = require('../utils/leadTransitions');
 
 const LEAD_STAGES = Lead.STAGES;
 const LEAD_SOURCES = Lead.SOURCES;
@@ -43,7 +48,8 @@ const buildLeadQuery = ({ stage, category, assignedAgent, priority, source, sear
   }
   if (nextFollowUp === 'overdue') {
     query.nextFollowUp = { $ne: null, $lt: new Date() };
-    query.stage = query.stage || { $nin: ['closed', 'lost'] };
+    // Frozen verification-stage leads are never workable follow-ups.
+    query.stage = query.stage || { $nin: ['closed', 'lost', 'pending_verification'] };
   }
   if (search) {
     query.$or = [
@@ -85,6 +91,17 @@ const LEAD_POPULATE = [
 const canManage = (lead, user) =>
   user.role === 'admin' ||
   Boolean(lead.assignedAgent && String(lead.assignedAgent._id ?? lead.assignedAgent) === String(user._id));
+
+// Frozen-state guard for ordinary mutations (stage moves, edits, priority,
+// follow-ups, assignment). Verification/reject flows and the narrow admin
+// note-append exception bypass this - it is enforced per-route, not here.
+// Returns a 403 response when blocked, null when the mutation may proceed.
+const rejectIfFrozen = (lead, res) => {
+  if (isFrozenForManualMove(lead)) {
+    return res.status(403).json({ success: false, message: frozenReason(lead) });
+  }
+  return null;
+};
 
 /**
  * @desc    Create a lead (manual creation by admin/agent team)
@@ -424,6 +441,10 @@ const updateLead = asyncHandler(async (req, res) => {
   if (!canManage(lead, req.user)) {
     return res.status(403).json({ success: false, message: 'You are not authorized to update this lead' });
   }
+  // Frozen leads (pending_verification, verification-closed) reject ordinary
+  // edits - the pipeline record must stay consistent with the deal state.
+  const frozenEdit = rejectIfFrozen(lead, res);
+  if (frozenEdit) return frozenEdit;
 
   const changes = [];
   if (name !== undefined && name !== lead.name) { lead.name = name; changes.push('name'); }
@@ -495,7 +516,7 @@ const updateLead = asyncHandler(async (req, res) => {
  * @access  Private (admin or assigned agent)
  */
 const updateLeadStage = asyncHandler(async (req, res) => {
-  const { stage } = req.body;
+  const { stage, note } = req.body;
 
   const newStage = Lead.normalizeStage(stage);
   if (!newStage) {
@@ -509,6 +530,22 @@ const updateLeadStage = asyncHandler(async (req, res) => {
   if (!canManage(lead, req.user)) {
     return res.status(403).json({ success: false, message: 'You are not authorized to update this lead' });
   }
+
+  const previousStage = lead.stage;
+  if (previousStage === newStage) {
+    await lead.populate(LEAD_POPULATE);
+    return res.json({
+      success: true,
+      message: 'Lead stage unchanged',
+      lead,
+    });
+  }
+
+  // Freeze check BEFORE any state is touched (including closedAt): leads in
+  // pending_verification or closed by a verified sale/rent reject every
+  // manual move with 403. Only the verify/reject flows may move them.
+  const frozen = rejectIfFrozen(lead, res);
+  if (frozen) return frozen;
 
   // Stage guards: the verification stage is entered only by submitting a
   // Sale or Rental (nobody sets it by hand), and `closed` stays
@@ -524,14 +561,36 @@ const updateLeadStage = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'Only admins can close a lead. If the lead is no longer viable, move it to lost instead.' });
   }
 
-  const previousStage = lead.stage;
-  if (previousStage === newStage) {
-    await lead.populate(LEAD_POPULATE);
-    return res.json({
-      success: true,
-      message: 'Lead stage unchanged',
-      lead,
+  // Explicit transition matrix (backend source of truth). Manual
+  // closed/lost with closedBy 'manual' keep the legacy reopen behavior as an
+  // explicit exception; every other move must appear in the matrix.
+  // Admin manual close (negotiation/active → closed) stays allowed - the
+  // agent-only 403 above already preserves the role rule.
+  const MANUAL_REOPEN_TARGETS = ['new', 'contacted', 'site_visit_scheduled', 'negotiation', 'lost'];
+  let allowed;
+  if (previousStage === 'closed' || previousStage === 'lost') {
+    // Frozen variants were rejected above; only closedBy 'manual' reaches here.
+    allowed = MANUAL_REOPEN_TARGETS.includes(newStage) || newStage === 'closed';
+  } else if (newStage === 'closed') {
+    allowed = isAdmin;
+  } else {
+    allowed = (ALLOWED_TRANSITIONS[previousStage] || []).includes(newStage);
+  }
+  if (!allowed) {
+    return res.status(400).json({
+      success: false,
+      message: `Invalid transition from "${previousStage.replace(/_/g, ' ')}" to "${newStage.replace(/_/g, ' ')}". Leads move forward through the pipeline; use Lost for dead ends.`,
     });
+  }
+
+  // A reason is mandatory when giving up on a lead - persisted in the
+  // activity trail (existing note semantics, no new mechanism).
+  let lossReason = '';
+  if (newStage === 'lost') {
+    if (!isValidRequiredNote(note)) {
+      return res.status(400).json({ success: false, message: requiredNoteMessage('Loss reason') });
+    }
+    lossReason = String(note).trim();
   }
 
   lead.stage = newStage;
@@ -541,7 +600,7 @@ const updateLeadStage = asyncHandler(async (req, res) => {
   }
   lead.recordActivity({
     type: 'stage_changed',
-    message: `Stage moved from "${previousStage.replace(/_/g, ' ')}" to "${newStage.replace(/_/g, ' ')}"`,
+    message: `Stage moved from "${previousStage.replace(/_/g, ' ')}" to "${newStage.replace(/_/g, ' ')}"${lossReason ? ` — loss reason: ${lossReason}` : ''}`,
     by: req.user._id,
     byName: req.user.name,
   });
@@ -618,6 +677,9 @@ const performAssignment = async (req, res, { verb }) => {
   }
 
   const previousAgentId = lead.assignedAgent ? String(lead.assignedAgent) : null;
+  // Reassignment would hand a frozen pipeline record to a new owner.
+  const frozenAssign = rejectIfFrozen(lead, res);
+  if (frozenAssign) return frozenAssign;
   lead.assignedAgent = assignedAgent;
   lead.recordActivity({
     type: 'assigned',
@@ -679,6 +741,8 @@ const updateLeadPriority = asyncHandler(async (req, res) => {
   if (!canManage(lead, req.user)) {
     return res.status(403).json({ success: false, message: 'You are not authorized to update this lead' });
   }
+  const frozenPriority = rejectIfFrozen(lead, res);
+  if (frozenPriority) return frozenPriority;
 
   lead.priority = priority;
   lead.recordActivity({
@@ -717,6 +781,12 @@ const updateLeadNotes = asyncHandler(async (req, res) => {
   if (!canManage(lead, req.user)) {
     return res.status(403).json({ success: false, message: 'You are not authorized to update this lead' });
   }
+  // Narrow admin exception: admins may still append/clear internal notes on a
+  // frozen lead (review context); every other role is blocked, and the notes
+  // endpoint itself can only touch notes + its activity entry.
+  if (isFrozenForManualMove(lead) && req.user.role !== 'admin') {
+    return res.status(403).json({ success: false, message: frozenReason(lead) });
+  }
 
   lead.notes = notes;
   lead.recordActivity({
@@ -746,6 +816,8 @@ const setFollowUpDate = asyncHandler(async (req, res) => {
   if (!canManage(lead, req.user)) {
     return res.status(403).json({ success: false, message: 'You are not authorized to update this lead' });
   }
+  const frozenFollowUp = rejectIfFrozen(lead, res);
+  if (frozenFollowUp) return frozenFollowUp;
 
   if (nextFollowUp) {
     const date = new Date(nextFollowUp);
@@ -788,6 +860,8 @@ const markFollowUpDone = asyncHandler(async (req, res) => {
   if (!canManage(lead, req.user)) {
     return res.status(403).json({ success: false, message: 'You are not authorized to update this lead' });
   }
+  const frozenDone = rejectIfFrozen(lead, res);
+  if (frozenDone) return frozenDone;
 
   const hadFollowUp = Boolean(lead.nextFollowUp);
   lead.nextFollowUp = null;
@@ -885,7 +959,7 @@ const getPipelineMetrics = asyncHandler(async (req, res) => {
     Lead.countDocuments({
       ...matchStage,
       nextFollowUp: { $ne: null, $lt: new Date() },
-      stage: { $nin: ['closed', 'lost'] },
+      stage: { $nin: ['closed', 'lost', 'pending_verification'] },
     }),
     Lead.countDocuments({ ...matchStage, createdAt: { $gte: weekAgo } }),
     Lead.countDocuments(matchStage),
@@ -953,7 +1027,10 @@ const getSuggestedAction = asyncHandler(async (req, res) => {
   let action = 'review_lead';
   let reason = 'Review the lead and decide the next step.';
 
-  if (!lead.assignedAgent) {
+  if (lead.stage === 'pending_verification') {
+    action = 'awaiting_verification';
+    reason = 'This lead is awaiting sale/rental verification - no manual action is available until an admin reviews it.';
+  } else if (!lead.assignedAgent) {
     action = 'assign_agent';
     reason = 'This lead has no owner yet - assign an agent so it gets followed up.';
   } else if (

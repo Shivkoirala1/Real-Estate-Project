@@ -22,6 +22,8 @@ import LeadSourceIcon from '../../../components/LeadManagement/LeadSourceIcon';
 import SubmitSaleModal from '../../../components/LeadManagement/SubmitSaleModal';
 import SubmitRentalModal from '../../../components/LeadManagement/SubmitRentalModel';
 import { ADMIN_MANUAL_STAGES, AGENT_MANUAL_STAGES, STAGE_META, PRIORITIES, CATEGORIES } from '../../../utils/leadConstants';
+import { isLeadFrozenForManualMove, frozenLeadBanner } from '../../../utils/leadGuards';
+import LostReasonModal from '../../../components/LeadManagement/LostReasonModal';
 import { timeAgo } from '../../../utils/format';
 import { isValidOptionalNote, optionalNoteMessage } from '../../../utils/validateNotes';
 
@@ -42,6 +44,13 @@ const LeadDetail = () => {
   const [followUpLocal, setFollowUpLocal] = useState('');
   const [suggestion, setSuggestion] = useState(null);
   const [saleModalOpen, setSaleModalOpen] = useState(false);
+  const [lostModalOpen, setLostModalOpen] = useState(false);
+  const [lostSaving, setLostSaving] = useState(false);
+  const [lostError, setLostError] = useState('');
+  // Frozen verification/closed leads are read-only for manual moves - the
+  // backend rejects them; the banner + disabled controls below mirror that.
+  const stageFrozen = isLeadFrozenForManualMove(lead);
+  const frozenBanner = frozenLeadBanner(lead);
   // The lead's linked property (populated object) drives the sale/rental
   // modal switch - a bare id string carries no saleType.
   const property = lead?.property && typeof lead.property === 'object' ? lead.property : null;
@@ -86,6 +95,35 @@ const LeadDetail = () => {
       .catch(() => setAgents([]));
   }, []);
 
+  const handleStageChange = (value) => {
+    // Moves to `lost` require a reason - collect it first; the backend
+    // rejects reason-less moves. Anything else goes straight through.
+    if (value === 'lost' && lead.stage !== 'lost') {
+      setLostError('');
+      setLostModalOpen(true);
+      return;
+    }
+    runUpdate(() => updateLeadStage(lead._id, value), 'Stage updated');
+  };
+
+  const handleLostSubmit = async (reason) => {
+    if (!reason || reason.trim().length < 10) {
+      setLostError('Loss reason must be at least 10 characters after removing extra spaces');
+      return;
+    }
+    setLostSaving(true);
+    setLostError('');
+    try {
+      await updateLeadStage(lead._id, 'lost', reason);
+      showToast('Stage updated');
+      setLostModalOpen(false);
+      await loadLead();
+    } catch (err) {
+      setLostError(err.response?.data?.message || 'Failed to mark lead as lost');
+    } finally {
+      setLostSaving(false);
+    }
+  };
   const runUpdate = async (fn, successMessage) => {
     setSaving(true);
     try {
@@ -193,15 +231,19 @@ const LeadDetail = () => {
         </div>
       </div>
 
-      {lead.stage === 'pending_verification' && (
-        <div className="bg-brass/10 border border-brass/30 rounded-sm px-5 py-3 mb-6 text-sm">
-          <span className="font-semibold text-brass-dark">
-            {lead.dealType === 'rental'
-              ? 'Rental submitted — awaiting admin verification.'
-              : 'Sale submitted — awaiting admin verification.'}
+      {frozenBanner && (
+        <div className={`border rounded-sm px-5 py-3 mb-6 text-sm ${
+          lead.stage === 'pending_verification'
+            ? 'bg-brass/10 border-brass/30'
+            : 'bg-navy/5 border-navy/15'
+        }`}>
+          <span className={`font-semibold ${
+            lead.stage === 'pending_verification' ? 'text-brass-dark' : 'text-navy'
+          }`}>
+            {frozenBanner.title}
           </span>{' '}
           <span className="text-slate-ink">
-            The property is reserved until an admin reviews it.
+            {frozenBanner.body}
           </span>
         </div>
       )}
@@ -277,11 +319,10 @@ const LeadDetail = () => {
               <label className="label-field">Stage</label>
               <select
                 value={lead.stage}
-                disabled={saving}
-                onChange={(e) =>
-                  runUpdate(() => updateLeadStage(lead._id, e.target.value), 'Stage updated')
-                }
-                className="input-field text-sm"
+                disabled={saving || stageFrozen}
+                title={stageFrozen ? frozenBanner?.body : undefined}
+                onChange={(e) => handleStageChange(e.target.value)}
+                className="input-field text-sm disabled:opacity-60"
               >
                 {(user?.role === 'admin' ? ADMIN_MANUAL_STAGES : AGENT_MANUAL_STAGES).map((s) => (
                   <option key={s} value={s}>
@@ -289,6 +330,9 @@ const LeadDetail = () => {
                   </option>
                 ))}
               </select>
+              {stageFrozen && (
+                <p className="text-xs text-slate-muted mt-1">Pipeline moves are locked for this lead.</p>
+              )}
             </div>
 
             <div>
@@ -419,6 +463,14 @@ const LeadDetail = () => {
     onSuccess={async () => { setSaleModalOpen(false); await loadLead(); }}
   />
 ))}
+      <LostReasonModal
+        open={lostModalOpen}
+        leadName={lead.name}
+        saving={lostSaving}
+        error={lostError}
+        onClose={() => { if (!lostSaving) setLostModalOpen(false); }}
+        onSubmit={handleLostSubmit}
+      />
     </div>
   );
 };

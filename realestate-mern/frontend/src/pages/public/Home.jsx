@@ -4,11 +4,12 @@ import { getProperties } from '../../services/propertyService';
 import { getHeroSlides } from '../../services/heroSlideService';
 import HeroCarousel from '../../components/hero/HeroCarousel';
 import { getPropertyTypes } from '../../services/categoryService';
-import SearchFilterBar from '../../components/SearchFilterBar';
+import SearchFilterBar, { FILTER_KEYS } from '../../components/SearchFilterBar';
 import PropertyCard from '../../components/PropertyCard';
 import PropertyCategories from '../../components/PropertyCategories';
 import InnovationShowcase from '../../components/InnovationShowcase';
 import AgentShowcase from '../../components/AgentShowcase';
+import TrustIndicators from '../../components/TrustIndicators';
 
 const Home = () => {
   const [featured, setFeatured] = useState([]);
@@ -51,15 +52,13 @@ const Home = () => {
 
   return (
     <div>
-      {/* Hero: admin-managed carousel when slides exist, static hero as fallback.
-          Mobile replaces the static hero with the carousel; on large screens
-          the carousel overlays the static hero's bottom-right corner. */}
-      {heroSlides.length > 0 && (
-        <div className="md:hidden">
-          <HeroCarousel slides={heroSlides} layout="full" />
-        </div>
-      )}
-      <section className={`relative overflow-hidden ${heroSlides.length > 0 ? "hidden md:block" : ""}`}>
+      {/* Hero is fully driven by admin-managed slides (mobile + desktop).
+          The static hero below is kept as a fallback for when no slides are
+          published yet — never a blank homepage. */}
+      {heroSlides.length > 0 ? (
+        <HeroCarousel slides={heroSlides} layout="hero" />
+      ) : (
+      <section className="relative overflow-hidden">
         {/* Aerial photo of Kathmandu - free-to-use under the Unsplash License
             (Photo by Sujitabh Chaudhary). Swap this URL for your own hero
             photo any time; everything else adapts automatically. */}
@@ -87,16 +86,14 @@ const Home = () => {
             घर, जग्गा र व्यावसायिक सम्पत्ति — विश्वसनीय बिक्रीका लागि एउटै ठेगाना।
           </p>
         </div>
-
-        {heroSlides.length > 0 && (
-          <div className="absolute bottom-8 right-5 lg:right-8 w-[360px] max-w-[38%] z-10">
-            <HeroCarousel slides={heroSlides} layout="card" />
-          </div>
-        )}
       </section>
+      )}
 
       <div className="max-w-7xl mx-auto px-5 md:px-8 mt-10 md:mt-16">
-        <SearchFilterBar />
+        {/* No 'sort' filter here: the bar's sort select would render with zero
+            options on this page (no sortOptions are passed). Sorting lives on
+            the /properties listing, which owns its own sort control. */}
+        <SearchFilterBar filters={FILTER_KEYS.filter((f) => f !== 'sort')} />
       </div>
 
       {/* Property categories */}
@@ -145,6 +142,9 @@ const Home = () => {
 
       {/* Agents — admin-showcased only; hidden when empty */}
       <AgentShowcase />
+
+      {/* Trust indicators — static proof points above the explanation cards */}
+      <TrustIndicators />
 
       {/* Why choose us */}
       <section className="max-w-7xl mx-auto px-5 md:px-8 mt-24 mb-20 text-center">

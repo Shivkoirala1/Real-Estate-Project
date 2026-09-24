@@ -30,10 +30,10 @@
 
 **Complete lifecycles (current):**
 - Property: `available → reserved → sold` (forward-only, manual or deal-driven); rental occupancy `available ↔ rented` only via `verifyRental` (→rented) and `end-tenancy` (→available). `sold` blocks new inquiries/visits; `reserved` stays open by design (`canReceiveInquiries(): Property.js:129-131`).
-- Lead: `new → contacted → site_visit_scheduled → negotiation → pending_verification → closed | lost` (`Lead.js:30-38`). Entry only via auto-convert (contact/visit) or manual create; exit to `pending_verification` only via Sale/Rental filing; exit to `closed` only via Sale/Rental verification (or admin manual close).
+- Lead: `new → contacted → site_visit_scheduled → negotiation → pending_verification → closed | lost` (`Lead.js:30-38`, state machine enforced by `utils/leadTransitions.js`). Entry only via auto-convert (contact/visit) or manual create; exit to `pending_verification` only via Sale/Rental filing; exit to `closed` only via Sale/Rental verification (or admin manual close). Forward-only manual moves (+ intentional `new → negotiation` skip); `lost` from any active stage requires a reason. `pending_verification` and verification-closed leads (`closedBy: sale_verified | rental_verified`) are frozen from manual moves/mutations (403); manual closed/lost stay reopenable. Filing records `preVerificationStage`; rejection restores it.
 - Visit: `pending_agent_review → confirmed | rejected; confirmed → completed | cancelled` (`Visit.js:43-53`). Buyer creates; admin confirms/rejects/reschedules/assigns; agent only completes/cancels; buyer only cancels own.
 - Management-request: `pending → active | declined; active → termination_pending → terminated; active → terminated (direct)` (`PropertyManagementRequest.js:3-13`). Matches intended machine exactly.
-- Sale/Rental: `pending_review → verified | rejected` (`Sale.js:17`, `Rental.js:10`). Filing reserves property + parks lead; verify closes lead + freezes commission (+ EMI-pending alert if EMI sale); reject releases property + returns lead to `negotiation`.
+- Sale/Rental: `pending_review → verified | rejected` (`Sale.js:17`, `Rental.js:10`). Filing reserves property + parks lead (recording `preVerificationStage`); verify closes lead with `closedBy: sale_verified | rental_verified` (frozen thereafter) + freezes commission (+ EMI-pending alert if EMI sale); reject releases property + restores the recorded pre-filing stage (`negotiation` fallback for pre-tracking rows).
 - EMI: plan `active → completed | defaulted | cancelled`; installment `pending → paid | waived` (overdue computed); verification `none → pending → approved (→paid) | rejected` (`EMIPlan.js:23-26`). Admin-only writes; buyer-only verification-request.
 - Commission: no status enum — `isPaid Boolean` (`CommissionRecord.js:38`). Created frozen on Sale/Rental verify; paid via admin mark-paid.
 - Reward: append-only ledger (`RewardTransaction.js`) + `User.xp/ycCoin` increment, deduped per `(user,action,refId|key)` (`rewards.js:20-43`).
@@ -104,7 +104,7 @@ Three independent tracks (`User.js:52-124`):
 | Manage management-service catalogue | YES (public read: `GET /management-services` via `optionalAuth`; mutations admin-only) | read (+ catalogue CRUD for admin) | read | read | YES (CRUD + status) |
 | Create lead manually | NO | NO | NO | YES (`POST /leads`) | YES |
 | View leads | NO | NO | NO (no owner lead view; owner sees inquiries/conversations instead) | YES (own: `GET /leads/my-leads`; pipeline metrics) | YES (all: `GET /leads`) |
-| Move lead stage | NO | NO | NO | CONDITIONAL — own/assigned; cannot set `pending_verification` (400) or `closed` (403) | YES (incl. manual close) |
+| Move lead stage | NO | NO | NO | CONDITIONAL — own/assigned; forward-only matrix (`leadTransitions.js`), cannot set `pending_verification` (400) or `closed` (403); `lost` needs a reason; frozen (pending_verification / verification-closed) leads reject all manual moves (403) | YES (incl. manual close; manual closed/lost stay reopenable) |
 | Assign/reassign lead | NO | NO | NO | NO | YES |
 | Delete lead | NO | NO | NO | NO | YES |
 | Convert contact-form → lead | NO | NO | NO | NO | YES (`POST /contact-forms/:id/convert-to-lead`) |
@@ -202,7 +202,7 @@ Frontend: PropertyDetail.jsx:7-14, Contact.jsx:2
 
 ### 5.3 Inquiry / Lead (who owns each stage)
 
-Customer owns: inquiry submit, visit request, conversation replies, payment-proof upload. Agent owns: `new→contacted→site_visit_scheduled→negotiation` moves + follow-ups + Sale/Rental filing. System owns: `→pending_verification` (on filing), `→closed` (on verify). Admin owns: assign/reassign, manual close, convert actions, verify/reject deals. Full guards in §12.
+Customer owns: inquiry submit, visit request, conversation replies, payment-proof upload. Agent owns: forward pipeline moves (`new→contacted→site_visit_scheduled→negotiation`, `→lost` with reason) + follow-ups + Sale/Rental filing. System owns: `→pending_verification` (on filing), `→closed` (on verify, frozen thereafter). Admin owns: assign/reassign, manual close (+ manual reopen preserved), convert actions, verify/reject deals. Full guards in §12.
 
 ### 5.4 Visit lifecycle (buyer view)
 
@@ -282,8 +282,8 @@ Agent lists via `/dashboard/agent/properties` (same `ManageProperties.jsx`), cre
 Lead assigned (lead_assigned notify: leadController.js:169-176) → MyLeads.jsx:4-6 (GET /leads/my-leads)
   → review → contact → PATCH /:id/stage (contacted|site_visit_scheduled|negotiation|lost) + follow-up/notes/activities
   → SubmitSaleModal.jsx:104 (POST /sales) | SubmitRentalModel.jsx:81 (POST /rentals) → lead→pending_verification (system)
-  → verify (admin) → closed + commission | reject → negotiation
-Guards: createLead:88-195 (admin/agent, stage=new, dealType from saleType, notify assignee+admins); updateLeadStage:487-559 (admin|assigned-agent; 400 on *→pending_verification; 403 agent→closed); assign/reassign + delete admin-only (routes leadRoutes.js:22-23, DELETE)
+  → verify (admin) → closed (`closedBy: sale_verified|rental_verified`, frozen) + commission | reject → recorded pre-filing stage
+Guards: createLead:88-195 (admin/agent, stage=new, dealType from saleType, notify assignees+admins); updateLeadStage (admin|assigned-agent; forward-only matrix; 400 on *→pending_verification and illegal/backward moves; 403 agent→closed, frozen-source moves, and frozen-target mutations; `lost` requires a reason); assign/reassign + delete admin-only (routes leadRoutes.js:22-23, DELETE)
 ```
 
 Duplicate route: `/my-leads` and `/dashboard/agent/leads` render same `MyLeads` (`App.jsx:292-311`).
@@ -355,9 +355,9 @@ Initial: available (Property.js:82-86)
 |---|---|---|---|---|
 | create → available | `POST /properties` (`createProperty:219-277`) | verified user/agent (admin bypass) | `AddEditProperty.jsx` via `propertyService.js:67` | `listedBy=me`, slug gen, `isApproved=true` (no queue) |
 | available → reserved | `PATCH /:id/status` (`updatePropertyStatus:384-455`, STATUS_RANK:379 forward-only) OR Sale/Rental filing (txn: `property=reserved`) | owner/admin (manual) or filing agent (deal) | `ManageProperties.jsx:210` or Submit modals | deal path also `lead→pending_verification` + `sale|_submitted` notify |
-| reserved → sold | same status endpoint OR `verifySale` | owner/admin or admin verify | same | manual sold: `property_sold` to admins + BUY/SELL/REFERRAL_SALE rewards (if buyerEmail resolves); deal verify: `soldTo/soldAt`, `lead→closed`, CommissionRecord, `sale_verified` to agent (+`emi_plan_pending` if EMI) |
-| reserved → available | `rejectSale|rejectRental` | admin | `VerificationQueue.jsx` | `lead→negotiation` + rejected notify |
-| * → rented | `verifyRental` only (`rentalController.js:397-402`) | admin | VerificationQueue | `rentedFrom/rentedUntil/tenant` snapshot + `lead→closed` + commission (manual amount) + `rental_verified` |
+| reserved → sold | same status endpoint OR `verifySale` | owner/admin or admin verify | same | manual sold: `property_sold` to admins + BUY/SELL/REFERRAL_SALE rewards (if buyerEmail resolves); deal verify: `soldTo/soldAt`, `lead→closed` (`closedBy: sale_verified`, frozen), CommissionRecord, `sale_verified` to agent (+`emi_plan_pending` if EMI) |
+| reserved → available | `rejectSale|rejectRental` | admin | `VerificationQueue.jsx` | `lead→preVerificationStage` (recorded at filing; `negotiation` fallback for pre-tracking rows) + rejected notify |
+| * → rented | `verifyRental` only (`rentalController.js:397-402`) | admin | VerificationQueue | `rentedFrom/rentedUntil/tenant` snapshot + `lead→closed` (`closedBy: rental_verified`, frozen) + commission (manual amount) + `rental_verified` |
 | rented → available | `PATCH /:id/end-tenancy` only (`endTenancy:465-505`) | owner/admin + verified | ManageProperties | clears snapshot; appends `Rental.activities.updated` (Rental stays verified) |
 | any → deleted | `DELETE /:id` | owner/admin | ManageProperties | hard delete (archives job handles cold storage separately) |
 
@@ -398,10 +398,13 @@ dealType: null → sale | rental (locked: lockDealType:195-199; rental-locked + 
 | Transition | Trigger | Who |
 |---|---|---|
 | * → new | `createLead:88-195` (manual) / `ensureLeadFromContactForm:203-308` (auto) | admin/agent (manual); system (auto) |
-| new → contacted / site_visit_scheduled / negotiation / lost | `updateLeadStage:487-559` + visit sync (`stageForVisitStatus`) | admin or assigned-agent (`canManage:79-81`) |
-| * → pending_verification | `createSale` / `createRental` only (txn) | filing agent (lead-owner) / admin |
-| pending_verification → closed | `verifySale` / `verifyRental` (txn) | admin |
-| pending_verification → negotiation | `rejectSale` / `rejectRental` | admin |
+| new → contacted / site_visit_scheduled / negotiation / lost | `updateLeadStage` + matrix (`utils/leadTransitions.js`) + visit sync (`stageForVisitStatus`) | admin or assigned-agent (`canManage`); `lost` requires a reason |
+| * → pending_verification | `createSale` / `createRental` only (txn; records `preVerificationStage`) | filing agent (lead-owner) / admin |
+| pending_verification → closed | `verifySale` / `verifyRental` (txn; sets `closedBy`) | admin |
+| pending_verification → pre-filing stage | `rejectSale` / `rejectRental` (`negotiation` fallback for pre-tracking rows) | admin |
+| pending_verification → any manual stage | blocked 403 (frozen) | — |
+| closed + sale/rental_verified → any manual stage | blocked 403 (frozen) | — |
+| closed(manual)/lost → active stages | `updateLeadStage` legacy reopen | admin or assigned-agent |
 | any → closed (manual edge) | `updateLeadStage` | admin only (agent→closed 403) |
 | → pending_verification (manual) | blocked 400 for everyone | — |
 
@@ -463,14 +466,14 @@ Agent (lead-owner:47-54) → POST /sales (createSale:33-217: saleService.js:27)
   guards: needs lead.property(:56), lockDealType('sale')(:65), not pending_verification(:75), not closed|lost(:81),
           property saleType==='sale'(:126), not sold(:129), reserved only if pending sale exists(:132-141),
           EMI needs buyer.user(:112-118, auto-link by email:104-111)
-  txn: sale=pending_review(:161) + property=reserved(:179) + lead=pending_verification(:182-189)
+  txn: sale=pending_review(:161) + property=reserved(:179) + lead=pending_verification(:182-189, records preVerificationStage)
   → notifyMany(admins, sale_submitted:194-205)
 Admin → PATCH /sales/:id/verify (verifySale:378-495) [only pending_review:383]
-  txn: sale→verified(:410) + property→sold+soldTo/soldAt(:421-423) + lead→closed(:426-434)
+  txn: sale→verified(:410) + property→sold+soldTo/soldAt(:421-423) + lead→closed,closedBy=sale_verified (frozen)(:426-434)
        + CommissionRecord.create(frozen pct/amount via effectiveCommissionPercentage:404,436-449)
   → notify agent sale_verified(:456-464); if emi → notify admins emi_plan_pending(:469-482)
 Admin → PATCH /sales/:id/reject (rejectSale:502-572, reason required)
-  → sale→rejected(:530) + property→available(:544) + lead→negotiation(:548-554) + sale_rejected(:557-565)
+  → sale→rejected(:530) + property→available(:544) + lead→preVerificationStage (negotiation fallback)(:548-554) + sale_rejected(:557-565)
 Routes: saleRoutes.js:9-15 (POST,GET / admin,agent; GET :id any-auth + controller filing/lead-agent check; verify|reject admin).
 Frontend: VerificationQueue.jsx:19,56,151; SubmitSaleModal.jsx:104.
 ```
@@ -482,12 +485,12 @@ Frontend: VerificationQueue.jsx:19,56,151; SubmitSaleModal.jsx:104.
 Mirror of sale (`Rental.js:10`, `rentalController.js:30-517`, `rentalService.js:24,46,57,72,84`):
 
 ```
-Agent → POST /rentals (needs saleType==='rent':126; rented→409; reserved guard:135-145; lead→pending_verification:185)
+Agent → POST /rentals (needs saleType==='rent':126; rented→409; reserved guard:135-145; lead→pending_verification + preVerificationStage:185)
   → notifyMany(admins, rental_submitted:179-207)
 Admin → PATCH /rentals/:id/verify (requires manual commissionAmount:357-369)
-  → property→rented + rentedFrom/rentedUntil/tenant(:397-402) + lead→closed(:405)
+  → property→rented + rentedFrom/rentedUntil/tenant(:397-402) + lead→closed,closedBy=rental_verified (frozen)(:405)
   + CommissionRecord (rental ref + back-computed pct:415-430) + rental_verified(:433-441)
-Admin → PATCH /rentals/:id/reject → available + negotiation + rental_rejected(:476-510)
+Admin → PATCH /rentals/:id/reject → available + preVerificationStage (negotiation fallback) + rental_rejected(:476-510)
 Release: end-tenancy (rented→available) — only exit; Rental doc stays verified as history.
 ```
 
@@ -586,7 +589,7 @@ Infra: `notify()` swallows errors (`notify.js:12-51`), `notifyMany()` dedupes re
 | Lead assigned / created / stage changed | assignee / admins | `lead_assigned\|lead_created\|lead_stage_changed` | YES (`leadController.js:169-188,544-551`; auto-convert path too) |
 | Lead follow-up overdue | assigned agent (or all admins if unassigned) | `lead_followup_due` | YES — generator added: daily 09:00 cron (`server.js`), `runLeadFollowupReminders` (`utils/leadFollowupReminders.js`), per-recipient-per-day dedupe. **UPDATE: GAP closed (`59dce10`).** |
 | Lead manually closed (admin) | assigned agent | `lead_closed` | YES — dedicated event on admin close; generic `lead_stage_changed` suppressed on closes to avoid duplicates. **UPDATE: added after audit (`bd014fe`, refined `01e8818`).** |
-| Lead marked lost (agent) | admins | `lead_stage_changed` ("Agent marked a lead lost") | YES — assigned agents cannot close (403); `lost` is their terminal outcome and notifies all admins. Never emits `lead_closed`. **UPDATE: added `01e8818`.** |
+| Lead marked lost (agent) | admins | `lead_stage_changed` ("Agent marked a lead lost") | YES — assigned agents cannot close (403); `lost` is their terminal outcome, requires a reason, and notifies all admins. Never emits `lead_closed`. **UPDATE: added `01e8818`.** |
 | Property manually marked sold | admins | `property_sold` | YES (`propertyController.js:428-451`) |
 | Sale/Rental submitted | admins | `sale_submitted\|rental_submitted` | YES |
 | Sale/Rental verified/rejected | agent | `sale_verified\|rejected\|rental_verified\|rejected` | YES |
@@ -608,7 +611,7 @@ Infra: `notify()` swallows errors (`notify.js:12-51`), `notifyMany()` dedupes re
 | Visit book | ProtectedRoute (any auth) | `protect` (any auth) | ✅ |
 | Visit cancel own | MyVisits (user) | `protect` + requester check (`cancelMyVisit`) | ✅ |
 | Visit confirm/reject/assign/reschedule | agent UI exists (VisitManagement) | admin-only in controller (agent scoped to complete/cancel) | ✅ DECIDED — admin-only triage is intended; UI labels already read "Pending Review", so no rename/migration (`bd014fe` report §1) |
-| Lead stage → pending_verification / closed (agent) | role-scoped dropdowns (`ADMIN/AGENT_MANUAL_STAGES`) | 400 / 403 guards | ✅ FIXED — UI no longer offers forbidden targets (`01e8818`) |
+| Lead stage → pending_verification / closed (agent) | role-scoped dropdowns (`ADMIN/AGENT_MANUAL_STAGES`) + frozen-state locks + `lost`-reason modal | forward-only matrix + 400 / 403 guards + frozen (pending_verification / verification-closed) 403s | ✅ FIXED — UI no longer offers forbidden targets (`01e8818`); state machine enforced server-side via `leadTransitions.js` |
 | Post property | ProtectedRoute + PostGate (verified/admin) | `protect + requireVerified` | ✅ |
 | Edit/status/delete property | owner UI (ManageProperties) | owner/admin check in controller | ✅ |
 | Management create | ProtectedRoute (any) | `protect + requireVerified` | ⚠️ UI allows unverified attempt; API 403 (PostGate not applied to management routes — verify) |
@@ -647,7 +650,7 @@ Conventions: page → service (`frontend/src/services/*`) → `METHOD /api/...` 
 ```
 ContactForm --auto-convert--> Lead --seed--> Conversation --notify--> owner/agent
 Visit --link/sync--> Lead --ensure--> Lead+Conversation --reward--> buyer (BOOK/COMPLETE)
-Lead --file--> Sale|Rental (property→reserved, lead→pending_verification) --verify--> Property(sold|rented) + Lead(closed) + CommissionRecord --notify--> agent (+emi_plan_pending if EMI)
+Lead --file--> Sale|Rental (property→reserved, lead→pending_verification + preVerificationStage) --verify--> Property(sold|rented) + Lead(closed, closedBy set, frozen) + CommissionRecord --notify--> agent (+emi_plan_pending if EMI); --reject--> Property(available) + Lead(preVerificationStage)
 Sale(manual status path) --sold--> Property --reward--> buyer/seller/referrer + notify admins
 EMI sale(verified) --create--> EMIPlan --installment/verification--> paid/waived --remind(cron)--> buyer+agent
 Conversation message --sync--> Lead.activities + notify

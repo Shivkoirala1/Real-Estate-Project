@@ -101,7 +101,7 @@ const Navbar = () => {
         {/* Desktop Navigation */}
         <nav
           aria-label="Main navigation"
-          className="hidden items-center gap-8 md:flex"
+          className="hidden items-center gap-5 lg:gap-7 md:flex min-w-0"
         >
           {publicNavItems.map(({ label, to, end, icon: Icon }) => (
             <NavLink
@@ -110,8 +110,8 @@ const Navbar = () => {
               end={end}
               className={navLinkClass}
             >
-              <span className="inline-flex items-center gap-1.5">
-                {Icon && <Icon size={15} aria-hidden="true" />}
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                {Icon && <Icon size={15} aria-hidden="true" className="hidden lg:block flex-shrink-0" />}
                 {label}
               </span>
             </NavLink>

@@ -88,8 +88,8 @@ export const updateLead = async (id, updates) => {
  * Move a lead to a different pipeline stage (kanban drag & drop).
  * PATCH /api/leads/:id/stage
  */
-export const updateLeadStage = async (id, newStage) => {
-  const { data } = await api.patch(`/leads/${id}/stage`, { stage: newStage });
+export const updateLeadStage = async (id, newStage, note) => {
+  const { data } = await api.patch(`/leads/${id}/stage`, { stage: newStage, note });
   return data; // { success, message, lead }
 };
 

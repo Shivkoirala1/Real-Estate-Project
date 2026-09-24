@@ -65,6 +65,24 @@ const leadSchema = new mongoose.Schema(
       default: 'new',
       index: true,
     },
+    // How the lead reached `closed` (when it did). Verification flows set
+    // this to sale_verified/rental_verified inside their transactions;
+    // manual closes keep `manual`. Frozen-state rules key off this field:
+    // verification-closed leads are permanently read-only for manual moves.
+    closedBy: {
+      type: String,
+      enum: ['manual', 'sale_verified', 'rental_verified'],
+      default: 'manual',
+    },
+    // Stage the lead held immediately before a Sale/Rental filing moved it
+    // to pending_verification. Rejection restores this stage (instead of the
+    // old hardcoded `negotiation`) and clears the field. Null otherwise, so
+    // stale values can never affect future pipeline behavior.
+    preVerificationStage: {
+      type: String,
+      enum: LEAD_STAGES,
+      default: null,
+    },
     // Locked the first time a Sale or Rental is filed against this lead (or
     // set at creation when the property's saleType is known). Immutable
     // after that - a lead wanting the other deal type needs a new Lead.

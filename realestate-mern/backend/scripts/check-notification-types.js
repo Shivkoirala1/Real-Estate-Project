@@ -98,6 +98,78 @@ const main = () => {
     process.exit(1);
   }
   console.log(`check-notification-types: OK - ${used.size} literal type(s) used, all registered.`);
+
+  checkCategoryTaxonomy(registered);
+  checkFrontendTypeMeta(registered);
+};
+
+// Every Notification.type must belong to exactly one CATEGORY_TYPES entry,
+// and every categorized type must exist in the enum. `system` is a
+// legitimate category even though it is never rendered as a UI tab.
+const checkCategoryTaxonomy = (registered) => {
+  const { CATEGORY_TYPES } = require('../utils/notificationCategories');
+  const seen = new Map(); // type -> category
+  let failed = false;
+  for (const [category, types] of Object.entries(CATEGORY_TYPES)) {
+    for (const type of types) {
+      if (seen.has(type)) {
+        failed = true;
+        console.error(`DUPLICATE category mapping: '${type}' appears in both '${seen.get(type)}' and '${category}'.`);
+      } else {
+        seen.set(type, category);
+      }
+      if (!registered.has(type)) {
+        failed = true;
+        console.error(`UNKNOWN category mapping: '${type}' in category '${category}' is not in Notification.type enum.`);
+      }
+    }
+  }
+  for (const type of registered) {
+    if (!seen.has(type)) {
+      failed = true;
+      console.error(`UNCATEGORIZED notification type '${type}' - add it to exactly one CATEGORY_TYPES entry.`);
+    }
+  }
+  if (failed) {
+    console.error('\ncheck-notification-types: FAILED - category taxonomy invariant broken (every type -> exactly one category).');
+    process.exit(1);
+  }
+  console.log(`check-notification-types: OK - taxonomy covers ${seen.size} type(s) across ${Object.keys(CATEGORY_TYPES).length} categories.`);
+};
+
+// Every enum value should have a frontend badge entry so category tabs never
+// render real notifications as generic "System". Missing entries fail;
+// stale keys (no enum value) only warn - they are dead code, not breakage.
+const checkFrontendTypeMeta = (registered) => {
+  const pagePath = path.join(__dirname, '..', '..', 'frontend', 'src', 'pages', 'user', 'Notifications.jsx');
+  if (!fs.existsSync(pagePath)) {
+    console.warn('NOTE: frontend Notifications.jsx not found - skipping typeMeta check.');
+    return;
+  }
+  const source = fs.readFileSync(pagePath, 'utf8');
+  const block = source.match(/const typeMeta = \{([\s\S]*?)\n\};/);
+  if (!block) {
+    console.warn('NOTE: typeMeta block not found in Notifications.jsx - skipping typeMeta check.');
+    return;
+  }
+  const keys = new Set([...block[1].matchAll(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:/gm)].map((m) => m[1]));
+  let failed = false;
+  for (const type of [...registered].sort()) {
+    if (!keys.has(type)) {
+      failed = true;
+      console.error(`MISSING typeMeta: frontend Notifications.jsx has no badge entry for '${type}' (renders as System).`);
+    }
+  }
+  for (const key of [...keys].sort()) {
+    if (!registered.has(key)) {
+      console.warn(`NOTE: stale typeMeta key '${key}' has no Notification.type enum value - remove it.`);
+    }
+  }
+  if (failed) {
+    console.error('\ncheck-notification-types: FAILED - frontend typeMeta is missing entries.');
+    process.exit(1);
+  }
+  console.log('check-notification-types: OK - frontend typeMeta covers every enum value.');
 };
 
 main();

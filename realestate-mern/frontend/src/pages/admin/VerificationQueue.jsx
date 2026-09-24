@@ -107,7 +107,6 @@ function buildSaleChips(d) {
 }
 
 const STATUS_TABS = [
-  { value: '', label: 'All' },
   { value: 'pending_review', label: 'Pending Review' },
   { value: 'verified', label: 'Verified' },
   { value: 'rejected', label: 'Rejected' },
@@ -132,9 +131,10 @@ const VerificationQueue = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // URL is the source of truth — shareable, back-button friendly
+  // URL is the source of truth — shareable, back-button friendly.
+  // No "All" status: the queue opens on Pending Review for both deal types.
   const type = DEAL_TYPES[searchParams.get('type')] ? searchParams.get('type') : 'sale';
-  const status = searchParams.get('status') || '';
+  const status = searchParams.get('status') || 'pending_review';
   const agentFilter = searchParams.get('agent') || '';
 
   const [deals, setDeals] = useState([]);
@@ -343,8 +343,6 @@ const VerificationQueue = () => {
     }
   };
 
-  const allCount = (counts.pending_review || 0) + (counts.verified || 0) + (counts.rejected || 0);
-
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -375,7 +373,7 @@ const VerificationQueue = () => {
       <div className="flex flex-wrap items-center gap-2 mb-6">
         {STATUS_TABS.map((tab) => {
           const active = status === tab.value;
-          const count = tab.value === '' ? allCount : counts[tab.value] || 0;
+          const count = counts[tab.value] || 0;
           return (
             <button
               key={tab.label}

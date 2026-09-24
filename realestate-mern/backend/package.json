@@ -10,7 +10,9 @@
     "seed": "node utils/seeder.js",
     "check:notifications": "node scripts/check-notification-types.js",
     "migrate:verify-existing": "node utils/migrateVerifyExisting.js",
-    "migrate:leads": "node utils/migrateInquiriesToLeads.js"
+    "migrate:leads": "node utils/migrateInquiriesToLeads.js",
+    "migrate:lead-closedby": "node utils/migrateLeadClosedBy.js --execute",
+    "migrate:lead-closedby-dry": "node utils/migrateLeadClosedBy.js --dry-run"
   },
   "dependencies": {
     "axios": "^1.19.0",

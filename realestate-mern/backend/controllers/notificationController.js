@@ -2,19 +2,46 @@ const Notification = require('../models/Notification');
 const asyncHandler = require('../utils/asyncHandler');
 // Shared count query (single source of truth for REST + realtime publisher).
 const { countUnreadNotifications } = require('../realtime/unreadCounts');
+// Category taxonomy (?category=(messages|visits|deals|management|payments)).
+const { CATEGORY_TYPES, typesForCategory, categoryForType } = require('../utils/notificationCategories');
+
+// Single recipient-scoped aggregation for per-category unread badges.
+// Always returns all five UI categories (zero-filled); `system`/legacy rows
+// are intentionally excluded, so the visible sum may be below unreadCount.
+const countUnreadByCategory = async (recipientId) => {
+  const counts = { messages: 0, visits: 0, deals: 0, management: 0, payments: 0 };
+  const rows = await Notification.aggregate([
+    { $match: { recipient: recipientId, isRead: false } },
+    { $group: { _id: '$type', count: { $sum: 1 } } },
+  ]);
+  for (const { _id, count } of rows) {
+    const category = categoryForType(_id);
+    if (category && Object.prototype.hasOwnProperty.call(counts, category)) {
+      counts[category] += count;
+    }
+  }
+  return counts;
+};
 
 // @desc    Get the current user's notifications (paginated, newest first)
-// @route   GET /api/notifications?filter=unread&page=1&limit=20
+// @route   GET /api/notifications?filter=unread&category=deals&page=1&limit=20
 // @access  Private
 const getNotifications = asyncHandler(async (req, res) => {
-  const { filter } = req.query;
+  const { filter, category } = req.query;
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
 
   const query = { recipient: req.user._id };
   if (filter === 'unread') query.isRead = false;
+  // Absent category = All. Unknown category = 400 (never silent "all").
+  if (category !== undefined && category !== '') {
+    if (!CATEGORY_TYPES[category]) {
+      return res.status(400).json({ success: false, message: `Invalid notification category: ${category}` });
+    }
+    query.type = { $in: typesForCategory(category) };
+  }
 
-  const [notifications, total, unreadCount] = await Promise.all([
+  const [notifications, total, unreadCount, unreadByCategory] = await Promise.all([
     // No property populate: bell/list render _id/title/message/link/isRead
     // only and navigate via the link string (link-id trim deferred to B3).
     Notification.find(query)
@@ -23,12 +50,14 @@ const getNotifications = asyncHandler(async (req, res) => {
       .limit(limit),
     Notification.countDocuments(query),
     Notification.countDocuments({ recipient: req.user._id, isRead: false }),
+    countUnreadByCategory(req.user._id),
   ]);
 
   res.json({
     success: true,
     notifications,
     unreadCount,
+    unreadByCategory,
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 });

@@ -85,5 +85,7 @@ const notificationSchema = new mongoose.Schema(
 
 notificationSchema.index({ recipient: 1, isRead: 1 });
 notificationSchema.index({ recipient: 1, createdAt: -1 });
+// Category filtering (?category=) resolves to a $in on type server-side.
+notificationSchema.index({ recipient: 1, type: 1 });
 
 module.exports = mongoose.model('Notification', notificationSchema);

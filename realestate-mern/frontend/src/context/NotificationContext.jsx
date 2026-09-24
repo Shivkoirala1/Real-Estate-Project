@@ -15,21 +15,33 @@ export const NotificationProvider = ({ children }) => {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadByCategory, setUnreadByCategory] = useState({
+    messages: 0,
+    visits: 0,
+    deals: 0,
+    management: 0,
+    payments: 0,
+  });
   const [loading, setLoading] = useState(false);
 
-  const fetchNotifications = useCallback(async (filter = 'all') => {
+  const applyCounts = useCallback((data) => {
+    if (typeof data?.unreadCount === 'number') setUnreadCount(data.unreadCount);
+    if (data?.unreadByCategory) setUnreadByCategory((prev) => ({ ...prev, ...data.unreadByCategory }));
+  }, []);
+
+  const fetchNotifications = useCallback(async (filter = 'all', category = 'all') => {
     if (!user) return;
     setLoading(true);
     try {
-      const data = await getNotifications({ filter, limit: 30 });
+      const data = await getNotifications({ filter, category, limit: 30 });
       setNotifications(data.notifications);
-      setUnreadCount(data.unreadCount);
+      applyCounts(data);
     } catch (err) {
       // silent fail - the next realtime event or reconnect resync recovers
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, applyCounts]);
 
   const refreshUnreadCount = useCallback(async () => {
     if (!user) return;
@@ -41,26 +53,44 @@ export const NotificationProvider = ({ children }) => {
     }
   }, [user]);
 
+  // Tiny resync for per-category badges: the list payload is irrelevant at
+  // limit 1, but unreadCount + unreadByCategory are recipient-wide, so one
+  // cheap request refreshes every badge. Never rejects.
+  const refreshUnreadState = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = await getNotifications({ filter: 'all', limit: 1 });
+      applyCounts(data);
+    } catch (err) {
+      // silent fail - badges update on the next list fetch or socket event
+    }
+  }, [user, applyCounts]);
+
   const markAsRead = useCallback(async (id) => {
     setNotifications((prev) => prev.map((n) => (n._id === id ? { ...n, isRead: true } : n)));
     setUnreadCount((c) => Math.max(0, c - 1));
     try {
       await markNotificationAsRead(id);
+      refreshUnreadState();
     } catch (err) {
       // resync on failure
       refreshUnreadCount();
+      refreshUnreadState();
     }
-  }, [refreshUnreadCount]);
+  }, [refreshUnreadCount, refreshUnreadState]);
 
   const markAllAsRead = useCallback(async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
     setUnreadCount(0);
+    setUnreadByCategory({ messages: 0, visits: 0, deals: 0, management: 0, payments: 0 });
     try {
       await markAllNotificationsAsRead();
+      refreshUnreadState();
     } catch (err) {
       refreshUnreadCount();
+      refreshUnreadState();
     }
-  }, [refreshUnreadCount]);
+  }, [refreshUnreadCount, refreshUnreadState]);
 
   const deleteNotification = useCallback(async (id) => {
     let wasUnread = false;
@@ -72,15 +102,17 @@ export const NotificationProvider = ({ children }) => {
     if (wasUnread) setUnreadCount((c) => Math.max(0, c - 1));
     try {
       await deleteNotificationRequest(id);
+      if (wasUnread) refreshUnreadState();
     } catch (err) {
       fetchNotifications();
     }
-  }, [fetchNotifications]);
+  }, [fetchNotifications, refreshUnreadState]);
 
   useEffect(() => {
     if (!user) {
       setNotifications([]);
       setUnreadCount(0);
+      setUnreadByCategory({ messages: 0, visits: 0, deals: 0, management: 0, payments: 0 });
       return;
     }
 
@@ -100,26 +132,31 @@ export const NotificationProvider = ({ children }) => {
     const onUnread = (payload) => {
       if (payload && typeof payload.unreadCount === 'number') {
         setUnreadCount(payload.unreadCount);
+        // Socket carries the global count only — resync category badges.
+        refreshUnreadState();
       }
     };
     s.on('v1.notification.unread', onUnread);
     const offConnect = onSocketConnect(() => {
       refreshUnreadCount();
+      refreshUnreadState();
     });
     return () => {
       s.off('v1.notification.unread', onUnread);
       offConnect();
     };
-  }, [user, refreshUnreadCount]);
+  }, [user, refreshUnreadCount, refreshUnreadState]);
 
   return (
     <NotificationContext.Provider
       value={{
         notifications,
         unreadCount,
+        unreadByCategory,
         loading,
         fetchNotifications,
         refreshUnreadCount,
+        refreshUnreadState,
         markAsRead,
         markAllAsRead,
         deleteNotification,

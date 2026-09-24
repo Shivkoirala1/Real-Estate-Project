@@ -5,7 +5,8 @@ import HeroIndicators from "./HeroIndicators";
 
 // Owns active-slide state, per-slide-duration auto rotation, manual
 // navigation and pause behavior. `layout="card"` renders the compact
-// desktop overlay; `layout="full"` renders the mobile replacement hero.
+// desktop overlay; `layout="full"` renders the mobile replacement hero;
+// `layout="hero"` renders the full-bleed homepage hero (both mobile/desktop).
 const HeroCarousel = ({ slides = [], layout = "full" }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -13,6 +14,7 @@ const HeroCarousel = ({ slides = [], layout = "full" }) => {
 
   const count = slides.length;
   const isCard = layout === "card";
+  const isHero = layout === "hero";
 
   const goTo = useCallback(
     (index) => {
@@ -51,8 +53,8 @@ const HeroCarousel = ({ slides = [], layout = "full" }) => {
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
-      className={`relative overflow-hidden rounded-sm ${
-        isCard ? "h-64 lg:h-72 shadow-lifted" : "h-80"
+      className={`relative overflow-hidden ${
+        isCard ? "h-64 lg:h-72 shadow-lifted rounded-sm" : isHero ? "h-[440px] md:h-[560px]" : "h-80 rounded-sm"
       }`}
     >
       {slides.map((slide, i) => (

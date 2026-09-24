@@ -84,9 +84,9 @@ export const CATEGORIES = ['property', 'account', 'billing', 'technical'];
 export const PRIORITIES = ['low', 'medium', 'high'];
 
 export const PRIORITY_META = {
-  high: { label: 'High', color: '#A64B42', dot: 'bg-brick' },
-  medium: { label: 'Medium', color: '#B8863B', dot: 'bg-brass' },
-  low: { label: 'Low', color: '#8A8A82', dot: 'bg-[#8A8A82]' },
+  high: { label: 'High', color: '#A64B42', dot: 'bg-brick', rowBg: 'bg-brick/5', rowBar: 'border-l-brick' },
+  medium: { label: 'Medium', color: '#B8863B', dot: 'bg-brass', rowBg: 'bg-brass/5', rowBar: 'border-l-brass' },
+  low: { label: 'Low', color: '#8A8A82', dot: 'bg-[#8A8A82]', rowBg: 'bg-[#8A8A82]/5', rowBar: 'border-l-[#8A8A82]' },
 };
 
 // Accepts legacy capitalized stage values too, so old rows keep rendering.

@@ -28,9 +28,9 @@ Out of scope: automated tests, penetration testing, destructive security testing
   - `admin` = full control (users, agents, verifications, sales/rental verification, EMI, commissions payout, blogs, categories, archives, analytics).
   - Two orthogonal gates: `isEmailVerified` (blocks login until email code verified) and `verificationStatus` (`pending | verified | rejected`, from KYC identity docs; blocks property posting and management requests unless `admin`).
   - Property lifecycle: `available → reserved → sold` (sale) or `available → rented → available` (rent, via end-tenancy). Status moves forward only.
-  - Lead lifecycle: `new → contacted → site_visit_scheduled → negotiation → pending_verification → closed`, with `lost` as terminal non-close. `pending_verification` and `closed` have filing/role restrictions.
+  - Lead lifecycle: forward-only `new → contacted → site_visit_scheduled → negotiation → pending_verification → closed`, with `lost` reachable from any active stage (reason required). `pending_verification` and verification-closed leads (`closedBy: sale_verified | rental_verified`) are frozen from manual moves/mutations; manual closed/lost stay reopenable.
   - Conversations are per (inquirer, owner/property/lead) thread with `isActive` open/closed flag. Only `admin` can reopen.
-  - Hero slides are admin-only content (`draft | published` + schedule window + numeric order) feeding the homepage carousel. Public feed shows only published, in-schedule slides whose linked property (if any) is still promotable; derived states are Draft/Scheduled/Active/Expired. Desktop overlays the carousel on the static hero's bottom-right; mobile replaces the static hero; empty/error falls back to the static hero.
+  - Hero slides are admin-only content (`draft | published` + schedule window + numeric order) feeding the homepage carousel. Public feed shows only published, in-schedule slides whose linked property (if any) is still promotable; derived states are Draft/Scheduled/Active/Expired. The carousel is the full homepage hero on mobile and desktop; the static hero remains only as the empty-state fallback.
   - Realtime events (server → client only): `v1.notification.unread`, `v1.conversation.unread`, `v1.conversation.message`, `v1.conversation.status`. All mutations go over REST; sockets only deliver hints + live message/status fan-out to joined rooms.
 
 ## 4. Test Environment
@@ -712,13 +712,16 @@ Notes: `isActive=false` blocks login and socket for any role. `isEmailVerified=f
 **Evidence:** _
 
 ### LEAD-003
-**Test Name:** Blocked stage transitions (manual pending_verification, agent close)
+**Test Name:** Blocked stage transitions (manual pending_verification, agent close, backward moves, frozen leads)
 **Priority:** P1
-**Preconditions:** Logged in agent; lead in `negotiation`.
+**Preconditions:** Logged in agent; lead in `negotiation`; one lead in `pending_verification`; one verification-closed lead.
 **Steps:**
 1. Try to set stage to `pending_verification` manually.
 2. Try to set stage to `closed` as agent.
-**Expected Result:** `pending_verification` rejected (must file Sale/Rental); agent `closed` rejected (403, use `lost`); stage unchanged.
+3. Try to move `negotiation` backward to `contacted`.
+4. Try to move the `pending_verification` lead and the verification-closed lead.
+5. Try moving an active lead to `lost` without a reason.
+**Expected Result:** `pending_verification` rejected (must file Sale/Rental); agent `closed` rejected (403, use `lost`); backward move rejected (400); frozen leads reject manual moves (403); `lost` without reason rejected (400); stages unchanged.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
@@ -1163,25 +1166,26 @@ Prerequisite for all RT tests: login establishes socket (WS 101 to Render); logo
 **Evidence:** _
 
 ### DEAL-002
-**Test Name:** Admin verifies sale (property → sold, lead → closed, commission created)
+**Test Name:** Admin verifies sale (property → sold, lead → closed + frozen, commission created)
 **Priority:** P0
 **Preconditions:** Pending sale exists; admin session.
 **Steps:**
 1. As admin open Verification Queue → verify sale.
 2. Check property (`sold`), lead (`closed`), commissions list, agent notification.
-**Expected Result:** All side effects occur; commission frozen (price × effective %); persists after refresh.
+3. Try moving the closed lead to another stage (API or UI).
+**Expected Result:** All side effects occur; commission frozen (price × effective %); lead has `closedBy: sale_verified`; manual stage moves rejected (403); persists after refresh.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
 
 ### DEAL-003
-**Test Name:** Admin rejects sale with reason (property → available, lead → negotiation)
+**Test Name:** Admin rejects sale with reason (property → available, lead → pre-filing stage)
 **Priority:** P1
-**Preconditions:** Pending sale exists.
+**Preconditions:** Pending sale exists (note the lead's stage before filing).
 **Steps:**
 1. As admin reject with reason.
 2. Refresh property + lead.
-**Expected Result:** Rejection requires reason; property back to `available`; lead to `negotiation`; persists.
+**Expected Result:** Rejection requires reason; property back to `available`; lead returns to its recorded pre-filing stage (`negotiation` fallback only for rows filed before stage tracking); persists.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
@@ -1195,7 +1199,7 @@ Prerequisite for all RT tests: login establishes socket (WS 101 to Render); logo
 1. Submit Rental as agent.
 2. Verify as admin with commission amount ≥0.
 3. Refresh property + lead.
-**Expected Result:** Rental verified; property `rented` with dates/tenant; lead `closed`; persists.
+**Expected Result:** Rental verified; property `rented` with dates/tenant; lead `closed` with `closedBy: rental_verified` (frozen from manual moves); persists.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _

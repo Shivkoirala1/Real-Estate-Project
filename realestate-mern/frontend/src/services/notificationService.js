@@ -6,13 +6,15 @@ import api from "../utils/axios";
  *
  * Supported query parameters:
  * - filter (all / unread)
+ * - category (messages / visits / deals / management / payments; omitted = all)
+ * - page
  * - limit
  */
-export const getNotifications = async ({ filter = "all", limit = 30 } = {}) => {
-  const { data } = await api.get("/notifications", {
-    params: { filter, limit },
-  });
-  return data; // { notifications, unreadCount }
+export const getNotifications = async ({ filter = "all", category, page = 1, limit = 30 } = {}) => {
+  const params = { filter, page, limit };
+  if (category && category !== "all") params.category = category;
+  const { data } = await api.get("/notifications", { params });
+  return data; // { notifications, unreadCount, unreadByCategory, pagination }
 };
 
 /**

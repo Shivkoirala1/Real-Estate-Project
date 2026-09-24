@@ -220,12 +220,15 @@ const createRental = asyncHandler(async (req, res) => {
 
   // Reserve the property and freeze the lead in the verification stage while
   // an admin reviews the filing - all three writes commit or none do.
+  // The pre-filing stage is recorded so rejection restores the actual stage
+  // the lead came from (instead of a hardcoded fallback).
   await runWithTransaction(async (session) => {
     await rental.save(opts(session));
 
     property.status = 'reserved';
     await property.save(opts(session));
 
+    lead.preVerificationStage = lead.stage;
     lead.stage = 'pending_verification';
     lead.recordActivity({
       type: 'rental_submitted',
@@ -455,6 +458,8 @@ const verifyRental = asyncHandler(async (req, res) => {
     await property.save(opts(session));
 
     lead.stage = 'closed';
+    lead.closedBy = 'rental_verified';
+    lead.preVerificationStage = null;
     lead.closedAt = lead.closedAt || new Date();
     lead.recordActivity({
       type: 'rental_verified',
@@ -528,6 +533,10 @@ const rejectRental = asyncHandler(async (req, res) => {
   const lead = await Lead.findById(rental.lead);
   if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
 
+  // Restore the actual pre-filing stage (recorded at submit time), falling
+  // back to negotiation only for rows filed before that was tracked.
+  // Declared outside the transaction so the response can name the stage.
+  let restoredStage = lead.preVerificationStage || 'negotiation';
   await runWithTransaction(async (session) => {
     rental.status = 'rejected';
     rental.rejectionReason = trimmedReason;
@@ -544,10 +553,12 @@ const rejectRental = asyncHandler(async (req, res) => {
     property.status = 'available';
     await property.save(opts(session));
 
-    lead.stage = 'negotiation';
+    restoredStage = lead.preVerificationStage || 'negotiation';
+    lead.stage = restoredStage;
+    lead.preVerificationStage = null;
     lead.recordActivity({
       type: 'rental_rejected',
-      message: `Rental rejected by admin: ${trimmedReason} — lead returned to negotiation.`,
+      message: `Rental rejected by admin: ${trimmedReason} — lead returned to ${restoredStage.replace(/_/g, ' ')}.`,
       by: req.user._id,
       byName: req.user.name,
     });
@@ -566,7 +577,7 @@ const rejectRental = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    message: 'Rental rejected. Property returned to available and lead returned to negotiation.',
+    message: `Rental rejected. Property returned to available and lead returned to ${restoredStage.replace(/_/g, ' ')}.`,
     rental,
   });
 });

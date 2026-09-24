@@ -22,7 +22,7 @@ const LeadCard = ({ lead, draggable = false, onDragStart, compact = false }) => 
       draggable={draggable}
       onDragStart={onDragStart}
       onClick={open}
-      className={`bg-white border border-navy/10 rounded-sm p-3 cursor-pointer hover:border-brass/60 hover:shadow-card transition-shadow ${
+      className={`border border-navy/10 border-l-4 ${priority.rowBar} rounded-sm p-3 cursor-pointer hover:border-brass/60 hover:shadow-card transition-shadow ${priority.rowBg} ${
         draggable ? 'active:cursor-grabbing' : ''
       }`}
       data-lead-id={lead._id}

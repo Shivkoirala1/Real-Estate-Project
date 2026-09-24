@@ -5,7 +5,9 @@ import { getAgents} from '../../../services/agentService';
 import { useToast } from '../../../context/ToastContext';
 import LeadSourceIcon from '../../../components/LeadManagement/LeadSourceIcon';
 import LeadStatusBadge from '../../../components/LeadManagement/LeadStatusBadge';
+import LostReasonModal from '../../../components/LeadManagement/LostReasonModal';
 import { ADMIN_MANUAL_STAGES, STAGE_META, PRIORITIES, PRIORITY_META } from '../../../utils/leadConstants';
+import { isLeadFrozenForManualMove } from '../../../utils/leadGuards';
 import { timeAgo } from '../../../utils/format';
 
 // Table view of all leads with filtering, inline stage/agent updates and
@@ -20,6 +22,9 @@ const LeadList = ({ filters = {}, reloadKey = 0, onConverted }) => {
   const [page, setPage] = useState(1);
   const [agents, setAgents] = useState([]);
   const [updatingId, setUpdatingId] = useState(null);
+  const [lostTarget, setLostTarget] = useState(null);
+  const [lostSaving, setLostSaving] = useState(false);
+  const [lostError, setLostError] = useState('');
 
   useEffect(() => {
     getAgents()
@@ -57,17 +62,44 @@ const LeadList = ({ filters = {}, reloadKey = 0, onConverted }) => {
     setPage(1);
   }, [filters.stage, filters.assignedAgent, filters.priority, filters.source, filters.search, filters.nextFollowUp, reloadKey]);
 
-  const changeStage = async (lead, stage) => {
+  const changeStage = async (lead, stage, note) => {
     if (lead.stage === stage) return;
     setUpdatingId(lead._id);
     try {
-      await updateLeadStage(lead._id, stage);
+      await updateLeadStage(lead._id, stage, note);
       showToast(`"${lead.name}" moved to ${STAGE_META[stage].label}`);
       await loadLeads();
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to update stage', 'error');
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  // Moves to `lost` need a reason - collect it before firing the update.
+  const requestLost = (lead) => {
+    setLostError('');
+    setLostTarget(lead);
+  };
+
+  const handleLostSubmit = async (reason) => {
+    if (!reason || reason.trim().length < 10) {
+      setLostError('Loss reason must be at least 10 characters after removing extra spaces');
+      return;
+    }
+    const lead = lostTarget;
+    if (!lead) return;
+    setLostSaving(true);
+    setLostError('');
+    try {
+      await updateLeadStage(lead._id, 'lost', reason);
+      showToast(`"${lead.name}" moved to ${STAGE_META.lost.label}`);
+      setLostTarget(null);
+      await loadLeads();
+    } catch (err) {
+      setLostError(err.response?.data?.message || 'Failed to mark lead as lost');
+    } finally {
+      setLostSaving(false);
     }
   };
 
@@ -93,6 +125,14 @@ const LeadList = ({ filters = {}, reloadKey = 0, onConverted }) => {
 
   return (
     <div>
+      <LostReasonModal
+        open={Boolean(lostTarget)}
+        leadName={lostTarget?.name}
+        saving={lostSaving}
+        error={lostError}
+        onClose={() => { if (!lostSaving) setLostTarget(null); }}
+        onSubmit={handleLostSubmit}
+      />
       <div className="bg-white border border-navy/10 rounded-sm overflow-x-auto">
         <table className="w-full text-sm min-w-[900px]">
           <thead>
@@ -123,8 +163,9 @@ const LeadList = ({ filters = {}, reloadKey = 0, onConverted }) => {
             ) : (
               leads.map((lead) => {
                 const priority = PRIORITY_META[lead.priority] || PRIORITY_META.medium;
+                const stageFrozen = isLeadFrozenForManualMove(lead);
                 return (
-                  <tr key={lead._id} className="border-b border-navy/5 last:border-0 hover:bg-parchment/40">
+                  <tr key={lead._id} className={`border-b border-navy/5 last:border-0 hover:bg-parchment/40 ${priority.rowBg}`}>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => navigate(`/dashboard/lead-management/leads/${lead._id}`)}
@@ -145,9 +186,13 @@ const LeadList = ({ filters = {}, reloadKey = 0, onConverted }) => {
                     <td className="px-4 py-3">
                       <select
                         value={lead.stage}
-                        disabled={updatingId === lead._id}
-                        onChange={(e) => changeStage(lead, e.target.value)}
-                        className="input-field text-xs py-1.5 w-40"
+                        disabled={updatingId === lead._id || stageFrozen}
+                        title={stageFrozen ? 'This lead is frozen and cannot be moved manually' : undefined}
+                        onChange={(e) => {
+                          if (e.target.value === 'lost' && lead.stage !== 'lost') requestLost(lead);
+                          else changeStage(lead, e.target.value);
+                        }}
+                        className="input-field text-xs py-1.5 w-40 disabled:opacity-60"
                       >
                         {ADMIN_MANUAL_STAGES.map((s) => (
                           <option key={s} value={s}>

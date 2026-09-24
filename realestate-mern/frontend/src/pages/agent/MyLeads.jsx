@@ -8,7 +8,9 @@ import {
 import { useToast } from '../../context/ToastContext';
 import LeadStatusBadge from '../../components/LeadManagement/LeadStatusBadge';
 import LeadSourceIcon from '../../components/LeadManagement/LeadSourceIcon';
-import { STAGES, AGENT_MANUAL_STAGES, STAGE_META } from '../../utils/leadConstants';
+import { STAGES, AGENT_MANUAL_STAGES, STAGE_META, PRIORITY_META } from '../../utils/leadConstants';
+import { isLeadFrozenForManualMove } from '../../utils/leadGuards';
+import LostReasonModal from '../../components/LeadManagement/LostReasonModal';
 import { timeAgo } from '../../utils/format';
 
 // Agent's personal lead queue - "My Leads". Shows assigned leads with quick
@@ -21,6 +23,9 @@ const MyLeads = () => {
   const [loading, setLoading] = useState(true);
   const [stageFilter, setStageFilter] = useState('');
   const [stats, setStats] = useState({ total: 0, overdue: 0, active: 0 });
+  const [lostTarget, setLostTarget] = useState(null);
+  const [lostSaving, setLostSaving] = useState(false);
+  const [lostError, setLostError] = useState('');
 
   const loadLeads = useCallback(async () => {
     setLoading(true);
@@ -52,14 +57,41 @@ const MyLeads = () => {
     loadLeads();
   }, [loadLeads]);
 
-  const changeStage = async (lead, stage) => {
+  const changeStage = async (lead, stage, note) => {
     if (lead.stage === stage) return;
     try {
-      await updateLeadStage(lead._id, stage);
+      await updateLeadStage(lead._id, stage, note);
       showToast(`Moved to ${STAGE_META[stage].label}`);
       loadLeads();
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to update stage', 'error');
+    }
+  };
+
+  // Moves to `lost` need a reason - collect it before firing the update.
+  const requestLost = (lead) => {
+    setLostError('');
+    setLostTarget(lead);
+  };
+
+  const handleLostSubmit = async (reason) => {
+    if (!reason || reason.trim().length < 10) {
+      setLostError('Loss reason must be at least 10 characters after removing extra spaces');
+      return;
+    }
+    const lead = lostTarget;
+    if (!lead) return;
+    setLostSaving(true);
+    setLostError('');
+    try {
+      await updateLeadStage(lead._id, 'lost', reason);
+      showToast(`Moved to ${STAGE_META.lost.label}`);
+      setLostTarget(null);
+      loadLeads();
+    } catch (err) {
+      setLostError(err.response?.data?.message || 'Failed to mark lead as lost');
+    } finally {
+      setLostSaving(false);
     }
   };
 
@@ -75,6 +107,14 @@ const MyLeads = () => {
 
   return (
     <div>
+      <LostReasonModal
+        open={Boolean(lostTarget)}
+        leadName={lostTarget?.name}
+        saving={lostSaving}
+        error={lostError}
+        onClose={() => { if (!lostSaving) setLostTarget(null); }}
+        onSubmit={handleLostSubmit}
+      />
       <p className="eyebrow mb-2">Agent CRM</p>
       <h1 className="text-3xl mb-6">My Leads</h1>
 
@@ -123,8 +163,10 @@ const MyLeads = () => {
               lead.nextFollowUp &&
               new Date(lead.nextFollowUp) < new Date() &&
               !['closed', 'lost'].includes(lead.stage);
+            const priority = PRIORITY_META[lead.priority] || PRIORITY_META.medium;
+            const stageFrozen = isLeadFrozenForManualMove(lead);
             return (
-              <div key={lead._id} className="px-5 py-4">
+              <div key={lead._id} className={`px-5 py-4 border-l-4 ${priority.rowBar} ${priority.rowBg}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <button
                     onClick={() => navigate(`/dashboard/lead-management/leads/${lead._id}`)}
@@ -136,6 +178,10 @@ const MyLeads = () => {
                       </p>
                       <LeadStatusBadge stage={lead.stage} dealType={lead.dealType} size="xs" />
                       <LeadSourceIcon source={lead.source} />
+                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-muted">
+                        <span className={`w-1.5 h-1.5 rounded-full ${priority.dot}`} />
+                        {priority.label}
+                      </span>
                     </div>
                     <p className="text-xs text-slate-muted mt-0.5">
                       {lead.email}
@@ -164,8 +210,13 @@ const MyLeads = () => {
                     )}
                     <select
                       value={lead.stage}
-                      onChange={(e) => changeStage(lead, e.target.value)}
-                      className="input-field text-xs py-1.5 w-40"
+                      disabled={stageFrozen}
+                      title={stageFrozen ? 'This lead is frozen and cannot be moved manually' : undefined}
+                      onChange={(e) => {
+                        if (e.target.value === 'lost' && lead.stage !== 'lost') requestLost(lead);
+                        else changeStage(lead, e.target.value);
+                      }}
+                      className="input-field text-xs py-1.5 w-40 disabled:opacity-60"
                     >
                       {AGENT_MANUAL_STAGES.map((s) => (
                         <option key={s} value={s}>

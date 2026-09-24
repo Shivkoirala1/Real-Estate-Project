@@ -35,6 +35,7 @@ export const getAccountNavItems = (user, counts = {}) => {
 
   if (isPlainUser) {
     items.push({ id: "properties", to: "/my-properties", label: "My Properties" });
+    items.push({ id: "innovations", to: "/my-innovations", label: "My Innovations" });
     items.push({ id: "wallet", to: "/wallet", label: "My Wallet" });
     items.push({ id: "emi", to: "/my-emi", label: "My EMI" });
   }

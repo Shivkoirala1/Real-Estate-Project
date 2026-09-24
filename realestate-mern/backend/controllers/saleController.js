@@ -214,12 +214,15 @@ const createSale = asyncHandler(async (req, res) => {
 
   // Reserve the property and freeze the lead in the verification stage while
   // an admin reviews the filing - all three writes commit or none do.
+  // The pre-filing stage is recorded so rejection restores the actual stage
+  // the lead came from (instead of a hardcoded fallback).
   await runWithTransaction(async (session) => {
     await sale.save(opts(session));
 
     property.status = 'reserved';
     await property.save(opts(session));
 
+    lead.preVerificationStage = lead.stage;
     lead.stage = 'pending_verification';
     lead.recordActivity({
       type: 'sale_submitted',
@@ -465,6 +468,8 @@ const verifySale = asyncHandler(async (req, res) => {
     await property.save(opts(session));
 
     lead.stage = 'closed';
+    lead.closedBy = 'sale_verified';
+    lead.preVerificationStage = null;
     lead.closedAt = lead.closedAt || new Date();
     lead.recordActivity({
       type: 'sale_verified',
@@ -570,6 +575,10 @@ const rejectSale = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Lead not found' });
   }
 
+  // Restore the actual pre-filing stage (recorded at submit time), falling
+  // back to negotiation only for rows filed before that was tracked.
+  // Declared outside the transaction so the response can name the stage.
+  let restoredStage = lead.preVerificationStage || 'negotiation';
   await runWithTransaction(async (session) => {
     sale.status = 'rejected';
     sale.rejectionReason = trimmedReason;
@@ -587,11 +596,14 @@ const rejectSale = asyncHandler(async (req, res) => {
     property.status = 'available';
     await property.save(opts(session));
 
-    // The agent fixes whatever was wrong and refiles from negotiation
-    lead.stage = 'negotiation';
+    // Restore the actual pre-filing stage (recorded at submit time), falling
+    // back to negotiation only for rows filed before that was tracked.
+    restoredStage = lead.preVerificationStage || 'negotiation';
+    lead.stage = restoredStage;
+    lead.preVerificationStage = null;
     lead.recordActivity({
       type: 'sale_rejected',
-      message: `Sale rejected by admin: ${trimmedReason} — lead returned to negotiation.`,
+      message: `Sale rejected by admin: ${trimmedReason} — lead returned to ${restoredStage.replace(/_/g, ' ')}.`,
       by: req.user._id,
       byName: req.user.name,
     });
@@ -610,7 +622,7 @@ const rejectSale = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    message: 'Sale rejected. Property returned to available and lead returned to negotiation.',
+    message: `Sale rejected. Property returned to available and lead returned to ${restoredStage.replace(/_/g, ' ')}.`,
     sale,
   });
 });
