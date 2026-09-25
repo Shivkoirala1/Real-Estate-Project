@@ -9,7 +9,7 @@ import PropertyCard from '../../components/PropertyCard';
 import PropertyCategories from '../../components/PropertyCategories';
 import InnovationShowcase from '../../components/InnovationShowcase';
 import AgentShowcase from '../../components/AgentShowcase';
-import TrustIndicators from '../../components/TrustIndicators';
+import { TrustStrip } from '../../components/TrustIndicators';
 
 const Home = () => {
   const [featured, setFeatured] = useState([]);
@@ -96,6 +96,11 @@ const Home = () => {
         <SearchFilterBar filters={FILTER_KEYS.filter((f) => f !== 'sort')} />
       </div>
 
+      {/* Early credibility strip — slim static proof points before listings */}
+      <div className="max-w-7xl mx-auto px-5 md:px-8 mt-6">
+        <TrustStrip />
+      </div>
+
       {/* Property categories */}
       <PropertyCategories types={types} />
 
@@ -142,9 +147,6 @@ const Home = () => {
 
       {/* Agents — admin-showcased only; hidden when empty */}
       <AgentShowcase />
-
-      {/* Trust indicators — static proof points above the explanation cards */}
-      <TrustIndicators />
 
       {/* Why choose us */}
       <section className="max-w-7xl mx-auto px-5 md:px-8 mt-24 mb-20 text-center">

@@ -55,6 +55,33 @@ const StatItem = ({ stat, started }) => {
   );
 };
 
+// Early-credibility strip: slim, static proof points for placement directly
+// under the homepage search bar (no heading, no animation — static text keeps
+// it shift-free and quiet). Only the most defensible claims live here; the
+// weaker placeholders (deals, years) stay out until GET /api/public/stats
+// lands. Shares PLACEHOLDER_STATS so the live-API swap stays data-only.
+/* PLACEHOLDER — replace with GET /api/public/stats once the backend endpoint exists. */
+const STRIP_KEYS = ['listings', 'agents', 'districts', 'rating'];
+
+export const TrustStrip = () => {
+  const stats = STRIP_KEYS.map((key) => PLACEHOLDER_STATS.find((s) => s.key === key)).filter(Boolean);
+  return (
+    <section aria-label="Platform highlights" className="border-y border-navy/10 bg-white">
+      <dl className="grid grid-cols-2 md:grid-cols-4 gap-y-3 divide-navy/10 md:divide-x py-4 md:py-5">
+        {stats.map((stat) => (
+          <div key={stat.key} className="text-center px-4 min-h-[3.5rem] flex flex-col items-center justify-center">
+            <dt className="order-2 text-xs text-slate-muted">{stat.label}</dt>
+            <dd className="order-1 font-display text-2xl md:text-[1.7rem] text-navy leading-none mb-1">
+              {stat.value.toFixed(stat.decimals)}
+              <span className="text-brass">{stat.suffix}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+};
+
 // Static trust strip: proof points above the "Why Youth Real Estate"
 // explanation cards. Purely presentational (no fetch), so it can never
 // break the homepage.
