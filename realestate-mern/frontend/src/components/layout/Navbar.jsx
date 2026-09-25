@@ -119,7 +119,7 @@ const Navbar = () => {
         </nav>
 
         {/* Desktop Actions */}
-        <div className="hidden items-center gap-3 md:flex">
+        <div className="hidden flex-shrink-0 items-center gap-3 md:flex">
           {!user ? (
             <>
               <Link
