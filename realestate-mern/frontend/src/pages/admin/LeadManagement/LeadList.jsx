@@ -165,8 +165,8 @@ const LeadList = ({ filters = {}, reloadKey = 0, onConverted }) => {
                 const priority = PRIORITY_META[lead.priority] || PRIORITY_META.medium;
                 const stageFrozen = isLeadFrozenForManualMove(lead);
                 return (
-                  <tr key={lead._id} className={`border-b border-navy/5 last:border-0 hover:bg-parchment/40 ${priority.rowBg}`}>
-                    <td className="px-4 py-3">
+                  <tr key={lead._id} className={`border-b border-navy/5 last:border-0 ${priority.rowBg}`}>
+                    <td className={`px-4 py-3 border-l-4 ${priority.rowBar}`}>
                       <button
                         onClick={() => navigate(`/dashboard/lead-management/leads/${lead._id}`)}
                         className="text-left group"
