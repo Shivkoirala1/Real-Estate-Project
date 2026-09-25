@@ -620,7 +620,10 @@ const resolvePropertyUploads = async ({ actor, sessionId, coverUploadId, gallery
   const resolveOne = (id, expectedPurpose) => {
     const upload = byId.get(String(id));
     if (String(upload.sessionId) !== String(session._id)) {
-      throw fail(403, `Upload ${id} does not belong to this session`);
+      console.warn(
+        `Property upload session mismatch: upload ${id} is in session ${upload.sessionId}, submitted session ${session._id}`
+      );
+      throw fail(403, 'One or more files were uploaded in a different session — please re-upload them and try again');
     }
     if (String(upload.userId) !== String(actor._id) && actor.role !== 'admin') {
       throw fail(403, `Upload ${id} belongs to another user`);
@@ -676,7 +679,10 @@ const resolveInnovationUploads = async ({ actor, sessionId, imageUploadIds, vide
   const resolveOne = (id, expectedPurpose) => {
     const upload = byId.get(String(id));
     if (String(upload.sessionId) !== String(session._id)) {
-      throw fail(403, `Upload ${id} does not belong to this session`);
+      console.warn(
+        `Innovation upload session mismatch: upload ${id} is in session ${upload.sessionId}, submitted session ${session._id}`
+      );
+      throw fail(403, 'One or more files were uploaded in a different session — please re-upload them and try again');
     }
     if (String(upload.userId) !== String(actor._id) && actor.role !== 'admin') {
       throw fail(403, `Upload ${id} belongs to another user`);

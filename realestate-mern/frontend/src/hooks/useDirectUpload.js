@@ -36,12 +36,16 @@ const nextClientId = () => `file-${Date.now()}-${clientSeq++}`;
 
 export const useDirectUpload = ({ scope, concurrency = 3 } = {}) => {
   const [sessionId, setSessionId] = useState(null);
-  const [files, setFiles] = useState([]); // [{ clientId, file, purpose, refs, status, progress, error, uploadId }]
+  const [files, setFiles] = useState([]); // [{ clientId, file, purpose, refs, status, progress, error, uploadId, sessionId }]
   const filesRef = useRef([]);
   const controllersRef = useRef(new Map()); // clientId → AbortController
   const pumpRef = useRef(null);
   const optsRef = useRef({ scope, concurrency });
   optsRef.current = { scope, concurrency };
+  // Single-flight session creation: refs are shared across concurrent
+  // runOne() calls while React state is stale until the next render.
+  const sessionIdRef = useRef(null);
+  const sessionPromiseRef = useRef(null);
 
   useEffect(() => {
     filesRef.current = files;
@@ -64,12 +68,22 @@ export const useDirectUpload = ({ scope, concurrency = 3 } = {}) => {
   );
 
   const ensureSession = useCallback(async () => {
-    if (sessionId) return sessionId;
-    const data = await createUploadSession({ scope: optsRef.current.scope });
-    const id = data.session.sessionId;
-    setSessionId(id);
-    return id;
-  }, [sessionId]);
+    if (sessionIdRef.current) return sessionIdRef.current;
+    if (sessionPromiseRef.current) return sessionPromiseRef.current;
+    const pending = (async () => {
+      const data = await createUploadSession({ scope: optsRef.current.scope });
+      const id = data.session.sessionId;
+      sessionIdRef.current = id;
+      setSessionId(id);
+      return id;
+    })();
+    sessionPromiseRef.current = pending;
+    try {
+      return await pending;
+    } finally {
+      sessionPromiseRef.current = null;
+    }
+  }, []);
 
   const runOne = useCallback(
     async (entry) => {
@@ -81,7 +95,7 @@ export const useDirectUpload = ({ scope, concurrency = 3 } = {}) => {
         const sid = await ensureSession();
         const { upload } = await signUpload({ sessionId: sid, purpose, ...refs });
         if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
-        patchFile(clientId, { status: FILE_STATES.UPLOADING, uploadId: upload.uploadId });
+        patchFile(clientId, { status: FILE_STATES.UPLOADING, uploadId: upload.uploadId, sessionId: sid });
         const res = await uploadFileToCloudinary({
           signed: upload,
           file,
@@ -149,7 +163,7 @@ export const useDirectUpload = ({ scope, concurrency = 3 } = {}) => {
       const list = Array.isArray(picked) ? picked : [picked];
       const entries = list
         .filter(Boolean)
-        .map((file) => ({ clientId: nextClientId(), file, purpose, refs: refs || {}, status: FILE_STATES.QUEUED, progress: 0, attempts: 0, error: '', uploadId: null }));
+        .map((file) => ({ clientId: nextClientId(), file, purpose, refs: refs || {}, status: FILE_STATES.QUEUED, progress: 0, attempts: 0, error: '', uploadId: null, sessionId: null }));
       if (entries.length === 0) return [];
       setFiles((prev) => [...prev, ...entries]);
       // Defer to next tick so filesRef has the new entries.
@@ -194,7 +208,7 @@ export const useDirectUpload = ({ scope, concurrency = 3 } = {}) => {
       if (!waiter) continue;
       if (f.status === FILE_STATES.SUCCESS && f.uploadId) {
         waitersRef.current.delete(f.clientId);
-        waiter.resolve({ uploadId: f.uploadId, sessionId });
+        waiter.resolve({ uploadId: f.uploadId, sessionId: f.sessionId || sessionIdRef.current || sessionId });
       } else if (f.status === FILE_STATES.FAILED) {
         waitersRef.current.delete(f.clientId);
         waiter.reject(new Error(f.error || 'Upload failed'));

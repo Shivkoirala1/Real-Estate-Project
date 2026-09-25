@@ -12,6 +12,8 @@ import { INNOVATION_CATEGORIES, formatInnovationCategory } from '../services/inn
 const MAX_IMAGES = 5;
 const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov'];
 const BUSY_STATES = [FILE_STATES.QUEUED, FILE_STATES.SIGNING, FILE_STATES.UPLOADING, FILE_STATES.COMPLETING];
+const STALE_SESSION_MESSAGE =
+  'Some media was uploaded in an older session — please remove and re-add the failed photos/video, then try again.';
 
 // Shared create/edit form (owner pages + admin edit reuse the same component
 // and endpoint). Media uploads immediately browser → Cloudinary through one
@@ -131,10 +133,26 @@ const InnovationForm = ({ initialIdea = null, onSubmit, submitLabel }) => {
     setError('');
     setSaving(true);
     try {
-      const imageUploadIds = activeImageEntries
-        .filter((f) => f.status === FILE_STATES.SUCCESS && f.uploadId)
-        .map((f) => f.uploadId);
-      const videoUploadId = videoEntry?.status === FILE_STATES.SUCCESS ? videoEntry.uploadId : undefined;
+      const submittedImageEntries = activeImageEntries.filter(
+        (f) => f.status === FILE_STATES.SUCCESS && f.uploadId
+      );
+      const submittedVideoEntry =
+        videoEntry?.status === FILE_STATES.SUCCESS && videoEntry.uploadId ? videoEntry : null;
+      const submittedEntries = [...submittedImageEntries, ...(submittedVideoEntry ? [submittedVideoEntry] : [])];
+      // Client-side consistency guard: every file actually being submitted
+      // must have been signed under the form's current session. Removed /
+      // replaced picks are already excluded above, so they never trip this.
+      if (submittedEntries.length > 0) {
+        const mismatched = submittedEntries.some(
+          (f) => !f.sessionId || f.sessionId !== innovUp.sessionId
+        );
+        if (!innovUp.sessionId || mismatched) {
+          setError(STALE_SESSION_MESSAGE);
+          return;
+        }
+      }
+      const imageUploadIds = submittedImageEntries.map((f) => f.uploadId);
+      const videoUploadId = submittedVideoEntry ? submittedVideoEntry.uploadId : undefined;
       const hasNewMedia = imageUploadIds.length > 0 || videoUploadId !== undefined;
 
       const payload = { title: title.trim(), category, description: description.trim() };
@@ -152,10 +170,14 @@ const InnovationForm = ({ initialIdea = null, onSubmit, submitLabel }) => {
       await onSubmit(payload);
     } catch (err) {
       const data = err?.response?.data;
-      if (err?.response?.status === 429) {
+      const status = err?.response?.status;
+      if (status === 429) {
         const secs = Number(data?.retryAfterSec) || 0;
         const when = secs >= 3600 ? `about ${Math.ceil(secs / 3600)} hour(s)` : `about ${Math.max(Math.ceil(secs / 60), 1)} minute(s)`;
         setError(`${data?.message || 'Submission limit reached.'} Please try again in ${when}.`);
+      } else if (status === 403 || status === 409 || status === 422) {
+        console.error('Innovation submit rejected:', data?.message || err?.message || err);
+        setError(STALE_SESSION_MESSAGE);
       } else {
         setError(data?.message || 'Failed to save. Please try again.');
       }

@@ -324,6 +324,9 @@ describe('Innovation Ideas V1 API', () => {
     const mine = await openInnovationSession(u);
     const foreignRes = await submit(u, { ...ideaBody({ title: 'Foreign upload must be rejected' }), uploadSessionId: mine, imageUploadIds: [foreign] });
     assert.equal(foreignRes.status, 403);
+    // Client-safe message: no upload/session ObjectId leaked to the browser.
+    assert.match(foreignRes.body.message || '', /different session/);
+    assert.ok(!(foreignRes.body.message || '').includes(String(foreign)), 'session-mismatch message must not leak the upload id');
 
     // Wrong purpose (video row passed as an image).
     const s3 = await openInnovationSession(u);
