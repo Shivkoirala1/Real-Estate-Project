@@ -364,13 +364,12 @@ export default function HeroSlideForm() {
     }
   };
 
-  if (loading) {
-    return <p className="text-slate-muted max-w-3xl mx-auto">Loading...</p>;
-  }
-
   // Memoized blob previews with cleanup (previously minted inline during
   // render, leaking a URL per render and never revoking). In direct mode the
   // preview comes from the hook entry's File; otherwise the legacy state.
+  // These hooks must run unconditionally above the loading early-return —
+  // otherwise the hook count changes when loading flips and React crashes
+  // with "Rendered more hooks than during the previous render".
   const effMediaFile = directMedia ? mediaEntry?.file ?? null : mediaFile;
   const effThumbFile = directMedia ? thumbEntry?.file ?? null : thumbnailFile;
   const previewUrl = useMemo(() => {
@@ -387,6 +386,10 @@ export default function HeroSlideForm() {
   useEffect(() => () => {
     if (previewThumb) URL.revokeObjectURL(previewThumb);
   }, [previewThumb]);
+
+  if (loading) {
+    return <p className="text-slate-muted max-w-3xl mx-auto">Loading...</p>;
+  }
 
   const resolvedPreviewUrl =
     previewUrl || (form.mediaType === "image" ? existingMedia?.url : null);
@@ -531,8 +534,15 @@ export default function HeroSlideForm() {
                       </button>
                     )}
                   </div>
-                  {mediaEntry.status !== FILE_STATES.SUCCESS && (
+                  {mediaEntry.status === FILE_STATES.SUCCESS ? (
+                    <p className="text-xs text-sage font-semibold truncate max-w-xs">
+                      Uploaded{mediaEntry.file?.name ? ` — ${mediaEntry.file.name}` : ""}
+                    </p>
+                  ) : (
                     <div>
+                      <p className="text-xs font-medium text-navy truncate max-w-xs mb-1">
+                        {mediaEntry.file?.name}
+                      </p>
                       <div className="h-1.5 bg-navy/10 rounded-full overflow-hidden mb-1">
                         <div
                           className="h-full bg-brass transition-all"

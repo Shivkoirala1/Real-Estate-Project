@@ -175,7 +175,8 @@ const ManageHeroSlides = () => {
               </thead>
               <tbody>
                 {slides.map((slide) => {
-                  const thumb = slide.media?.thumbnailUrl || (slide.media?.type === "image" ? slide.media?.url : null);
+                  const isVideo = slide.media?.type === "video";
+                  const thumb = slide.media?.thumbnailUrl || (!isVideo ? slide.media?.url : null);
                   return (
                     <tr key={slide._id} className="border-b border-navy/5 last:border-0">
                       <td className="px-5 py-3">
@@ -184,6 +185,15 @@ const ManageHeroSlides = () => {
                             src={thumb}
                             alt={slide.media?.altText || slide.title}
                             className="w-20 h-12 rounded-sm object-cover border border-navy/10"
+                          />
+                        ) : isVideo && slide.media?.url ? (
+                          <video
+                            src={slide.media.url}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            aria-label={slide.media?.altText || slide.title}
+                            className="w-20 h-12 rounded-sm object-cover border border-navy/10 bg-navy/5"
                           />
                         ) : (
                           <div className="w-20 h-12 rounded-sm bg-navy/5 border border-navy/10 flex items-center justify-center text-slate-muted text-xs">
