@@ -4,6 +4,7 @@ import {
   getProperties,
   getMyListings,
   updatePropertyStatus,
+  toggleFeatured,
   endTenancy,
   requestEndTenancy,
   approveEndTenancy,
@@ -83,6 +84,10 @@ const ManageProperties = ({ showHeader = true }) => {
   // within each status.
   const [orderBy, setOrderBy] = useState("availability");
   const [page, setPage] = useState(1);
+  // Homepage showcases 2 rows x 3 cards (hard cap 6, enforced server-side).
+  const [featuredOnly, setFeaturedOnly] = useState(false);
+  const [featuredCount, setFeaturedCount] = useState(0);
+  const [featuredBusyId, setFeaturedBusyId] = useState(null);
   const [pagination, setPagination] = useState({
     total: 0,
     totalPages: 1,
@@ -111,6 +116,7 @@ const ManageProperties = ({ showHeader = true }) => {
           keyword: search.trim() || undefined,
           status: statusFilter !== "all" ? statusFilter : undefined,
           sort: sortParam,
+          featured: featuredOnly || undefined,
         };
 
         const data = await getProperties(params);
@@ -184,12 +190,23 @@ const ManageProperties = ({ showHeader = true }) => {
     } finally {
       setLoading(false);
     }
+
+    // Featured slot count (X/6) for the header + cap gating. Separate
+    // lightweight query so a failure here never breaks the main list.
+    if (isAdmin || user?.role === "agent") {
+      try {
+        const countData = await getProperties({ featured: true, limit: 1 });
+        setFeaturedCount(countData.pagination?.total ?? countData.total ?? 0);
+      } catch {
+        // keep the last known count
+      }
+    }
   };
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, isAllowed, search, statusFilter, orderBy, page]);
+  }, [isAdmin, isAllowed, search, statusFilter, orderBy, page, featuredOnly]);
 
   const handleSearchChange = (value) => {
     setSearch(value);
@@ -238,6 +255,35 @@ const ManageProperties = ({ showHeader = true }) => {
         err.response?.data?.message || "Failed to update status",
         "error",
       );
+    }
+  };
+
+  // Featured toggle (admin only). No confirm dialog — flipping homepage
+  // showcase is instantly reversible. The server enforces the 6-slot cap
+  // and notifies the owner; cap/eligibility errors surface verbatim.
+  const handleToggleFeatured = async (property) => {
+    setFeaturedBusyId(property._id);
+    try {
+      await toggleFeatured(property._id);
+      showToast(
+        property.isFeatured
+          ? "Removed from featured — owner notified"
+          : "Property featured — owner notified",
+      );
+      // Unfeaturing the last item on a later page while filtered to
+      // featured-only would leave an empty page — step back first.
+      if (property.isFeatured && featuredOnly && properties.length === 1 && page > 1) {
+        setPage(page - 1);
+      } else {
+        load();
+      }
+    } catch (err) {
+      showToast(
+        err.response?.data?.message || "Failed to update featured",
+        "error",
+      );
+    } finally {
+      setFeaturedBusyId(null);
     }
   };
 
@@ -374,6 +420,11 @@ const ManageProperties = ({ showHeader = true }) => {
                 ? "All Properties"
                 : "My Properties"}
             </h1>
+            {isAdmin && (
+              <p className="text-xs text-slate-muted mt-1">
+                ★ Featured {featuredCount}/6 on homepage
+              </p>
+            )}
           </div>
           <Link to={newPath} className="btn-gold text-sm py-2.5 px-4">
             + Add Property
@@ -405,6 +456,28 @@ const ManageProperties = ({ showHeader = true }) => {
         sortVariant="buttons"
         showSubmitButton={false}
       />
+
+      {/* Featured-only filter — local state (not part of the shared bar),
+          since only admins use it and the bar has no featured key. */}
+      {isAdmin && (
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={() => {
+              setFeaturedOnly((v) => !v);
+              setPage(1);
+            }}
+            aria-pressed={featuredOnly}
+            className={`text-xs font-medium px-3 py-1.5 rounded-sm border transition-colors ${
+              featuredOnly
+                ? "border-brass bg-brass/10 text-brass-dark"
+                : "border-navy/15 text-slate-ink hover:border-brass/50 hover:text-brass-dark"
+            }`}
+          >
+            {featuredOnly ? "★ Showing featured only (clear)" : "★ Featured only"}
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-slate-muted">Loading...</p>
@@ -440,6 +513,14 @@ const ManageProperties = ({ showHeader = true }) => {
                           alt={p.title}
                         />
                         <span className="font-medium text-navy">{p.title}</span>
+                        {p.isFeatured && (
+                          <span
+                            className="status-badge whitespace-nowrap bg-brass/10 text-brass-dark"
+                            title="Showcased on the homepage"
+                          >
+                            ★ Featured
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-5 py-3 font-medium text-navy">
@@ -502,7 +583,7 @@ const ManageProperties = ({ showHeader = true }) => {
                       </div>
                     </td>
                     <td className="px-5 py-3">
-                      <div className="flex gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <Link
                           to={`/properties/${p.slug || p._id}`}
                           className="text-white hover:underline bg-green-600 px-3 py-1.5 rounded-sm text-sm"
@@ -546,6 +627,39 @@ const ManageProperties = ({ showHeader = true }) => {
                         >
                           Delete
                         </button>
+                        {isAdmin && (() => {
+                          const capped = !p.isFeatured && featuredCount >= 6;
+                          const ineligible =
+                            p.status === "sold" || p.saleType === "management";
+                          const disabled =
+                            featuredBusyId === p._id || capped || ineligible;
+                          const title = p.isFeatured
+                            ? "Remove from the homepage showcase"
+                            : ineligible
+                              ? "Sold and management-purpose properties cannot be featured"
+                              : capped
+                                ? "Featured limit reached (6/6) — unfeature one first"
+                                : "Showcase on the homepage";
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleFeatured(p)}
+                              disabled={disabled}
+                              title={title}
+                              className={`text-xs font-medium px-3 py-1.5 rounded-sm border transition-colors whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed ${
+                                p.isFeatured
+                                  ? "border-brass bg-brass/10 text-brass-dark hover:bg-brass/20"
+                                  : "border-navy/15 text-slate-ink hover:border-brass/50 hover:text-brass-dark"
+                              }`}
+                            >
+                              {featuredBusyId === p._id
+                                ? "Working..."
+                                : p.isFeatured
+                                  ? "★ Featured"
+                                  : "Feature"}
+                            </button>
+                          );
+                        })()}
                         {p.status === "rented" &&
                           (isAdmin ||
                             String(p.listedBy?._id || p.listedBy) === String(user?._id)) && (

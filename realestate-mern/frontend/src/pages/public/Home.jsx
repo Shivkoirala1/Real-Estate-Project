@@ -27,7 +27,7 @@ const Home = () => {
         // doesn't wipe out the others, and a real failure is still reported
         // instead of silently rendering an empty page.
         const [featuredRes, latestRes, typesRes, heroRes] = await Promise.allSettled([
-          getProperties({ featured: true, limit: 3 }),
+          getProperties({ featured: true, limit: 6 }),
           getProperties({ limit: 6 }),
           getPropertyTypes(),
           getHeroSlides(),
@@ -104,18 +104,19 @@ const Home = () => {
       {/* Property categories */}
       <PropertyCategories types={types} />
 
-      {/* Featured */}
+      {/* Featured — luxury treatment via PropertyCard variant="featured" */}
       {featured.length > 0 && (
         <section className="max-w-7xl mx-auto px-5 md:px-8 mt-20">
-          <div className="flex items-end justify-between mb-8">
+          <div className="flex items-end justify-between mb-2">
             <div>
               <p className="eyebrow mb-2">Handpicked</p>
-              <h2 className="text-3xl">Featured properties</h2>
+              <h2 className="text-3xl">Featured <em className="italic text-brass-dark">collection</em></h2>
             </div>
             <Link to="/properties" className="text-sm font-medium text-brass hover:underline">View all →</Link>
           </div>
+          <div aria-hidden="true" className="h-px bg-gradient-to-r from-brass/60 via-brass/20 to-transparent mb-8" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {featured.map((p) => <PropertyCard key={p._id} property={p} />)}
+            {featured.map((p) => <PropertyCard key={p._id} property={p} variant="featured" />)}
           </div>
         </section>
       )}

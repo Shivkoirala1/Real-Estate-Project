@@ -104,6 +104,17 @@ export const updatePropertyStatus = async (id, status) => {
 };
 
 /**
+ * Toggle a property's homepage featured flag (admin only).
+ * PATCH /api/properties/:id/featured
+ * No body — the server flips isFeatured, enforces the 6-slot cap,
+ * and notifies the owner (unless the owner is the acting admin).
+ */
+export const toggleFeatured = async (id) => {
+  const { data } = await api.patch(`/properties/${id}/featured`);
+  return data; // { success, property }
+};
+
+/**
  * End the current tenancy: rented -> available (the ONLY way back).
  * PATCH /api/properties/:id/end-tenancy (no body)
  * response: { success, property }

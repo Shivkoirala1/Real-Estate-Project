@@ -27,6 +27,8 @@ const notificationSchema = new mongoose.Schema(
         'lead_closed',             // a lead was manually closed (agent close alerts admins, admin close alerts the agent)
         'lead_followup_due',       // a lead follow-up is overdue (admin/agent alert)
         'property_sold',           // a property's status was changed to sold - admin alert
+        'property_featured',       // admin featured an owner's property - owner alert
+        'property_unfeatured',     // admin removed an owner's property from featured - owner alert
         'sale_submitted',          // Spec v2: agent filed a sale - admin alert (verification queue)
         'sale_verified',           // Spec v2: admin verified the agent's sale
         'sale_rejected',           // Spec v2: admin rejected the agent's sale (reason attached)

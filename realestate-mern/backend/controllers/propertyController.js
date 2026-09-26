@@ -305,6 +305,11 @@ const createProperty = asyncHandler(async (req, res) => {
   // client submits here, even if the form field were somehow tampered with.
   body.currency = 'NPR';
 
+  // Featured flag is admin-only (toggled from Manage Properties) - strip any
+  // owner/agent-supplied value so it can't be injected through the create form.
+  if (req.user.role !== 'admin') delete body.isFeatured;
+  else if (body.isFeatured !== undefined) body.isFeatured = body.isFeatured === true || body.isFeatured === 'true';
+
   // Optional commission override - reject out-of-range/non-numeric input
   // here (with a friendly 400) instead of letting the model validator throw
   // a generic 500 further down.
@@ -483,6 +488,11 @@ const updateProperty = asyncHandler(async (req, res) => {
 
   // Currency is fixed to NPR platform-wide, same as on creation.
   body.currency = 'NPR';
+
+  // Featured flag is admin-only (toggled from Manage Properties via
+  // PATCH /:id/featured) - strip any non-admin value slipped through edit.
+  if (req.user.role !== 'admin') delete body.isFeatured;
+  else if (body.isFeatured !== undefined) body.isFeatured = body.isFeatured === true || body.isFeatured === 'true';
 
   // Optional commission override - same normalization as on create, but the
   // field is only applied when the request actually included it, so partial
@@ -902,6 +912,76 @@ const declineEndTenancy = asyncHandler(async (req, res) => {
   res.json({ success: true, property });
 });
 
+// Homepage showcases 2 rows x 3 cards. Hard cap enforced here so the admin
+// UI and any direct API call can never exceed it.
+const FEATURED_LIMIT = 6;
+
+// @desc    Toggle a property's homepage featured flag
+// @route   PATCH /api/properties/:id/featured
+// @access  Private (admin only)
+const toggleFeatured = asyncHandler(async (req, res) => {
+  const property = await Property.findById(req.params.id);
+  if (!property) {
+    return res.status(404).json({ success: false, message: 'Property not found' });
+  }
+
+  // Unfeaturing is always allowed and instantly reversible.
+  if (property.isFeatured) {
+    property.isFeatured = false;
+    await property.save();
+
+    if (property.listedBy && String(property.listedBy) !== String(req.user._id)) {
+      await notify({
+        recipient: property.listedBy,
+        type: 'property_unfeatured',
+        title: 'Your property was removed from featured',
+        message: `"${property.title}" is no longer showcased on the homepage.`,
+        property: property._id,
+        link: `/properties/${property.slug || property._id}`,
+      });
+    }
+
+    return res.json({ success: true, property });
+  }
+
+  // Featuring guards: archived, management-purpose, and sold listings would
+  // never render on the homepage feed, so block them with a clear message
+  // instead of silently accepting an invisible feature.
+  if (property.isArchived) {
+    return res.status(400).json({ success: false, message: 'Archived properties cannot be featured.' });
+  }
+  if (property.saleType === 'management') {
+    return res.status(400).json({ success: false, message: 'Management-purpose properties cannot be featured.' });
+  }
+  if (property.status === 'sold') {
+    return res.status(400).json({ success: false, message: 'Sold properties cannot be featured.' });
+  }
+
+  const featuredCount = await Property.countDocuments({ isFeatured: true, isArchived: false });
+  if (featuredCount >= FEATURED_LIMIT) {
+    return res.status(400).json({
+      success: false,
+      message: `Featured limit reached (${FEATURED_LIMIT}/${FEATURED_LIMIT}) — unfeature one first.`,
+    });
+  }
+
+  property.isFeatured = true;
+  await property.save();
+
+  if (property.listedBy && String(property.listedBy) !== String(req.user._id)) {
+    await notify({
+      recipient: property.listedBy,
+      type: 'property_featured',
+      title: 'Your property is now featured',
+      message: `"${property.title}" is now showcased on the homepage (Featured ${featuredCount + 1}/${FEATURED_LIMIT}).`,
+      property: property._id,
+      link: `/properties/${property.slug || property._id}`,
+    });
+  }
+
+  res.json({ success: true, property });
+});
+
 // @desc    Delete property
 // @route   DELETE /api/properties/:id
 // @access  Private (owner or admin)
@@ -1004,6 +1084,7 @@ module.exports = {
   createProperty,
   updateProperty,
   updatePropertyStatus,
+  toggleFeatured,
   endTenancy,
   requestEndTenancy,
   approveEndTenancy,

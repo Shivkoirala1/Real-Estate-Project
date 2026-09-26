@@ -43,6 +43,57 @@
   }
 }
 
+/* Luxury treatment for homepage featured cards (variant="featured").
+   Subtle gold: 1px brass frame + inner gold top-rule, brass deed-stamp
+   ribbon, serif price bar, one-pass sheen sweep on hover. Latest cards
+   are untouched. */
+.featured-card {
+  position: relative;
+  border: 1px solid rgba(184, 134, 59, 0.6);
+}
+.featured-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #8E6526, #D3A75E 55%, #8E6526);
+  z-index: 20;
+}
+.ribbon--brass {
+  background: linear-gradient(135deg, #8E6526, #B8863B 55%, #D3A75E);
+  box-shadow: 0 2px 8px rgba(16, 41, 59, 0.25);
+}
+.featured-price {
+  background: rgba(8, 23, 34, 0.9);
+  border-top: 1px solid rgba(211, 167, 94, 0.7);
+  letter-spacing: 0.01em;
+}
+.featured-sheen {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(247, 244, 238, 0.28) 50%,
+    transparent 60%
+  );
+  transform: translateX(-120%);
+}
+.group:hover .featured-sheen {
+  transform: translateX(120%);
+  transition: transform 700ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .group:hover .featured-sheen {
+    transform: none;
+    transition: none;
+  }
+}
+
 /* Deed-stamp style corner ribbon used on property cards - the page's signature element */
 .ribbon {
   position: absolute;

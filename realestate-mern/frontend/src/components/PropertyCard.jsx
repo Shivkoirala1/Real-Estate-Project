@@ -3,28 +3,40 @@ import { Link } from 'react-router-dom';
 import { formatPrice, imageUrl } from '../utils/format';
 import StatusBadge from './StatusBadge';
 
-const PropertyCard = ({ property }) => {
+const PropertyCard = ({ property, variant = 'default' }) => {
   const loc = property.location || {};
   const place = loc.locality || loc.municipality || '';
   const district = loc.district || '';
+  const isFeatured = variant === 'featured';
   return (
     <Link
       to={`/properties/${property.slug || property._id}`}
-      className="group block bg-white rounded-sm overflow-hidden shadow-card hover:shadow-lifted transition-shadow duration-200"
+      className={`group block bg-white rounded-sm overflow-hidden shadow-card hover:shadow-lifted transition-shadow duration-200${
+        isFeatured ? ' featured-card' : ''
+      }`}
     >
       <div className="relative h-52 overflow-hidden bg-parchment">
-        <div className="absolute top-0 left-0 z-10 flex flex-col items-start gap-1">
-          <StatusBadge type="status" value={property.status} className="rounded-br-sm" />
-          <StatusBadge type="saleType" value={property.saleType} className="ml-2" />
-        </div>
+        {isFeatured ? (
+          <span aria-hidden="true" className="ribbon ribbon--brass z-10">★ Featured</span>
+        ) : (
+          <div className="absolute top-0 left-0 z-10 flex flex-col items-start gap-1">
+            <StatusBadge type="status" value={property.status} className="rounded-br-sm" />
+            <StatusBadge type="saleType" value={property.saleType} className="ml-2" />
+          </div>
+        )}
         <img
           src={imageUrl(property.media?.coverImage)}
           alt={property.title}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
-        <div className="absolute bottom-0 left-0 right-0 bg-navy/85 text-ivory px-4 py-2 text-sm font-semibold">
+        {isFeatured && <span aria-hidden="true" className="featured-sheen" />}
+        <div className={`absolute bottom-0 left-0 right-0 px-4 py-2 text-sm ${
+          isFeatured
+            ? 'featured-price font-display text-ivory'
+            : 'bg-navy/85 text-ivory font-semibold'
+        }`}>
           {formatPrice(property.price, property.currency)}
-          {property.negotiable && <span className="text-brass text-xs font-normal ml-1.5">(Negotiable)</span>}
+          {property.negotiable && <span className="text-brass-light text-xs font-body font-normal ml-1.5">(Negotiable)</span>}
         </div>
       </div>
       <div className="p-4">

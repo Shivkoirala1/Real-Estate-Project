@@ -11,6 +11,8 @@ const typeMeta = {
   contact_form_received: { label: 'New enquiry', tint: 'bg-brass-light/25 text-brass-dark' },
   contact_form_responded: { label: 'Response', tint: 'bg-sage-light text-sage' },
   property_sold: { label: 'Sold', tint: 'bg-brick-light text-brick' },
+  property_featured: { label: 'Featured', tint: 'bg-brass-light/25 text-brass-dark' },
+  property_unfeatured: { label: 'Unfeatured', tint: 'bg-navy/10 text-navy' },
   visit_requested: { label: 'Visit requested', tint: 'bg-brass-light/25 text-brass-dark' },
   visit_confirmed: { label: 'Visit confirmed', tint: 'bg-sage-light text-sage' },
   visit_rejected: { label: 'Visit rejected', tint: 'bg-brick-light text-brick' },

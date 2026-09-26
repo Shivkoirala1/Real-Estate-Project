@@ -1,10 +1,72 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { FiSearch, FiHome, FiCalendar, FiCheckCircle, FiCreditCard, FiSettings } from 'react-icons/fi';
 import { openContactModal } from '../../utils/contactModal';
 
-const journeySteps = ['Discover', 'Compare', 'Verify', 'Finance', 'Buy', 'Build', 'Manage', 'Grow'];
+// Services actually offered by the platform (see Home, PropertyListing,
+// MyVisits, VerificationQueue, EmiPlans, ManagementDashboard, reviews/blogs).
+const services = [
+  {
+    icon: FiSearch,
+    title: 'Browse & compare',
+    text: 'Search houses, land, apartments, and commercial spaces across Nepal by location, price, and size — all priced in Nepalese Rupees.',
+  },
+  {
+    icon: FiHome,
+    title: 'List your property',
+    text: 'Owners with a verified identity can publish a listing under the platform\u2019s listing terms, with photos, map location, and full specifications.',
+  },
+  {
+    icon: FiCalendar,
+    title: 'Book site visits',
+    text: 'Request a visit on any listing and track it from review to confirmation, completion, or cancellation — with a clear record for both sides.',
+  },
+  {
+    icon: FiCheckCircle,
+    title: 'Verified sales & rentals',
+    text: 'Agents file each sale or rental against a lead, and our team verifies it before the property status moves. Status only ever moves forward.',
+  },
+  {
+    icon: FiCreditCard,
+    title: 'EMI on verified sales',
+    text: 'For eligible verified purchases, structured installment plans with payment slips and admin confirmation keep every payment documented.',
+  },
+  {
+    icon: FiSettings,
+    title: 'Management & support',
+    text: 'Request property management services, leave and read property reviews, follow guides and community ideas, or reach the team any time.',
+  },
+];
 
-const promiseValues = ['Trust', 'Transparency', 'Responsibility', 'Innovation', 'Customer Success'];
+// Trust mechanics that exist in the product (identity queue, forward-only
+// status, verification queue, listing terms + moderation). Worded plainly;
+// nothing here claims pre-approved listings or statistics we don't have.
+const trustPoints = [
+  {
+    title: 'Identities are checked before posting',
+    text: 'Anyone who lists a property completes identity verification first — selfie and citizenship review by our team — so anonymous postings can\u2019t slip through.',
+  },
+  {
+    title: 'Every listing agrees to written terms',
+    text: 'Publishing requires accepting the listing Terms & Policies, which our team maintains and can enforce through moderation.',
+  },
+  {
+    title: 'Status history can\u2019t be rewritten',
+    text: 'A property moves available \u2192 reserved \u2192 sold, never backwards. Sold listings stop taking inquiries and visits automatically.',
+  },
+  {
+    title: 'Money moments get a second pair of eyes',
+    text: 'Sales, rentals, commissions, and EMI payments pass through verification and confirmation steps — not just a status dropdown.',
+  },
+];
+
+const promiseValues = [
+  { value: 'Trust', text: 'Identity checks, written terms, and moderation on every listing.' },
+  { value: 'Transparency', text: 'Full specifications, clear status, and documented payments.' },
+  { value: 'Responsibility', text: 'Verification before a sale or rental counts.' },
+  { value: 'Innovation', text: 'A community ideas space that shapes what we build next.' },
+  { value: 'Customer Success', text: 'Guidance before the decision — and support after it.' },
+];
 
 // `featured` drives the hierarchy: the founder renders as the prominent
 // card, supporters as compact cards. Content unchanged — layout only.
@@ -42,36 +104,68 @@ const About = () => {
     <div>
       {/* Hero / intro */}
       <section className="max-w-5xl mx-auto px-5 md:px-8 pt-16 pb-4">
-        <p className="eyebrow mb-2">Our story</p>
+        <p className="eyebrow mb-2">About us</p>
         <h1 className="text-4xl md:text-5xl mb-4">About Youth Real Estate</h1>
         <p className="text-brass font-display italic text-lg md:text-xl mb-8">
           Building Trust. Creating Opportunities. Shaping Better Property Decisions.
         </p>
         <p className="text-slate-ink leading-relaxed mb-6 text-lg">
-          Youth Real Estate is a modern real estate company built with a simple belief: property ownership
-          should be safe, transparent, informed, and achievable for everyone.
+          Youth Real Estate is Nepal&rsquo;s ghar-jagga marketplace for buying, selling, and renting property —
+          with agents, financing support, and property management in one place.
         </p>
         <p className="text-slate-ink leading-relaxed mb-6">
-          We are more than a property-selling company. We are building a complete real estate ecosystem that
-          connects people with the right property, the right information, the right financial planning, and
-          the right services — under one trusted platform. From buying and selling property to construction,
-          property management, home services, investment solutions, and digital property services, our goal is
-          to simplify every step of the property journey.
+          It serves three groups: <strong className="font-semibold">buyers</strong> comparing homes, land, and
+          commercial spaces; <strong className="font-semibold">owners</strong> listing and managing their
+          property; and <strong className="font-semibold">agents</strong> guiding visits, filings, and closings
+          under the team&rsquo;s verification. Whether it&rsquo;s your first ghar or your next investment, the
+          goal is the same — a decision made with clear information, not pressure.
         </p>
       </section>
 
-      {/* Journey strip */}
+      {/* What you can do here */}
       <section className="max-w-5xl mx-auto px-5 md:px-8 mb-16">
-        <div className="bg-navy rounded-sm px-6 py-6 md:px-10 md:py-8 flex flex-wrap items-center justify-center gap-x-2 gap-y-3">
-          {journeySteps.map((step, i) => (
-            <React.Fragment key={step}>
-              <span className="text-ivory font-display text-sm md:text-base tracking-wide">{step}</span>
-              {i < journeySteps.length - 1 && <span className="text-brass-light" aria-hidden="true">→</span>}
-            </React.Fragment>
+        <p className="eyebrow mb-2">What the platform does</p>
+        <h2 className="text-3xl mb-3">One place for the whole property journey</h2>
+        <p className="text-slate-muted leading-relaxed mb-8 max-w-3xl">
+          From first search to final paperwork — and the everyday management that follows.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {services.map(({ icon: Icon, title, text }) => (
+            <div key={title} className="bg-white border border-navy/10 rounded-sm p-6 shadow-card hover:border-brass/50 hover:shadow-lifted transition-all">
+              <div className="w-10 h-10 rounded-full bg-sage-light flex items-center justify-center text-sage mb-4">
+                <Icon size={18} aria-hidden="true" />
+              </div>
+              <p className="font-semibold text-navy mb-1.5">{title}</p>
+              <p className="text-sm text-slate-muted leading-relaxed">{text}</p>
+            </div>
           ))}
         </div>
-        <p className="text-center text-sm text-slate-muted italic mt-4">
-          Because for us, the relationship doesn't end when a property is purchased — it begins there.
+      </section>
+
+      {/* How trust works */}
+      <section className="max-w-5xl mx-auto px-5 md:px-8 mb-16">
+        <p className="eyebrow mb-2">How trust works here</p>
+        <h2 className="text-3xl mb-3">Protections you can actually check</h2>
+        <p className="text-slate-muted leading-relaxed mb-8 max-w-3xl">
+          No fine print promises — these are mechanics built into the product, visible on every listing and request.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {trustPoints.map((point) => (
+            <div key={point.title} className="border border-navy/10 rounded-sm p-6 md:p-7 bg-white shadow-card">
+              <div className="flex items-start gap-3">
+                <span aria-hidden="true" className="mt-0.5 w-6 h-6 rounded-full bg-sage-light text-sage flex items-center justify-center text-sm font-bold flex-shrink-0">✓</span>
+                <div>
+                  <p className="font-semibold text-navy mb-1.5">{point.title}</p>
+                  <p className="text-sm text-slate-muted leading-relaxed">{point.text}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-slate-muted leading-relaxed mt-6 max-w-3xl">
+          Good to know: listings publish immediately once the listing terms are accepted, and stay subject to
+          moderation. EMI plans are created only for verified purchases, and tenancies end only through an
+          explicit, recorded action — never silently.
         </p>
       </section>
 
@@ -80,13 +174,11 @@ const About = () => {
         <p className="eyebrow mb-2">Our approach</p>
         <h2 className="text-3xl mb-5">A decision, not just a transaction</h2>
         <p className="text-slate-ink leading-relaxed mb-4 max-w-3xl">
-          We believe that a property decision should never be based only on price or promises. We focus on
-          understanding our customers' needs, budgets, goals, and future plans before recommending a property —
-          emphasizing transparent information, responsible guidance, proper documentation, and a customer-first
-          experience.
+          A property decision should never rest on price or promises alone. We start from your needs, budget,
+          and plans — then match them against documented listings, scheduled visits, and verified records.
         </p>
         <p className="text-slate-ink leading-relaxed max-w-3xl font-medium">
-          Our role isn't simply to sell a property. Our role is to help you make a better property decision.
+          Our role isn&rsquo;t simply to sell a property. Our role is to help you make a better property decision.
         </p>
       </section>
 
@@ -95,20 +187,18 @@ const About = () => {
         <div className="border border-navy/10 rounded-sm p-8 bg-sage-light/40">
           <p className="font-display text-xl text-navy mb-3">Our Vision</p>
           <p className="text-sm text-slate-ink leading-relaxed">
-            To become Nepal's most trusted and technology-driven real estate ecosystem, making property
-            ownership simpler, more transparent, and more accessible for individuals, families, investors, and
-            businesses.
+            A Nepal where buying, selling, or renting property is straightforward and fair — where every listing
+            carries clear information, every payment leaves a record, and every family can decide with confidence.
           </p>
         </div>
         <div className="border border-navy/10 rounded-sm p-8 bg-brick-light/40">
           <p className="font-display text-xl text-navy mb-3">Our Mission</p>
           <ul className="text-sm text-slate-ink leading-relaxed space-y-1.5 list-disc list-inside">
-            <li>Promote transparent and responsible real estate practices.</li>
-            <li>Help customers make informed property decisions.</li>
-            <li>Connect buyers, sellers, builders, investors, and service providers through one ecosystem.</li>
-            <li>Make property ownership more achievable through structured, practical solutions.</li>
-            <li>Use technology and data to create a simpler, better real estate experience.</li>
-            <li>Build long-term relationships — not one-time transactions.</li>
+            <li>Keep listing standards clear and enforce them consistently.</li>
+            <li>Verify sales and rentals before they count.</li>
+            <li>Document visits, payments, and tenancies end to end.</li>
+            <li>Support owners with management services after the deal.</li>
+            <li>Share guides and community ideas that help buyers learn.</li>
           </ul>
         </div>
       </section>
@@ -116,11 +206,15 @@ const About = () => {
       {/* Our Promise */}
       <section className="max-w-5xl mx-auto px-5 md:px-8 mb-16">
         <p className="eyebrow mb-2">Our promise</p>
-        <h2 className="text-3xl mb-8">We believe in doing real estate differently</h2>
+        <h2 className="text-3xl mb-3">What we hold ourselves to</h2>
+        <p className="text-slate-muted leading-relaxed mb-8 max-w-3xl">
+          Five values, each tied to something concrete on this platform.
+        </p>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-          {promiseValues.map((value) => (
+          {promiseValues.map(({ value, text }) => (
             <div key={value} className="border border-navy/10 rounded-sm p-5 text-center hover:border-brass hover:shadow-card transition-all">
-              <p className="font-display text-base text-navy">{value}</p>
+              <p className="font-display text-base text-navy mb-1.5">{value}</p>
+              <p className="text-xs text-slate-muted leading-relaxed">{text}</p>
             </div>
           ))}
         </div>
@@ -132,8 +226,8 @@ const About = () => {
           <p className="eyebrow mb-2">The people behind it</p>
           <h2 className="text-3xl mb-4">Leadership</h2>
           <p className="text-slate-ink leading-relaxed mb-10 max-w-2xl">
-            Youth Real Estate is led by a small team combining entrepreneurship, investment, development, and
-            innovation to create a stronger, more customer-focused real estate ecosystem.
+            A small team combining entrepreneurship, investment, and development — accountable for the
+            standards described above.
           </p>
 
           <div className="bg-navy rounded-sm shadow-card p-8 md:p-10 flex flex-col md:flex-row gap-8 mb-6">
@@ -185,8 +279,7 @@ const About = () => {
       <section className="max-w-5xl mx-auto px-5 md:px-8 py-16 text-center">
         <p className="font-display text-2xl text-navy mb-3">Ready to make your next move?</p>
         <p className="text-slate-muted mb-6 max-w-xl mx-auto">
-          Explore verified listings or get in touch with our team — we're here to help you make a better
-          property decision.
+          Browse current listings across Nepal, or talk to the team about buying, selling, or managing property.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link to="/properties" className="btn-gold w-full sm:w-auto">Browse properties</Link>

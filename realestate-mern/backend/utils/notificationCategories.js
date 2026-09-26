@@ -27,6 +27,8 @@ const CATEGORY_TYPES = {
     'lead_closed',
     'lead_followup_due',
     'property_sold',
+    'property_featured',
+    'property_unfeatured',
     'sale_submitted',
     'sale_verified',
     'sale_rejected',
