@@ -146,6 +146,10 @@ match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email']    },
     referralCode: { type: String, unique: true, sparse: true },
     referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 
+    // Account Registration Terms & Conditions acceptance (required on
+    // every registration, all entry points). Null = pre-policy account.
+    termsAcceptedAt: { type: Date, default: null },
+
     // Daily login streak tracking
     lastLoginDate: { type: Date, default: null }, // start of day (UTC) of the most recent login
     loginStreak: { type: Number, default: 0 },

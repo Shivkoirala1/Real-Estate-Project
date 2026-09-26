@@ -43,10 +43,16 @@ const sendVerificationEmail = async (user) => {
 // @route   POST /api/auth/register
 // @access  Public
 const register = asyncHandler(async (req, res) => {
-  const { name, email, password, phone, referralCode } = req.body;
+  const { name, email, password, phone, referralCode, termsAccepted } = req.body;
 
   if (!name || !email || !password) {
     return res.status(400).json({ success: false, message: 'Name, email and password are required' });
+  }
+
+  // Account Registration Terms & Conditions: multipart sends booleans as
+  // strings, so accept true/'true'. No account without recorded acceptance.
+  if (termsAccepted !== true && termsAccepted !== 'true') {
+    return res.status(400).json({ success: false, message: 'You must agree to the Account Registration Terms & Conditions to register.' });
   }
 
   const files = req.files || {};
@@ -87,6 +93,7 @@ const register = asyncHandler(async (req, res) => {
     verificationStatus: 'pending',
     isEmailVerified: false,
     referredBy,
+    termsAcceptedAt: new Date(),
   });
 
   const emailResult = await sendVerificationEmail(user);

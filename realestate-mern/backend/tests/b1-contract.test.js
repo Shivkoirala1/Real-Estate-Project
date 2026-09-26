@@ -122,6 +122,31 @@ describe('B1.6b property video link admin gate', () => {
   });
 });
 
+describe('B1.6c registration terms acceptance gate', () => {
+  it('register rejects without acceptance and timestamps it', () => {
+    const src = read('controllers/authController.js');
+    assert.match(src, /termsAccepted !== true && termsAccepted !== 'true'/);
+    assert.match(src, /You must agree to the Account Registration Terms & Conditions/);
+    assert.match(src, /termsAcceptedAt: new Date\(\)/);
+  });
+  it('User model carries termsAcceptedAt', () => {
+    const model = read('models/User.js');
+    assert.match(model, /termsAcceptedAt: \{ type: Date, default: null \}/);
+  });
+  it('register form shows the static terms with a required tick', () => {
+    const page = read('../frontend/src/pages/public/Register.jsx');
+    assert.match(page, /REGISTRATION_TERMS_CONFIRMATION/);
+    assert.match(page, /if \(!termsAccepted\)/);
+    assert.match(page, /fd\.append\('termsAccepted', 'true'\)/);
+  });
+  it('static terms text matches the supplied clauses', () => {
+    const doc = read('../frontend/src/data/registrationTerms.js');
+    assert.match(doc, /ACCOUNT REGISTRATION TERMS & CONDITIONS/);
+    assert.match(doc, /Account Suspension वा Termination/);
+    assert.match(doc, /मैले Youth Real Estate का Account Registration Terms/);
+  });
+});
+
 describe('B1.7 management-services catalogue is public, mutations admin-only', () => {
   const routes = read('routes/managementServiceRoutes.js');
   const ctrl = read('controllers/managementServiceController.js');

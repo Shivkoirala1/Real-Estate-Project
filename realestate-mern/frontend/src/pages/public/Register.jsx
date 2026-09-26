@@ -3,6 +3,12 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import CameraCapture from '../../components/CameraCapture';
+import {
+  REGISTRATION_TERMS_TITLE,
+  REGISTRATION_TERMS_INTRO,
+  REGISTRATION_TERMS_CLAUSES,
+  REGISTRATION_TERMS_CONFIRMATION,
+} from '../../data/registrationTerms';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\d{10}$/;
@@ -29,6 +35,7 @@ const Register = () => {
   const [citizenshipBack, setCitizenshipBack] = useState(null);
   const [citizenshipBackPreview, setCitizenshipBackPreview] = useState(null);
   const [stepTwoErrors, setStepTwoErrors] = useState({});
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   // Track blob previews so they can be revoked on replace/unmount
   // (previously every pick leaked an object URL).
@@ -131,6 +138,10 @@ const Register = () => {
     e.preventDefault();
     setError('');
     if (!validateStepTwo()) return;
+    if (!termsAccepted) {
+      setError('Please read and accept the Account Registration Terms & Conditions to register.');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -140,6 +151,7 @@ const Register = () => {
       fd.append('password', form.password);
       if (form.phone) fd.append('phone', form.phone);
       if (form.referralCode) fd.append('referralCode', form.referralCode.trim());
+      fd.append('termsAccepted', 'true');
       fd.append('selfiePhoto', selfieFile);
       fd.append('citizenshipPhotoFront', citizenshipFront);
       fd.append('citizenshipPhotoBack', citizenshipBack);
@@ -295,6 +307,28 @@ const Register = () => {
               </>
             )}
             {stepTwoErrors.citizenshipBack && <p className="text-xs text-brick mt-1">{stepTwoErrors.citizenshipBack}</p>}
+          </div>
+
+          <div>
+            <p className="label-field">{REGISTRATION_TERMS_TITLE}</p>
+            <div className="border border-navy/15 rounded-sm p-4 max-h-56 overflow-y-auto text-sm text-slate-ink space-y-3 bg-parchment/40">
+              <p>{REGISTRATION_TERMS_INTRO}</p>
+              {REGISTRATION_TERMS_CLAUSES.map(({ n, title, body }) => (
+                <p key={n}>
+                  <span className="font-medium text-navy">{n}. {title} — </span>
+                  {body}
+                </p>
+              ))}
+            </div>
+            <label className="flex items-start gap-2.5 text-sm cursor-pointer mt-3">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+                className="accent-brass mt-0.5"
+              />
+              <span className="text-slate-ink">{REGISTRATION_TERMS_CONFIRMATION}</span>
+            </label>
           </div>
 
           <div className="flex gap-3">
