@@ -51,6 +51,9 @@ const LeadDetail = () => {
   // backend rejects them; the banner + disabled controls below mirror that.
   const stageFrozen = isLeadFrozenForManualMove(lead);
   const frozenBanner = frozenLeadBanner(lead);
+  // Notes follow the backend's narrow admin exception: admins may still
+  // annotate a frozen lead, everyone else sees notes read-only.
+  const notesLocked = stageFrozen && user?.role !== 'admin';
   // The lead's linked property (populated object) drives the sale/rental
   // modal switch - a bare id string carries no saleType.
   const property = lead?.property && typeof lead.property === 'object' ? lead.property : null;
@@ -158,7 +161,7 @@ const LeadDetail = () => {
   const handleDelete = async () => {
     const ok = await confirm({
       title: 'Delete this lead?',
-      message: `"${lead.name}" will be permanently removed from the pipeline. This cannot be undone.`,
+      message: `"${lead.name}" and its pipeline timeline will be permanently removed. Any linked deals, commissions, and EMI plans will remain unchanged.`,
       confirmLabel: 'Delete lead',
       cancelLabel: 'Keep it',
     });
@@ -219,7 +222,7 @@ const LeadDetail = () => {
               {isRentalProperty ? 'Submit Rental' : 'Submit Sale'}
             </button>
           )}
-          {user?.role === 'admin' && (
+          {user?.role === 'admin' && !stageFrozen && (
             <button
               onClick={handleDelete}
               className="text-sm text-white bg-red-500 hover:bg-red-600 px-3 py-1 hover:underline  "
@@ -314,6 +317,9 @@ const LeadDetail = () => {
 
           <div className="bg-white border border-navy/10 rounded-sm p-5 space-y-4">
             <h3 className="font-semibold text-navy">Pipeline</h3>
+            {stageFrozen && (
+              <p className="text-xs text-slate-muted -mt-2">Frozen — read-only. These fields stay as recorded.</p>
+            )}
 
             <div>
               <label className="label-field">Stage</label>
@@ -339,14 +345,15 @@ const LeadDetail = () => {
               <label className="label-field">Assigned agent</label>
               <select
                 value={lead.assignedAgent?._id || ''}
-                disabled={saving}
+                disabled={saving || stageFrozen}
+                title={stageFrozen ? 'Frozen — read-only' : undefined}
                 onChange={(e) =>
                   runUpdate(
                     () => assignLeadToAgent(lead._id, e.target.value),
                     'Agent assigned'
                   )
                 }
-                className="input-field text-sm"
+                className="input-field text-sm disabled:opacity-60"
               >
                 <option value="">Unassigned</option>
                 {agents.map((a) => (
@@ -361,11 +368,12 @@ const LeadDetail = () => {
               <label className="label-field">Priority</label>
               <select
                 value={lead.priority}
-                disabled={saving}
+                disabled={saving || stageFrozen}
+                title={stageFrozen ? 'Frozen — read-only' : undefined}
                 onChange={(e) =>
                   runUpdate(() => updateLeadPriority(lead._id, e.target.value), 'Priority updated')
                 }
-                className="input-field text-sm"
+                className="input-field text-sm disabled:opacity-60"
               >
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>
@@ -379,11 +387,12 @@ const LeadDetail = () => {
               <label className="label-field">Category</label>
               <select
                 value={lead.category}
-                disabled={saving}
+                disabled={saving || stageFrozen}
+                title={stageFrozen ? 'Frozen — read-only' : undefined}
                 onChange={(e) =>
                   runUpdate(() => updateLead(lead._id, { category: e.target.value }), 'Category updated')
                 }
-                className="input-field text-sm"
+                className="input-field text-sm disabled:opacity-60"
               >
                 {CATEGORIES.map((c) => (
                   <option key={c} value={c}>
@@ -398,14 +407,17 @@ const LeadDetail = () => {
               <div className="flex md:flex-wrap gap-2">
                 <input
                   type="datetime-local"
-                  className="input-field text-sm"
+                  className="input-field text-sm disabled:opacity-60"
                   value={followUpLocal}
+                  disabled={saving || stageFrozen}
+                  title={stageFrozen ? 'Frozen — read-only' : undefined}
                   onChange={(e) => setFollowUpLocal(e.target.value)}
                 />
                 <button
                   onClick={saveFollowUp}
-                  disabled={saving}
-                  className="btn-secondary text-xs px-3 whitespace-nowrap"
+                  disabled={saving || stageFrozen}
+                  title={stageFrozen ? 'Frozen — read-only' : undefined}
+                  className="btn-secondary text-xs px-3 whitespace-nowrap disabled:opacity-60"
                 >
                   Save
                 </button>
@@ -413,8 +425,9 @@ const LeadDetail = () => {
               {lead.nextFollowUp && (
                 <button
                   onClick={() => runUpdate(() => markFollowUpDone(lead._id), 'Follow-up marked done')}
-                  disabled={saving}
-                  className="mt-2 text-xs text-sage hover:underline"
+                  disabled={saving || stageFrozen}
+                  title={stageFrozen ? 'Frozen — read-only' : undefined}
+                  className="mt-2 text-xs text-sage hover:underline disabled:opacity-60"
                 >
                   ✓ Mark follow-up done
                 </button>
@@ -427,16 +440,21 @@ const LeadDetail = () => {
 
           <div className="bg-white border border-navy/10 rounded-sm p-5">
             <h3 className="font-semibold text-navy mb-3">Internal notes</h3>
+            {notesLocked && (
+              <p className="text-xs text-slate-muted mb-2">Frozen — read-only. Only admins may annotate this lead.</p>
+            )}
             <textarea
               rows={5}
-              className="input-field text-sm"
+              className="input-field text-sm disabled:opacity-60"
               value={notes}
+              disabled={notesLocked}
+              title={notesLocked ? 'Frozen — read-only' : undefined}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Budget, requirements, call summaries..."
             />
             <button
               onClick={saveNotes}
-              disabled={saving || notes === (lead.notes || '')}
+              disabled={saving || notesLocked || notes === (lead.notes || '')}
               className="btn-gold text-sm mt-3 w-full disabled:opacity-50"
             >
               Save notes

@@ -210,9 +210,10 @@ const LeadList = ({ filters = {}, reloadKey = 0, onConverted }) => {
                     <td className="px-4 py-3">
                       <select
                         value={lead.assignedAgent?._id || ''}
-                        disabled={updatingId === lead._id}
+                        disabled={updatingId === lead._id || stageFrozen}
+                        title={stageFrozen ? 'Frozen — read-only' : undefined}
                         onChange={(e) => changeAgent(lead, e.target.value)}
-                        className="input-field text-xs py-1.5 w-36"
+                        className="input-field text-xs py-1.5 w-36 disabled:opacity-60"
                       >
                         <option value="">Unassigned</option>
                         {agents.map((a) => (

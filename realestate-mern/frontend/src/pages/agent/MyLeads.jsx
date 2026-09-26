@@ -203,7 +203,9 @@ const MyLeads = () => {
                     {lead.nextFollowUp && (
                       <button
                         onClick={() => completeFollowUp(lead)}
-                        className="btn-secondary text-xs px-3 py-1.5"
+                        disabled={stageFrozen}
+                        title={stageFrozen ? 'Frozen — read-only' : undefined}
+                        className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-60"
                       >
                         ✓ Done
                       </button>
