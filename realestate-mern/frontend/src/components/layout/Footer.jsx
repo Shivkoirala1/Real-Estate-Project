@@ -1,18 +1,17 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { FiHome, FiGrid, FiRepeat, FiInfo, FiMapPin, FiPhone, FiMail } from 'react-icons/fi';
-import { FaFacebookF, FaTiktok } from 'react-icons/fa';
+import { FaFacebookF, FaTiktok, FaInstagram, FaYoutube, FaWhatsapp } from 'react-icons/fa';
 import MapView from '../MapView';
+import { useSiteSettings } from '../../hooks/useSiteSettings';
 
-// Office location. Coordinates are the center of Plus Code 7MR9M77H+F5M
-// (M77H+F5M, Itahari) — Itahari Ward No. 6, Koshi Province 56705.
-const OFFICE = {
-  address: 'Itahari Ward No. 6, Itahari, Koshi Province',
-  phone: '+977 982‑6031844',
-  email: 'youthrealestate6@gmail.com',
-  lat: 26.6637,
-  lng: 87.2779,
-};
+const SOCIAL_META = [
+  { key: 'facebook', label: 'Facebook', icon: FaFacebookF },
+  { key: 'tiktok', label: 'Tiktok', icon: FaTiktok },
+  { key: 'instagram', label: 'Instagram', icon: FaInstagram },
+  { key: 'youtube', label: 'YouTube', icon: FaYoutube },
+  { key: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp },
+];
 
 const navigateLinks = [
   { to: '/', label: 'Home', icon: FiHome },
@@ -21,18 +20,20 @@ const navigateLinks = [
   { to: '/about', label: 'About Us', icon: FiInfo },
 ];
 
-const contactRows = [
-  { icon: FiMapPin, text: OFFICE.address },
-  { icon: FiPhone, text: OFFICE.phone },
-  { icon: FiMail, text: OFFICE.email },
-];
-
-const socialLinks = [
-  { href: 'https://www.facebook.com/share/1Er4dykkTo/', label: 'Facebook', icon: FaFacebookF },
-  { href: 'https://www.tiktok.com/@youth_real_estate_5?_r=1&_t=ZS-99gxZruylGi', label: 'Tiktok', icon: FaTiktok },
-];
-
 const Footer = () => {
+  // Office contact/location + socials are admin-editable (Site Settings);
+  // the hook falls back to the previous hardcoded values pre-fetch.
+  const { settings } = useSiteSettings();
+  const OFFICE = settings.office;
+  const contactRows = [
+    { icon: FiMapPin, text: OFFICE.address },
+    { icon: FiPhone, text: OFFICE.phone },
+    { icon: FiMail, text: OFFICE.email },
+  ].filter(({ text }) => text);
+  const socialLinks = SOCIAL_META.filter(({ key }) => settings.socials?.[key]).map(
+    ({ key, ...rest }) => ({ ...rest, href: settings.socials[key] }),
+  );
+
   return (
     <footer className="bg-navy-dark text-ivory/80 mt-24">
       <div className="max-w-7xl mx-auto px-5 md:px-8 py-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">

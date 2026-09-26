@@ -129,6 +129,10 @@ const adminNavGroups = [
         label: 'Management Services',
         to: '/dashboard/admin/management-services',
       },
+      {
+        label: 'Site Settings',
+        to: '/dashboard/admin/site-settings',
+      },
     ],
   },
 

@@ -1,39 +1,24 @@
 import React from 'react';
-import { FaFacebookF, FaTiktok, FaWhatsapp } from 'react-icons/fa';
+import { FaFacebookF, FaTiktok, FaInstagram, FaYoutube, FaWhatsapp } from 'react-icons/fa';
+import { useSiteSettings } from '../hooks/useSiteSettings';
 
-// TODO: replace with the business WhatsApp link, e.g.
-// 'https://wa.me/97798XXXXXXXX'. The icon stays hidden until this is set
-// so it can never point visitors at a wrong number.
-const WHATSAPP_URL = '';
-
-const socials = [
-  {
-    label: 'Facebook',
-    href: 'https://www.facebook.com/share/1Er4dykkTo/',
-    Icon: FaFacebookF,
-    hoverClass: 'hover:bg-[#1877F2]',
-  },
-  {
-    label: 'TikTok',
-    href: 'https://www.tiktok.com/@youth_real_estate_5?_r=1&_t=ZS-99gxZruylGi',
-    Icon: FaTiktok,
-    hoverClass: 'hover:bg-black',
-  },
-  ...(WHATSAPP_URL
-    ? [
-        {
-          label: 'WhatsApp',
-          href: WHATSAPP_URL,
-          Icon: FaWhatsapp,
-          hoverClass: 'hover:bg-[#25D366]',
-        },
-      ]
-    : []),
+const SOCIAL_DEFS = [
+  { key: 'facebook', label: 'Facebook', Icon: FaFacebookF, hoverClass: 'hover:bg-[#1877F2]' },
+  { key: 'tiktok', label: 'TikTok', Icon: FaTiktok, hoverClass: 'hover:bg-black' },
+  { key: 'instagram', label: 'Instagram', Icon: FaInstagram, hoverClass: 'hover:bg-[#E1306C]' },
+  { key: 'youtube', label: 'YouTube', Icon: FaYoutube, hoverClass: 'hover:bg-[#FF0000]' },
+  { key: 'whatsapp', label: 'WhatsApp', Icon: FaWhatsapp, hoverClass: 'hover:bg-[#25D366]' },
 ];
 
 // Slim fixed social rail, vertically centered on the left viewport edge.
-// Icon-only with screen-reader labels; brand color fills on hover.
+// Links are admin-editable (Site Settings); empties stay hidden so the rail
+// can never point visitors at a wrong address.
 const FloatingSocials = () => {
+  const { settings } = useSiteSettings();
+  const socials = SOCIAL_DEFS.filter(({ key }) => settings.socials?.[key]).map(
+    ({ key, ...rest }) => ({ ...rest, href: settings.socials[key] }),
+  );
+
   if (socials.length === 0) return null;
   return (
     <nav

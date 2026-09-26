@@ -55,6 +55,7 @@ import AddEditProperty from "./pages/admin/AddEditProperty";
 import BlogForm from "./pages/admin/BlogForm";
 import ManageUsers from "./pages/admin/ManageUsers";
 import ManageCategories from "./pages/admin/ManageCategories";
+import SiteSettings from "./pages/admin/SiteSettings";
 import BlogManagement from "./pages/admin/ManageBlogs";
 import ManageHeroSlides from "./pages/admin/ManageHeroSlides";
 import HeroSlideForm from "./pages/admin/HeroSlideForm";
@@ -556,6 +557,16 @@ function App() {
               <ProtectedRoute roles={["admin"]}>
                 <DashboardLayout>
                   <ManageCategories />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/admin/site-settings"
+            element={
+              <ProtectedRoute roles={["admin"]}>
+                <DashboardLayout>
+                  <SiteSettings />
                 </DashboardLayout>
               </ProtectedRoute>
             }

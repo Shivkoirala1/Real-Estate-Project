@@ -40,6 +40,7 @@ const analyticsRoutes = require('./routes/analyticsRoutes');
 const rewardRoutes = require('./routes/rewardRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const archiveRoutes = require('./routes/archiveRoutes');
+const siteSettingRoutes = require('./routes/siteSettingRoutes');
 
 connectDB();
 
@@ -166,6 +167,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/rewards', rewardRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin/archives', archiveRoutes);
+app.use('/api/site-settings', siteSettingRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
