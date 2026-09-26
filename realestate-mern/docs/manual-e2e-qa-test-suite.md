@@ -87,7 +87,7 @@ Derived from `backend/middleware/auth.js`, `routes/*.js`, `utils/permissions.js`
 | Verify/reject sale/rental | — | — | — | — | ✓ only |
 | EMI plan create/update, review slip | — | — | — | read-only (amounts stripped) | ✓ |
 | EMI slip verification request | — | — (buyer user only) | ✓ (linked buyer only) | — | — |
-| Mark commission paid | — | — | — | — | ✓ only |
+| Pay commission phases (phase 1 → phase 2, in order) | — | — | — | — | ✓ only |
 | Manage users (status, verify KYC, reset pwd, delete) | — | — | — | — | ✓ only |
 | Manage agents CRUD | — | — | — | list only | ✓ |
 | Manage categories / blogs / services | — | — | — | — | ✓ only |
@@ -502,12 +502,13 @@ Notes: `isActive=false` blocks login and socket for any role. `isEmailVerified=f
 ### PROP-008
 **Test Name:** Property detail shows gallery, map, similar, views
 **Priority:** P1
-**Preconditions:** Property with images exists; logged out + logged in checks.
+**Preconditions:** Property with images exists; guest + buyer + agent (with and without an open lead on the property) + admin sessions.
 **Steps:**
 1. Open `/properties/:id` as guest.
 2. Click gallery prev/next; check map; scroll to similar properties.
-3. Login and reopen (contact info should now appear).
-**Expected Result:** Gallery navigates; map renders; up to 4 similar shown; contact email/phone hidden for guest, visible when logged in.
+3. Reopen as buyer, as an agent with no lead on the property, and as an agent whose only lead is `closed`/`lost`: poster identity/contact must stay hidden (generic agency label, "use the form below").
+4. Reopen as admin, as the owner, and as the agent holding an open (not closed/lost) lead: poster name/avatar/phone/email visible.
+**Expected Result:** Gallery navigates; map renders; up to 4 similar shown; poster identity/contact visible only to admin, owner, or open-lead agent — hidden viewers see a neutral "Contact details are private" notice with no name, avatar initial, phone, or email.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
@@ -701,12 +702,14 @@ Notes: `isActive=false` blocks login and socket for any role. `isEmailVerified=f
 ### LEAD-002
 **Test Name:** Lead list filters + kanban drag + search
 **Priority:** P1
-**Preconditions:** Logged in agent/admin with multiple leads.
+**Preconditions:** Logged in agent/admin with multiple leads, including at least one `closed` and one `lost` lead.
 **Steps:**
-1. Filter by stage/priority/agent/follow-up; search by name.
-2. As admin drag (or stage-change) a lead to next stage.
-3. Refresh and verify stage.
-**Expected Result:** Filters narrow correctly; stage change persists; empty filter shows `No leads match`.
+1. With the default "Open leads" filter: confirm no `closed`/`lost` rows appear (admin list + agent My Leads).
+2. Filter by stage/priority/agent/follow-up; search by name. Select the `closed` and `lost` stages explicitly, then "All incl. closed & lost".
+3. As admin drag (or stage-change) a lead to next stage.
+4. On the Pipeline Board: confirm there is no Closed or Lost column (open stages only).
+5. Refresh and verify stage.
+**Expected Result:** Default hides `closed`/`lost`; explicit stage filters and "All incl. closed & lost" reveal them; other filters narrow correctly; kanban shows open-pipeline columns only; stage change persists; empty filter shows `No leads match`.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
@@ -1170,10 +1173,11 @@ Prerequisite for all RT tests: login establishes socket (WS 101 to Render); logo
 **Priority:** P0
 **Preconditions:** Pending sale exists; admin session.
 **Steps:**
-1. As admin open Verification Queue → verify sale.
+1. As admin open Verification Queue → verify sale (leave the Phase 1 amount blank for the default 50/50 split, or enter a custom Phase 1 amount).
 2. Check property (`sold`), lead (`closed`), commissions list, agent notification.
-3. Try moving the closed lead to another stage (API or UI).
-**Expected Result:** All side effects occur; commission frozen (price × effective %); lead has `closedBy: sale_verified`; manual stage moves rejected (403); persists after refresh.
+3. In Commissions, open the new record: status is `pending`, Phase 1 + Phase 2 amounts sum to the frozen total.
+4. Try moving the closed lead to another stage (API or UI).
+**Expected Result:** All side effects occur; commission frozen (price × effective %) and split into Phase 1 + Phase 2 (default 50/50, custom amount honored when entered); lead has `closedBy: sale_verified`; manual stage moves rejected (403); persists after refresh.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
@@ -1197,9 +1201,9 @@ Prerequisite for all RT tests: login establishes socket (WS 101 to Render); logo
 **Test Data:** tenant name, startDate, monthlyRent, duration ≥1.
 **Steps:**
 1. Submit Rental as agent.
-2. Verify as admin with commission amount ≥0.
-3. Refresh property + lead.
-**Expected Result:** Rental verified; property `rented` with dates/tenant; lead `closed` with `closedBy: rental_verified` (frozen from manual moves); persists.
+2. Verify as admin with commission amount ≥0 (leave the Phase 1 amount blank for the default 50/50 split, or enter a custom Phase 1 amount).
+3. Refresh property + lead; open the new commission record.
+**Expected Result:** Rental verified; property `rented` with dates/tenant; lead `closed` with `closedBy: rental_verified` (frozen from manual moves); commission status `pending` with Phase 1 + Phase 2 summing to the entered total (a 0 commission is auto-settled to `paid`); persists.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
@@ -1280,21 +1284,30 @@ Prerequisite for all RT tests: login establishes socket (WS 101 to Render); logo
 **Priority:** P1
 **Preconditions:** Verified sale/rental exists; agent + admin sessions.
 **Steps:**
-1. As agent open Commissions + summary; filter paid/unpaid.
-2. As admin open Commissions; filter by agent.
-**Expected Result:** Agent sees only own; admin sees all; filters work.
+1. As agent open Commissions + summary; filter pending/partial/paid.
+2. As admin open Commissions; filter by agent and by pending/partial/paid.
+3. Confirm each row shows separate Phase 1 and Phase 2 amount/status/date columns.
+**Expected Result:** Agent sees only own; admin sees all; filters work; phase columns visible and consistent with the overall status.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
 
 ### COMM-002
-**Test Name:** Admin marks commission paid once
-**Priority:** P1
-**Preconditions:** Admin; unpaid commission exists.
+**Test Name:** Admin pays commission in 2 phases (pending → partial → paid)
+**Priority:** P0
+**Preconditions:** Admin + agent sessions; a `pending` commission exists with known total T and Phase 1 amount P1 (note the admin Commissions totals + the agent summary before starting).
 **Steps:**
-1. Mark paid with note.
-2. Try to mark again; refresh; check agent notification.
-**Expected Result:** First succeeds with `paidAt`; second rejected (400); persists; agent notified `commission_paid`.
+1. As admin open Commissions → pay Phase 1 with a note. Refresh the list.
+2. Verify the `partial` state: record status `partial`; Phase 1 paid with date; Phase 2 still unpaid; overall `paidAt` still empty.
+3. Verify totals/summary after Phase 1: admin totals move P1 from pending to paid (partial remainder stays pending); agent summary pending drops by P1 and lifetime-paid rises by P1.
+4. As agent check notifications: a `commission_phase1_paid` notification exists; status shows `partial`.
+5. Try paying Phase 2 before Phase 1 on a different `pending` record (API or UI if reachable) — expect rejection; then pay Phase 1 and re-try Phase 1 again — expect 400.
+6. As admin pay Phase 2 with a note. Refresh.
+7. Verify the final `paid` state: both phases paid with dates; `paidAt` equals the Phase 2 date; record leaves the pending/partial filters.
+8. Verify totals/summary after Phase 2: remaining amount moves from pending to paid; paid + pending still equals the earned total (no double counting).
+9. As agent check notifications: a `commission_paid` (final) notification exists; status shows `paid`.
+10. Try paying either phase again — expect 400; refresh and confirm persistence.
+**Expected Result:** Ordering enforced (Phase 2 never before Phase 1); double payments rejected (400); `partial` visible between phases; both notifications delivered; totals/summary update correctly after each phase with paid + pending == earned; everything persists after refresh.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
@@ -1479,7 +1492,22 @@ Prerequisite for all RT tests: login establishes socket (WS 101 to Render); logo
 **Steps:**
 1. Open Admin Dashboard stats; Agent Dashboard; Analytics pages.
 2. Export CSV (admin + agent).
-**Expected Result:** Stats render (empty states where no data, never crash); CSV downloads.
+3. On the Analytics commissions-over-time series: each settled commission phase is its own payment event in its settlement month — one commission can contribute up to two `paid` events (Phase 1 month + Phase 2 month). Confirm the `paid` series total equals the lifetime paid amount (no phase counted twice, none missing).
+**Expected Result:** Stats render (empty states where no data, never crash); CSV downloads; over-time `paid` = sum of settled phase amounts.
+**Actual Result:** _
+**Status:** PASS / FAIL / BLOCKED / NOT TESTED
+**Evidence:** _
+
+### ADMIN-008
+**Test Name:** Site Settings update office contact + socials
+**Priority:** P1
+**Preconditions:** Admin session; public homepage + footer visible in a second (logged-out) browser.
+**Steps:**
+1. As admin open Site Settings (Blogs & Configuration); change office phone, address, map coords and one social URL; save.
+2. As logged-out visitor refresh: footer Contact column, "Visit Us" map pin and social icons reflect the new values.
+3. Clear one social URL; save; refresh as visitor.
+4. Try saving an invalid email, out-of-range coords, and a non-https social URL (expect rejection with a clear error; old values kept).
+**Expected Result:** Valid saves persist and propagate to footer/map/social rail (floating + footer) after refresh; emptied social hides its icon everywhere; invalid inputs rejected without changing stored values.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
@@ -1993,8 +2021,9 @@ Execute each scenario end-to-end with real accounts; verify persistence + realti
 ### SCN-C — Agent works lead to verified sale + commission payout (P0)
 1. Customer inquiry/visit auto-creates lead → admin assigns to agent.
 2. Agent contacts, schedules visit, moves stages, files sale.
-3. Admin verifies → property sold, lead closed, commission created.
-4. Admin marks commission paid; agent sees paid status + notification.
+3. Admin verifies → property sold, lead closed, commission created (`pending`, split Phase 1 + Phase 2).
+4. Admin pays Phase 1 → agent sees `partial` status + `commission_phase1_paid` notification; totals/summary move Phase 1 from pending to paid.
+5. Admin pays Phase 2 → agent sees `paid` status + `commission_paid` notification; remainder moves from pending to paid.
 
 ### SCN-D — Rental + EMI flow (P1)
 1. Agent files rental → admin verifies with commission → property rented.
@@ -2050,7 +2079,7 @@ Run on every release. All P0 plus:
 | Sales/rentals file/verify/reject/negatives | DEAL-001…DEAL-005 | Yes |
 | EMI plans/installments/verification | EMI-001…EMI-004 | Yes |
 | Commissions/review/contact/management-requests/services | COMM-001…MGMT-003 | Yes |
-| Admin users/agents/categories/blogs/archives/analytics | ADMIN-001…ADMIN-007, MISC-001 | Yes |
+| Admin users/agents/categories/blogs/archives/analytics/site-settings | ADMIN-001…ADMIN-008, MISC-001 | Yes |
 | Hero slides manage/publish/schedule/order/carousel/CTA/fallback | HERO-001…HERO-014 | Yes |
 | Authorization | AUTHZ-001…AUTHZ-005 | Yes |
 | Error handling | ERR-001…ERR-004 | Yes |
