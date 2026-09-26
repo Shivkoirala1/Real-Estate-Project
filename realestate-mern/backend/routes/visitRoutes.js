@@ -9,6 +9,7 @@ const {
   updateVisit,
   cancelMyVisit,
   convertVisitToLead,
+  deleteVisit,
 } = require('../controllers/visitController');
 
 const { protect, authorize } = require('../middleware/auth.js');
@@ -31,10 +32,13 @@ router
 
 // Single visit interactions. PATCH: admins manage the full lifecycle,
 // assigned agents may mark completion/cancellation and save notes.
+// DELETE (Phase 1): cancelled-only, no pipeline footprint - admin or the
+// assigned agent (ownership enforced in the controller).
 router
   .route('/:id')
   .get(getVisitById)
-  .patch(authorize('admin', 'agent'), updateVisit);
+  .patch(authorize('admin', 'agent'), updateVisit)
+  .delete(authorize('admin', 'agent'), deleteVisit);
 
 // Buyer self-cancellation
 router.patch('/:id/cancel', cancelMyVisit);

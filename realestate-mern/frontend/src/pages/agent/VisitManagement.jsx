@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getVisits, updateVisit } from '../../services/visitService';
+import { getVisits, updateVisit, deleteVisit } from '../../services/visitService';
 import { useToast } from '../../context/ToastContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import { isValidOptionalNote, optionalNoteMessage } from '../../utils/validateNotes';
@@ -134,6 +134,34 @@ const VisitManagement = () => {
     if (!ok) return;
 
     await handleStatusChange(visit, 'cancelled', 'Visit cancelled - the buyer has been notified');
+  };
+
+  // Phase 1 deletion: cancelled visits with no pipeline footprint only.
+  // The API enforces status + linkage + ownership guards; the button is
+  // simply hidden everywhere else so non-deletable cards stay clean.
+  const handleDelete = async (visit) => {
+    const ok = await confirm({
+      title: 'Delete this cancelled visit?',
+      message:
+        'This permanently removes the visit entry. Visits tied to a lead cannot be deleted.',
+      confirmLabel: 'Yes, delete it',
+      cancelLabel: 'No, keep it',
+    });
+    if (!ok) return;
+
+    setUpdatingId(visit._id);
+    try {
+      await deleteVisit(visit._id);
+      showToast('Cancelled visit deleted');
+      await loadVisits();
+    } catch (err) {
+      showToast(
+        err.response?.data?.message || 'Failed to delete the visit. Please try again.',
+        'error'
+      );
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   const handleSaveNotes = async (internalNotes) => {
@@ -362,6 +390,17 @@ const VisitManagement = () => {
                     >
                       Mark Cancelled
                     </button>
+
+                    {visit.status === 'cancelled' && (
+                      <button
+                        disabled={isBusy(visit)}
+                        onClick={() => handleDelete(visit)}
+                        className="text-sm px-3 py-2 rounded-sm transition-colors text-brick border border-brick/30 hover:bg-brick hover:text-white disabled:opacity-50"
+                        title="Delete this cancelled visit (only possible when it is not linked to a lead)"
+                      >
+                        {isBusy(visit) ? 'Deleting...' : 'Delete'}
+                      </button>
+                    )}
                   </div>
                 </div>
               );

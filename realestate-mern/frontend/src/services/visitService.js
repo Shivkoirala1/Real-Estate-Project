@@ -134,4 +134,20 @@ export const cancelVisit = async (id) => {
   );
 
   return data;
+};
+
+/**
+ * Delete a cancelled visit with no pipeline footprint (Phase 1).
+ *
+ * DELETE /api/visits/:id
+ * Admin or the assigned agent only. The API rejects every non-cancelled
+ * status (409) and every visit linked to a lead (409) - those must keep
+ * their audit trail. Notification history is preserved server-side.
+ */
+export const deleteVisit = async (id) => {
+  const { data } = await api.delete(
+    `/visits/${id}`
+  );
+
+  return data;
 };

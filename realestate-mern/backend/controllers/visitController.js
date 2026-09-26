@@ -4,6 +4,7 @@ const Property = require("../models/Property");
 const Lead = require("../models/Lead");
 const ContactForm = require("../models/ContactForm");
 const User = require("../models/User");
+const VisitDeletionLog = require("../models/VisitDeletionLog");
 const asyncHandler = require("../utils/asyncHandler");
 const { notify, notifyMany } = require("../utils/notify");
 const { ensureLeadFromVisit } = require("../utils/leadAutoConversion");
@@ -895,6 +896,78 @@ const convertVisitToLead = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * @desc    Delete a cancelled visit with no pipeline footprint (Phase 1).
+ *          Strictly cancelled-only; admin or the assigned agent; any visit
+ *          linked through convertedLead or Lead.visit is rejected (409) and
+ *          never unlinked. Notification history is preserved. An audit
+ *          snapshot is persisted before the delete.
+ * @route   DELETE /api/visits/:id
+ * @access  Private (admin, assigned agent)
+ */
+const deleteVisit = asyncHandler(async (req, res) => {
+  const visit = await Visit.findById(req.params.id);
+
+  if (!visit) {
+    return res
+      .status(404)
+      .json({ success: false, message: "Visit request not found" });
+  }
+
+  const isAdmin = req.user.role === "admin";
+  const isAssignedAgent =
+    visit.assignedAgent && String(visit.assignedAgent) === String(req.user._id);
+  if (!isAdmin && !isAssignedAgent) {
+    return res
+      .status(403)
+      .json({ success: false, message: "Not authorized to delete this visit" });
+  }
+
+  // Phase 1: cancelled-only. completed / rejected / pending / confirmed are
+  // never deletable (completed carries review eligibility + reward basis).
+  if (visit.status !== "cancelled") {
+    return res.status(409).json({
+      success: false,
+      message: `Only cancelled visits can be deleted (current status: ${visit.status}).`,
+    });
+  }
+
+  // Block-when-linked: never unlink, never cascade.
+  const linkedLead = await Lead.findOne({
+    $or: [{ _id: visit.convertedLead }, { visit: visit._id }],
+  }).select("_id");
+  if (visit.convertedLead || linkedLead) {
+    return res.status(409).json({
+      success: false,
+      message:
+        "This visit is linked to a lead and cannot be deleted. Resolve the lead first.",
+    });
+  }
+
+  // Audit snapshot first - visits are not archivable, so this log is the
+  // permanent record. Notification history is intentionally preserved.
+  await VisitDeletionLog.create({
+    visit: visit._id,
+    status: visit.status,
+    visitType: visit.visitType,
+    requestedSlot: visit.requestedSlot,
+    assignedAgent: visit.assignedAgent || null,
+    requestedBy: visit.requestedBy || null,
+    property: visit.property || null,
+    convertedLead: visit.convertedLead || null,
+    linkedLead: null,
+    deletedBy: req.user._id,
+    deletedAt: new Date(),
+  });
+
+  await Visit.deleteOne({ _id: visit._id });
+
+  res.json({
+    success: true,
+    message: "Cancelled visit deleted successfully",
+  });
+});
+
 module.exports = {
   createVisit,
   getVisits,
@@ -903,4 +976,5 @@ module.exports = {
   updateVisit,
   cancelMyVisit,
   convertVisitToLead,
+  deleteVisit,
 };

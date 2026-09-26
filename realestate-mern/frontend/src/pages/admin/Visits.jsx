@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { getVisits, updateVisit } from "../../services/visitService";
+import { getVisits, updateVisit, deleteVisit } from "../../services/visitService";
 import { utcToNepaliInput, nepaliInputToUTC } from "../../utils/timeConverter";
 import { getAgents } from "../../services/agentService";
 import { useAuth } from "../../context/AuthContext";
@@ -190,6 +190,34 @@ const Visits = () => {
       },
       "Visit request rejected - the buyer has been notified",
     );
+  };
+
+  // Phase 1 deletion: cancelled visits with no pipeline footprint only.
+  // The API enforces status + linkage guards; the button is simply hidden
+  // everywhere else so non-deletable rows stay clean.
+  const handleDelete = async (visit) => {
+    const confirmed = await confirm({
+      title: "Delete this cancelled visit?",
+      message:
+        "This permanently removes the visit entry. Linked leads, notifications and other records are never touched - visits tied to a lead cannot be deleted.",
+      confirmLabel: "Yes, delete it",
+      cancelLabel: "No, keep it",
+    });
+    if (!confirmed) return;
+
+    setUpdatingId(visit._id);
+    try {
+      await deleteVisit(visit._id);
+      showToast("Cancelled visit deleted");
+      await fetchVisits();
+    } catch (err) {
+      showToast(
+        err.response?.data?.message || "Failed to delete the visit. Please try again.",
+        "error",
+      );
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   const handleReschedule = async (requestedSlot) => {
@@ -481,6 +509,17 @@ const Visits = () => {
                         >
                           Notes
                         </button>
+
+                        {visit.status === "cancelled" && (
+                          <button
+                            disabled={isBusy(visit)}
+                            onClick={() => handleDelete(visit)}
+                            className="disabled:opacity-40 disabled:cursor-not-allowed text-brick border border-brick/30 hover:bg-brick hover:text-white px-3 py-1.5 rounded-sm text-xs transition-colors"
+                            title="Delete this cancelled visit (only possible when it is not linked to a lead)"
+                          >
+                            Delete
+                          </button>
+                        )}
 
                         {user?.role === "admin" &&
                           (visit.convertedLead ? (
