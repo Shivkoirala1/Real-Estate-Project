@@ -74,6 +74,13 @@ const typeIcon = {
       <path d="M6 12h.01M18 12h.01" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+  commission_phase1_paid: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <path d="M2 12h9" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="2.5" />
+    </svg>
+  ),
   emi_installment_due: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="12" cy="12" r="10" />
@@ -285,6 +292,7 @@ const iconTint = {
   rental_verified: 'bg-sage-light text-sage',
   rental_rejected: 'bg-brick-light text-brick',
   commission_paid: 'bg-sage-light text-sage',
+  commission_phase1_paid: 'bg-brass-light/25 text-brass-dark',
   emi_installment_due: 'bg-navy/10 text-navy',
   emi_installment_overdue: 'bg-brick-light text-brick',
   emi_plan_created: 'bg-navy/10 text-navy',

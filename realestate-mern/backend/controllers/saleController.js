@@ -448,6 +448,17 @@ const verifySale = asyncHandler(async (req, res) => {
   const pct = effectiveCommissionPercentage(property, property.propertyType);
   const commissionAmount = Number(((sale.agreedPrice * pct) / 100).toFixed(2));
 
+  // Two-phase split: optional custom first-phase amount, default 50/50.
+  // Validation failures return 400 before any write.
+  let phase1Amount;
+  let phase2Amount;
+  try {
+    ({ phase1Amount, phase2Amount } = require('../utils/commissionPhases')
+      .buildPhaseSplit(commissionAmount, req.body?.firstPhaseAmount));
+  } catch (err) {
+    return res.status(err.statusCode || 400).json({ success: false, message: err.message });
+  }
+
   // One transaction: sale + property + lead + commission record all commit or
   // none do (standalone deployments fall back to sequential writes).
   await runWithTransaction(async (session) => {
@@ -456,7 +467,7 @@ const verifySale = asyncHandler(async (req, res) => {
     sale.reviewedAt = new Date();
     sale.recordActivity({
       type: 'verified',
-      message: `Sale verified by ${req.user.name}. Commission ${pct}% (NPR ${commissionAmount.toLocaleString()}) generated.`,
+      message: `Sale verified by ${req.user.name}. Commission ${pct}% (NPR ${commissionAmount.toLocaleString()}) generated - Phase 1 NPR ${phase1Amount.toLocaleString()} / Phase 2 NPR ${phase2Amount.toLocaleString()}.`,
       by: req.user._id,
       byName: req.user.name,
     });
@@ -479,6 +490,7 @@ const verifySale = asyncHandler(async (req, res) => {
     });
     await lead.save(opts(session));
 
+    const zeroTotal = Number(commissionAmount) === 0;
     const created = await CommissionRecord.create(
       [
         {
@@ -488,7 +500,18 @@ const verifySale = asyncHandler(async (req, res) => {
           transactionAmount: sale.agreedPrice,
           commissionPercentage: pct,
           commissionAmount,
-          isPaid: false,
+          phase1Amount,
+          phase2Amount,
+          // Zero-total commissions carry no payable balance and resolve to
+          // fully paid immediately (no meaningless payout clicks).
+          phase1Paid: zeroTotal,
+          phase2Paid: zeroTotal,
+          phase1PaidAt: zeroTotal ? new Date() : null,
+          phase2PaidAt: zeroTotal ? new Date() : null,
+          payoutStatus: zeroTotal ? 'paid' : 'pending',
+          isPaid: zeroTotal,
+          paidAt: zeroTotal ? new Date() : null,
+          paidNote: zeroTotal ? 'Zero commission - auto-settled' : '',
         },
       ],
       opts(session)
@@ -536,6 +559,9 @@ const verifySale = asyncHandler(async (req, res) => {
       amount: commissionAmount,
       paymentType: sale.paymentType,
       requiresEmiPlan: sale.paymentType === 'emi',
+      phase1Amount,
+      phase2Amount,
+      payoutStatus: commissionAmount === 0 ? 'paid' : 'pending',
     },
   });
 });

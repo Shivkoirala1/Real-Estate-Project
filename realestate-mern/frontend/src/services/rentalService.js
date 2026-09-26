@@ -60,16 +60,21 @@ export const getRental = async (id) => {
 
 /**
  * Admin verifies a pending rental -> property marked 'rented',
- * lead closed, commission recorded from the admin-entered amount.
+ * lead closed, commission recorded from the admin-entered amount
+ * (split 50/50 across two payout phases unless firstPhaseAmount is given).
  * PATCH /api/rentals/:id/verify
- * payload: { commissionAmount }  // required, non-negative number (0 allowed)
+ * payload: { commissionAmount, firstPhaseAmount? }  // commissionAmount required, non-negative (0 allowed); firstPhaseAmount optional 0..total
  * response: {
  *   success, message, rental,
- *   commission: { percentage, amount, leaseValue },
+ *   commission: { percentage, amount, leaseValue, phase1Amount, phase2Amount, payoutStatus },
  * }
  */
-export const verifyRental = async (id, commissionAmount) => {
-  const { data } = await api.patch(`/rentals/${id}/verify`, { commissionAmount });
+export const verifyRental = async (id, commissionAmount, firstPhaseAmount) => {
+  const payload = { commissionAmount };
+  if (firstPhaseAmount !== undefined && firstPhaseAmount !== null && firstPhaseAmount !== '') {
+    payload.firstPhaseAmount = firstPhaseAmount;
+  }
+  const { data } = await api.patch(`/rentals/${id}/verify`, payload);
   return data;
 };
 

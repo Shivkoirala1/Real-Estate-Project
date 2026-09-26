@@ -12,7 +12,9 @@
     "migrate:verify-existing": "node utils/migrateVerifyExisting.js",
     "migrate:leads": "node utils/migrateInquiriesToLeads.js",
     "migrate:lead-closedby": "node utils/migrateLeadClosedBy.js --execute",
-    "migrate:lead-closedby-dry": "node utils/migrateLeadClosedBy.js --dry-run"
+    "migrate:lead-closedby-dry": "node utils/migrateLeadClosedBy.js --dry-run",
+    "migrate:commission-phases": "node scripts/backfill-commission-phases.js",
+    "migrate:commission-phases-dry": "node scripts/backfill-commission-phases.js --dry-run"
   },
   "dependencies": {
     "axios": "^1.19.0",

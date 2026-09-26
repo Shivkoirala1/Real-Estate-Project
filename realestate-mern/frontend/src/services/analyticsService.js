@@ -15,6 +15,9 @@ import api from '../utils/axios';
  *   emiPortfolio, agentLeaderboard: [{ name, email, salesCount, salesValue, commissionEarned }],
  *   pipeline: { countsByStage, pendingSaleVerifications }
  * } }
+ * Note: each commissionOverTime row is { month, earned, paid } where `paid`
+ * sums settled *phase payment events* in that month — one commission can
+ * contribute up to two events (Phase 1 + Phase 2), never counted twice.
  */
 export const getAdminAnalytics = async () => {
   const { data } = await api.get('/analytics/admin');

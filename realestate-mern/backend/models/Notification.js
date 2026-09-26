@@ -42,6 +42,7 @@ const notificationSchema = new mongoose.Schema(
         'tenancy_end_approved',    // admin approved the end of tenancy - owner alert
         'tenancy_end_declined',    // admin declined the end of tenancy - owner alert
         'commission_paid',         // Spec v2: admin marked the agent's commission as paid
+        'commission_phase1_paid',  // 2-phase payout: admin paid phase 1 (partial)
         'emi_installment_due',     // Spec v2: reminder a few days before an installment's dueDate
         'emi_installment_overdue', // Spec v2: an installment is past its due date
         'emi_plan_created',        // Spec v3: an EMI plan was initialized for a sale

@@ -83,6 +83,46 @@ const toMonthlySalesSeries = (monthKeys, rows) => {
   });
 };
 
+// Phase payment events: each settled phase is its own dated event (using its
+// own paid-at timestamp), so a partial commission contributes only its paid
+// phase and no phase is ever counted twice. Output shape matches
+// monthlyGroupStages ({count, amount}) for toMonthlyCommissionSeries.
+const commissionPaidEventStages = (extraMatch, windowStart) => [
+  { $match: { ...extraMatch, $or: [{ phase1Paid: true }, { phase2Paid: true }] } },
+  {
+    $project: {
+      events: {
+        $concatArrays: [
+          {
+            $cond: [
+              { $and: [{ $eq: ['$phase1Paid', true] }, { $ne: ['$phase1PaidAt', null] }] },
+              [{ date: '$phase1PaidAt', amount: '$phase1Amount' }],
+              [],
+            ],
+          },
+          {
+            $cond: [
+              { $and: [{ $eq: ['$phase2Paid', true] }, { $ne: ['$phase2PaidAt', null] }] },
+              [{ date: '$phase2PaidAt', amount: '$phase2Amount' }],
+              [],
+            ],
+          },
+        ],
+      },
+    },
+  },
+  { $unwind: '$events' },
+  { $match: { 'events.date': { $ne: null, $gte: windowStart } } },
+  {
+    $group: {
+      _id: { y: { $year: '$events.date' }, m: { $month: '$events.date' } },
+      count: { $sum: 1 },
+      amount: { $sum: '$events.amount' },
+    },
+  },
+  { $sort: { '_id.y': 1, '_id.m': 1 } },
+];
+
 const toMonthlyCommissionSeries = (monthKeys, earnedRows, paidRows) => {
   const earned = toMonthValueMap(earnedRows);
   const paid = toMonthValueMap(paidRows);
@@ -191,24 +231,43 @@ const buildAdminAnalytics = async () => {
     Sale.aggregate(monthlyGroupStages('reviewedAt', { status: 'verified' }, windowStart)),
     // Verified rentals per month (lease value = monthlyRent x durationInMonths)
     Rental.aggregate(monthlyRentalGroupStages('reviewedAt', { status: 'verified' }, windowStart)),
-    // Lifetime commission totals
+    // Lifetime commission totals (phase-aware: paid = settled phase amounts
+    // only, so a partial record is never counted as fully paid).
     CommissionRecord.aggregate([
       {
         $group: {
           _id: null,
           earnedTotal: { $sum: '$commissionAmount' },
-          paidAmount: { $sum: { $cond: [{ $eq: ['$isPaid', true] }, '$commissionAmount', 0] } },
-          pendingAmount: { $sum: { $cond: [{ $eq: ['$isPaid', false] }, '$commissionAmount', 0] } },
-          paidCount: { $sum: { $cond: [{ $eq: ['$isPaid', true] }, 1, 0] } },
-          pendingCount: { $sum: { $cond: [{ $eq: ['$isPaid', false] }, 1, 0] } },
+          paidAmount: {
+            $sum: {
+              $add: [
+                { $cond: [{ $eq: ['$phase1Paid', true] }, '$phase1Amount', 0] },
+                { $cond: [{ $eq: ['$phase2Paid', true] }, '$phase2Amount', 0] },
+              ],
+            },
+          },
+          pendingAmount: {
+            $sum: {
+              $add: [
+                { $cond: [{ $eq: ['$phase1Paid', false] }, '$phase1Amount', 0] },
+                { $cond: [{ $eq: ['$phase2Paid', false] }, '$phase2Amount', 0] },
+              ],
+            },
+          },
+          partialAmount: {
+            $sum: { $cond: [{ $eq: ['$payoutStatus', 'partial'] }, '$phase2Amount', 0] },
+          },
+          paidCount: { $sum: { $cond: [{ $eq: ['$payoutStatus', 'paid'] }, 1, 0] } },
+          pendingCount: { $sum: { $cond: [{ $eq: ['$payoutStatus', 'pending'] }, 1, 0] } },
+          partialCount: { $sum: { $cond: [{ $eq: ['$payoutStatus', 'partial'] }, 1, 0] } },
         },
       },
     ]),
     // Earned per month (createdAt = verification/earning date)
     CommissionRecord.aggregate(monthlyGroupStages('createdAt', {}, windowStart)),
-    // Paid per month (paidAt, settled records only)
+    // Paid per month (individual phase payment events, not whole records)
     CommissionRecord.aggregate(
-      monthlyGroupStages('paidAt', { isPaid: true }, windowStart)
+      commissionPaidEventStages({}, windowStart)
     ),
     buildEmiPortfolio(),
     // Per-agent verified sales (no $limit here - the final leaderboard slice
@@ -302,8 +361,10 @@ const buildAdminAnalytics = async () => {
       earnedTotal: round2(commissionTotalsAgg[0] && commissionTotalsAgg[0].earnedTotal),
       paidAmount: round2(commissionTotalsAgg[0] && commissionTotalsAgg[0].paidAmount),
       pendingAmount: round2(commissionTotalsAgg[0] && commissionTotalsAgg[0].pendingAmount),
+      partialAmount: round2(commissionTotalsAgg[0] && commissionTotalsAgg[0].partialAmount),
       paidCount: (commissionTotalsAgg[0] && commissionTotalsAgg[0].paidCount) || 0,
       pendingCount: (commissionTotalsAgg[0] && commissionTotalsAgg[0].pendingCount) || 0,
+      partialCount: (commissionTotalsAgg[0] && commissionTotalsAgg[0].partialCount) || 0,
     },
     commissionOverTime: toMonthlyCommissionSeries(monthKeys, earnedOverTimeAgg, paidOverTimeAgg),
     emiPortfolio,
@@ -375,16 +436,75 @@ const buildAgentAnalytics = async (agentId) => {
       { $group: { _id: null, total: { $sum: '$commissionAmount' }, count: { $sum: 1 } } },
     ]),
     CommissionRecord.aggregate([
-      { $match: { agent: agentOid, isPaid: true, paidAt: { $gte: thisMonthStart } } },
-      { $group: { _id: null, total: { $sum: '$commissionAmount' }, count: { $sum: 1 } } },
+      {
+        $match: {
+          agent: agentOid,
+          $or: [
+            { phase1PaidAt: { $gte: thisMonthStart } },
+            { phase2PaidAt: { $gte: thisMonthStart } },
+          ],
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: {
+            $sum: {
+              $add: [
+                {
+                  $cond: [
+                    { $and: [{ $eq: ['$phase1Paid', true] }, { $gte: ['$phase1PaidAt', thisMonthStart] }] },
+                    '$phase1Amount',
+                    0,
+                  ],
+                },
+                {
+                  $cond: [
+                    { $and: [{ $eq: ['$phase2Paid', true] }, { $gte: ['$phase2PaidAt', thisMonthStart] }] },
+                    '$phase2Amount',
+                    0,
+                  ],
+                },
+              ],
+            },
+          },
+          count: { $sum: 1 },
+        },
+      },
     ]),
     CommissionRecord.aggregate([
-      { $match: { agent: agentOid, isPaid: false } },
-      { $group: { _id: null, total: { $sum: '$commissionAmount' }, count: { $sum: 1 } } },
+      { $match: { agent: agentOid, payoutStatus: { $in: ['pending', 'partial'] } } },
+      {
+        $group: {
+          _id: null,
+          total: {
+            $sum: {
+              $add: [
+                { $cond: [{ $eq: ['$phase1Paid', false] }, '$phase1Amount', 0] },
+                { $cond: [{ $eq: ['$phase2Paid', false] }, '$phase2Amount', 0] },
+              ],
+            },
+          },
+          count: { $sum: 1 },
+        },
+      },
     ]),
     CommissionRecord.aggregate([
-      { $match: { agent: agentOid, isPaid: true } },
-      { $group: { _id: null, total: { $sum: '$commissionAmount' }, count: { $sum: 1 } } },
+      { $match: { agent: agentOid } },
+      {
+        $group: {
+          _id: null,
+          total: {
+            $sum: {
+              $add: [
+                { $cond: [{ $eq: ['$phase1Paid', true] }, '$phase1Amount', 0] },
+                { $cond: [{ $eq: ['$phase2Paid', true] }, '$phase2Amount', 0] },
+              ],
+            },
+          },
+          count: { $sum: { $cond: [{ $eq: ['$payoutStatus', 'paid'] }, 1, 0] } },
+        },
+      },
     ]),
     buildEmiPortfolio({ agent: agentOid }),
     // Agent's own verified sales over the last 12 months

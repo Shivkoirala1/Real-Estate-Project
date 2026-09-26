@@ -433,13 +433,23 @@ const verifyRental = asyncHandler(async (req, res) => {
   const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
   const pct = leaseValue > 0 ? round2((commissionAmount / leaseValue) * 100) : 0;
 
+  // Two-phase split: optional custom first-phase amount, default 50/50.
+  let phase1Amount;
+  let phase2Amount;
+  try {
+    ({ phase1Amount, phase2Amount } = require('../utils/commissionPhases')
+      .buildPhaseSplit(commissionAmount, req.body?.firstPhaseAmount));
+  } catch (err) {
+    return res.status(err.statusCode || 400).json({ success: false, message: err.message });
+  }
+
   await runWithTransaction(async (session) => {
     rental.status = 'verified';
     rental.reviewedBy = req.user._id;
     rental.reviewedAt = new Date();
     rental.recordActivity({
       type: 'verified',
-      message: `Rental verified by ${req.user.name}. Commission NPR ${commissionAmount.toLocaleString()} recorded (${pct}% of lease value NPR ${leaseValue.toLocaleString()}).`,
+      message: `Rental verified by ${req.user.name}. Commission NPR ${commissionAmount.toLocaleString()} recorded (${pct}% of lease value NPR ${leaseValue.toLocaleString()}) - Phase 1 NPR ${phase1Amount.toLocaleString()} / Phase 2 NPR ${phase2Amount.toLocaleString()}.`,
       by: req.user._id,
       byName: req.user.name,
     });
@@ -469,6 +479,7 @@ const verifyRental = asyncHandler(async (req, res) => {
     });
     await lead.save(opts(session));
 
+    const zeroTotal = Number(commissionAmount) === 0;
     return CommissionRecord.create(
       [
         {
@@ -480,7 +491,18 @@ const verifyRental = asyncHandler(async (req, res) => {
           transactionAmount: leaseValue,
           commissionPercentage: pct,
           commissionAmount,
-          isPaid: false,
+          phase1Amount,
+          phase2Amount,
+          // Zero-total commissions carry no payable balance and resolve to
+          // fully paid immediately (no meaningless payout clicks).
+          phase1Paid: zeroTotal,
+          phase2Paid: zeroTotal,
+          phase1PaidAt: zeroTotal ? new Date() : null,
+          phase2PaidAt: zeroTotal ? new Date() : null,
+          payoutStatus: zeroTotal ? 'paid' : 'pending',
+          isPaid: zeroTotal,
+          paidAt: zeroTotal ? new Date() : null,
+          paidNote: zeroTotal ? 'Zero commission - auto-settled' : '',
         },
       ],
       opts(session)
@@ -501,7 +523,14 @@ const verifyRental = asyncHandler(async (req, res) => {
     success: true,
     message: 'Rental verified. Property marked as rented, lead closed and commission recorded.',
     rental,
-    commission: { percentage: pct, amount: commissionAmount, leaseValue },
+    commission: {
+      percentage: pct,
+      amount: commissionAmount,
+      leaseValue,
+      phase1Amount,
+      phase2Amount,
+      payoutStatus: commissionAmount === 0 ? 'paid' : 'pending',
+    },
   });
 });
 

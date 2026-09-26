@@ -27,6 +27,7 @@ const typeMeta = {
   rental_verified: { label: 'Rental verified', tint: 'bg-sage-light text-sage' },
   rental_rejected: { label: 'Rental rejected', tint: 'bg-brick-light text-brick' },
   commission_paid: { label: 'Commission', tint: 'bg-sage-light text-sage' },
+  commission_phase1_paid: { label: 'Commission phase 1', tint: 'bg-brass-light/25 text-brass-dark' },
   emi_installment_due: { label: 'EMI due soon', tint: 'bg-navy/10 text-navy' },
   emi_installment_overdue: { label: 'EMI overdue', tint: 'bg-brick-light text-brick' },
   emi_plan_created: { label: 'EMI plan created', tint: 'bg-navy/10 text-navy' },

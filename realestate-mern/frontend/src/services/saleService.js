@@ -58,12 +58,17 @@ export const getSaleById = async (id) => {
 
 /**
  * Verify a pending sale (admin only) - property -> sold, lead -> closed,
- * commission record generated inside one transaction.
+ * commission record generated inside one transaction (split 50/50 across
+ * two payout phases unless firstPhaseAmount is given).
  * PATCH /api/sales/:id/verify
- * response: { success, sale, commission: { percentage, amount, paymentType, requiresEmiPlan } }
+ * payload: { firstPhaseAmount? }  // optional, 0..commission total
+ * response: { success, sale, commission: { percentage, amount, paymentType, requiresEmiPlan, phase1Amount, phase2Amount, payoutStatus } }
  */
-export const verifySale = async (id) => {
-  const { data } = await api.patch(`/sales/${id}/verify`);
+export const verifySale = async (id, firstPhaseAmount) => {
+  const payload = firstPhaseAmount === undefined || firstPhaseAmount === null || firstPhaseAmount === ''
+    ? {}
+    : { firstPhaseAmount };
+  const { data } = await api.patch(`/sales/${id}/verify`, payload);
   return data;
 };
 

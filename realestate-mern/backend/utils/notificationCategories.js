@@ -34,6 +34,7 @@ const CATEGORY_TYPES = {
     'rental_verified',
     'rental_rejected',
     'commission_paid',
+    'commission_phase1_paid',
   ],
   management: [
     'management_request_submitted',

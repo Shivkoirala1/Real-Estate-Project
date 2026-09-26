@@ -36,7 +36,14 @@ const buildPerformanceForAgents = async (agentIds) => {
         $group: {
           _id: '$agent',
           commissionEarned: { $sum: '$commissionAmount' },
-          paidSum: { $sum: { $cond: [{ $eq: ['$isPaid', true] }, '$commissionAmount', 0] } },
+          paidSum: {
+            $sum: {
+              $add: [
+                { $cond: [{ $eq: ['$phase1Paid', true] }, '$phase1Amount', 0] },
+                { $cond: [{ $eq: ['$phase2Paid', true] }, '$phase2Amount', 0] },
+              ],
+            },
+          },
         },
       },
     ]),

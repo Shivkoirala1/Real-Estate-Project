@@ -150,10 +150,16 @@ const VerificationQueue = () => {
   const [rejectReason, setRejectReason] = useState('');
   const [rejectError, setRejectError] = useState('');
   // Rental-only commission entry (mirrors the reject-reason trio above).
-  // Sale verification stays a single confirm click - see handleVerify.
   const [verifyRentalTarget, setVerifyRentalTarget] = useState(null);
   const [commissionInput, setCommissionInput] = useState('');
   const [commissionError, setCommissionError] = useState('');
+  // Optional first-phase split for the 2-phase payout (blank = 50/50).
+  const [rentalPhase1Input, setRentalPhase1Input] = useState('');
+  // Sale verification collects the optional phase-1 split inline, then
+  // confirms - see handleVerifySaleSubmit.
+  const [verifySaleTarget, setVerifySaleTarget] = useState(null);
+  const [salePhase1Input, setSalePhase1Input] = useState('');
+  const [salePhase1Error, setSalePhase1Error] = useState('');
 
   const activeType = DEAL_TYPES[type];
 
@@ -208,12 +214,14 @@ const VerificationQueue = () => {
     setParam('type', value === 'sale' ? null : value); // sale is the default, no param needed
     setRejectTarget(null);
     setVerifyRentalTarget(null);
+    setVerifySaleTarget(null);
   };
   const handleStatusChange = (value) => {
     setParam('status', value);
     setPage(1);
     setRejectTarget(null);
     setVerifyRentalTarget(null);
+    setVerifySaleTarget(null);
   };
   const handleSortChange = (value) => {
     setSort(value);
@@ -236,29 +244,61 @@ const VerificationQueue = () => {
     setRejectError('');
   };
 
+  // Parse an optional phase-1 input: blank means "backend default (50/50)".
+  // Returns { ok, value } where value is undefined when blank.
+  const parsePhase1Input = (input, setError) => {
+    if (input.trim() === '') return { ok: true, value: undefined };
+    const amount = Number(input);
+    if (!Number.isFinite(amount) || amount < 0) {
+      setError('Phase 1 amount must be a non-negative number (or leave blank for 50/50)');
+      return { ok: false };
+    }
+    return { ok: true, value: amount };
+  };
+
   const handleVerify = async (deal) => {
-    // Rentals require an admin-entered commission amount (backend returns
-    // 400 without one) - collect it first via the inline form below.
-    // Sales stay a single confirmation click, unchanged.
+    // Both deal types collect verify-time inputs via the inline forms below:
+    // rentals require the commission amount; sales take an optional phase-1
+    // split (blank = 50/50 default).
     if (type === 'rental') {
       setVerifyRentalTarget(deal);
       setCommissionInput('');
       setCommissionError('');
+      setRentalPhase1Input('');
       return;
     }
+    setVerifySaleTarget(deal);
+    setSalePhase1Input('');
+    setSalePhase1Error('');
+  };
+
+  const closeVerifySale = () => {
+    setVerifySaleTarget(null);
+    setSalePhase1Input('');
+    setSalePhase1Error('');
+  };
+
+  // Sale: validate the optional phase-1 split, confirm once more, then verify.
+  const handleVerifySaleSubmit = async () => {
+    const parsed = parsePhase1Input(salePhase1Input, setSalePhase1Error);
+    if (!parsed.ok) return;
+    const splitHint = parsed.value !== undefined
+      ? ` Phase 1 will be NPR ${Number(parsed.value).toLocaleString()}, phase 2 the remainder.`
+      : ' The commission will be split 50/50 across two payout phases.';
     const ok = await confirm({
       title: 'Verify this sale?',
-      message: `"${deal.property?.title || 'This property'}" will be marked sold, lead "${deal.person?.name || 'the lead'}" will be closed and the agent's commission recorded. This cannot be undone.`,
+      message: `"${verifySaleTarget.property?.title || 'This property'}" will be marked sold, lead "${verifySaleTarget.person?.name || 'the lead'}" will be closed and the agent's commission recorded.${splitHint} This cannot be undone.`,
       confirmLabel: 'Verify sale',
       cancelLabel: 'Cancel',
       tone: 'danger',
     });
     if (!ok) return;
 
-    setBusyId(deal._id);
+    setBusyId(verifySaleTarget._id);
     try {
-      const data = await activeType.service.verify(deal._id);
+      const data = await verifySale(verifySaleTarget._id, parsed.value);
       showToast('Sale verified — property marked sold, lead closed, commission recorded');
+      closeVerifySale();
       closeReject();
       load();
 
@@ -266,11 +306,11 @@ const VerificationQueue = () => {
       if (data.commission?.requiresEmiPlan) {
         const initNow = await confirm({
           title: 'EMI sale verified',
-          message: `"${deal.property?.title || 'This property'}" was paid via EMI. Initialize the buyer's installment plan now?`,
+          message: `"${verifySaleTarget.property?.title || 'This property'}" was paid via EMI. Initialize the buyer's installment plan now?`,
           confirmLabel: 'Initialize EMI plan',
           cancelLabel: 'Later',
         });
-        if (initNow) navigate(`/dashboard/admin/emi-plans?new=${deal._id}`);
+        if (initNow) navigate(`/dashboard/admin/emi-plans?new=${verifySaleTarget._id}`);
       }
     } catch (err) {
       showToast(err.response?.data?.message || `Failed to verify ${type}`, 'error');
@@ -305,11 +345,13 @@ const VerificationQueue = () => {
     setVerifyRentalTarget(null);
     setCommissionInput('');
     setCommissionError('');
+    setRentalPhase1Input('');
   };
 
   // Rental-only: validate the entered amount, confirm once more with the
   // exact figure, then verify. The backend has no fallback - a blank input
   // is rejected here, never silently substituted. 0 is a valid amount.
+  // The phase-1 split is optional (blank = 50/50).
   const handleVerifyRentalSubmit = async () => {
     if (commissionInput.trim() === '') {
       setCommissionError('Enter a commission amount of 0 or more');
@@ -320,9 +362,14 @@ const VerificationQueue = () => {
       setCommissionError('Commission must be a non-negative number');
       return;
     }
+    const parsed = parsePhase1Input(rentalPhase1Input, setCommissionError);
+    if (!parsed.ok) return;
+    const splitHint = parsed.value !== undefined
+      ? ` Phase 1 will be NPR ${Number(parsed.value).toLocaleString()}, phase 2 the remainder.`
+      : ' The commission will be split 50/50 across two payout phases.';
     const ok = await confirm({
       title: 'Verify this rental?',
-      message: `"${verifyRentalTarget.property?.title || 'This property'}" will be marked rented, lead "${verifyRentalTarget.tenant?.name || 'the lead'}" will be closed and a commission of NPR ${amount.toLocaleString()} recorded. This cannot be undone.`,
+      message: `"${verifyRentalTarget.property?.title || 'This property'}" will be marked rented, lead "${verifyRentalTarget.tenant?.name || 'the lead'}" will be closed and a commission of NPR ${amount.toLocaleString()} recorded.${splitHint} This cannot be undone.`,
       confirmLabel: 'Verify rental',
       cancelLabel: 'Cancel',
       tone: 'danger',
@@ -331,7 +378,7 @@ const VerificationQueue = () => {
 
     setBusyId(verifyRentalTarget._id);
     try {
-      await verifyRental(verifyRentalTarget._id, amount);
+      await verifyRental(verifyRentalTarget._id, amount, parsed.value);
       showToast('Rental verified — property marked rented, lead closed, commission recorded');
       closeVerifyRental();
       closeReject();
@@ -599,6 +646,42 @@ const VerificationQueue = () => {
                         </div>
                       </div>
                     )}
+                    {/* Inline verify form (sales): optional phase-1 split */}
+                    {isPending && type === 'sale' && verifySaleTarget?._id === deal._id && (
+                      <div className="border-t border-navy/10 mt-4 pt-4">
+                        <label className="label-field">Phase 1 amount (NPR, optional)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          autoFocus
+                          placeholder="Blank = 50/50 split"
+                          className={`input-field ${salePhase1Error ? 'border-brick focus:border-brick focus:ring-brick' : ''}`}
+                          value={salePhase1Input}
+                          onChange={(e) => {
+                            setSalePhase1Input(e.target.value);
+                            if (salePhase1Error) setSalePhase1Error('');
+                          }}
+                        />
+                        <p className="mt-1 text-xs text-slate-muted">
+                          Leave blank to split the commission 50/50. Phase 2 is the remainder; both phases are paid manually from the Commissions panel.
+                        </p>
+                        {salePhase1Error && <p className="text-xs text-brick mt-1">{salePhase1Error}</p>}
+                        <div className="flex justify-end gap-3 mt-3">
+                          <button type="button" onClick={closeVerifySale} className="btn-secondary text-sm px-4 py-2">
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleVerifySaleSubmit}
+                            disabled={busyId === deal._id}
+                            className="bg-sage text-white text-sm font-medium px-4 py-2 rounded-sm hover:bg-sage/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {busyId === deal._id ? 'Verifying...' : 'Verify sale'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {/* Inline commission form (rentals only) */}
                     {isPending && type === 'rental' && verifyRentalTarget?._id === deal._id && (
                       <div className="border-t border-navy/10 mt-4 pt-4">
@@ -620,6 +703,22 @@ const VerificationQueue = () => {
                           {raw.durationInMonths != null
                             ? `Lease value NPR ${Number((raw.monthlyRent || 0) * raw.durationInMonths).toLocaleString()} (${raw.durationInMonths} months) — enter the agreed commission for this lease.`
                             : 'Open-ended tenancy — commission basis is one month\u2019s rent. Enter the agreed commission.'}
+                        </p>
+                        <label className="label-field mt-3">Phase 1 amount (NPR, optional)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          placeholder="Blank = 50/50 split"
+                          className="input-field"
+                          value={rentalPhase1Input}
+                          onChange={(e) => {
+                            setRentalPhase1Input(e.target.value);
+                            if (commissionError) setCommissionError('');
+                          }}
+                        />
+                        <p className="mt-1 text-xs text-slate-muted">
+                          Phase 2 is the remainder; both phases are paid manually from the Commissions panel.
                         </p>
                         {commissionError && <p className="text-xs text-brick mt-1">{commissionError}</p>}
                         <div className="flex justify-end gap-3 mt-3">

@@ -8,6 +8,7 @@ const PAGE_SIZE = 10;
 const STATUS_FILTERS = [
   ['all', 'All'],
   ['paid', 'Paid'],
+  ['partial', 'Partial'],
   ['pending', 'Pending'],
 ];
 
@@ -33,8 +34,7 @@ const MyCommissions = () => {
       setError('');
       try {
         const params = { page, limit: PAGE_SIZE };
-        if (statusFilter === 'paid') params.isPaid = 'true';
-        if (statusFilter === 'pending') params.isPaid = 'false';
+        if (statusFilter !== 'all') params.payoutStatus = statusFilter;
         params.sort = sort;
         const data = await getCommissions(params);
         if (cancelled) return;
@@ -77,6 +77,7 @@ const MyCommissions = () => {
   const summaryCards = [
     ['This Month Earned', summary?.thisMonthEarned],
     ['Pending', summary?.pending],
+    ['Partial', summary?.partial],
     ['Lifetime Paid', summary?.lifetimePaid],
   ];
 
@@ -86,7 +87,7 @@ const MyCommissions = () => {
       <h1 className="text-3xl mb-8">My Commissions</h1>
 
       {/* Mini earnings summary */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {summaryCards.map(([label, value]) => (
           <div key={label} className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
             <p className="text-xs uppercase tracking-wide text-slate-muted mb-2">{label}</p>
@@ -139,15 +140,16 @@ const MyCommissions = () => {
       ) : (
         <>
           <div className="bg-white border border-navy/10 rounded-sm overflow-x-auto">
-            <table className="w-full text-sm min-w-[760px]">
+            <table className="w-full text-sm min-w-[900px]">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-muted border-b border-navy/10">
                   <th className="px-5 py-3">Property</th>
                   <th className="px-5 py-3">Transaction Amount</th>
                   <th className="px-5 py-3">Commission %</th>
                   <th className="px-5 py-3">Commission Amount</th>
+                  <th className="px-5 py-3">Phase 1</th>
+                  <th className="px-5 py-3">Phase 2</th>
                   <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Paid date</th>
                 </tr>
               </thead>
               <tbody>
@@ -176,12 +178,32 @@ const MyCommissions = () => {
                     <td className="px-5 py-3 text-slate-ink">{Number(c.commissionPercentage ?? 0)}%</td>
                     <td className="px-5 py-3 font-medium text-navy">{npr(c.commissionAmount)}</td>
                     <td className="px-5 py-3">
-                      <span className={`status-badge ${c.isPaid ? 'bg-sage-light text-sage' : 'bg-brass-light text-brass-dark'}`}>
-                        {c.isPaid ? 'Paid' : 'Pending'}
+                      <p className="text-slate-ink whitespace-nowrap">{npr(c.phase1Amount ?? c.commissionAmount / 2)}</p>
+                      <span className={`status-badge ${c.phase1Paid ? 'bg-sage-light text-sage' : 'bg-brass-light text-brass-dark'}`}>
+                        {c.phase1Paid ? 'Paid' : 'Unpaid'}
                       </span>
+                      {c.phase1Paid && c.phase1PaidAt && (
+                        <p className="text-xs text-slate-muted mt-1">{new Date(c.phase1PaidAt).toLocaleDateString()}</p>
+                      )}
                     </td>
-                    <td className="px-5 py-3 text-slate-ink">
-                      {c.isPaid && c.paidAt ? new Date(c.paidAt).toLocaleDateString() : '—'}
+                    <td className="px-5 py-3">
+                      <p className="text-slate-ink whitespace-nowrap">{npr(c.phase2Amount ?? c.commissionAmount / 2)}</p>
+                      <span className={`status-badge ${c.phase2Paid ? 'bg-sage-light text-sage' : 'bg-brass-light text-brass-dark'}`}>
+                        {c.phase2Paid ? 'Paid' : 'Unpaid'}
+                      </span>
+                      {c.phase2Paid && c.phase2PaidAt && (
+                        <p className="text-xs text-slate-muted mt-1">{new Date(c.phase2PaidAt).toLocaleDateString()}</p>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
+                      {(() => {
+                        const status = c.payoutStatus || (c.isPaid ? 'paid' : 'pending');
+                        return (
+                          <span className={`status-badge ${status === 'paid' ? 'bg-sage-light text-sage' : status === 'partial' ? 'bg-navy/10 text-navy' : 'bg-brass-light text-brass-dark'}`}>
+                            {status === 'paid' ? 'Paid' : status === 'partial' ? 'Partial' : 'Pending'}
+                          </span>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}
