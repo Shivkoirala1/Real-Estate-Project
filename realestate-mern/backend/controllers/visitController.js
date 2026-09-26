@@ -8,6 +8,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const { notify, notifyMany } = require("../utils/notify");
 const { ensureLeadFromVisit } = require("../utils/leadAutoConversion");
 const { awardReward } = require("../utils/rewards");
+const { isFrozenForManualMove } = require("../utils/leadTransitions");
 const {
   isValidOptionalNote,
   optionalNoteMessage,
@@ -182,6 +183,9 @@ const createVisit = asyncHandler(async (req, res) => {
   // Closed/lost leads are never resurrected, another visit's link is never
   // stolen, and the lead's stage is NOT changed here - it moves to
   // `site_visit_scheduled` when the team accepts the visit (see updateVisit).
+  // Frozen leads (pending verification / verification-closed) are skipped
+  // entirely: the visit itself is still created above, but no visit linkage,
+  // timeline activity, or save may touch the frozen lead.
   let linkedLead = null;
   if (leadId) {
     linkedLead = await Lead.findById(leadId);
@@ -199,7 +203,7 @@ const createVisit = asyncHandler(async (req, res) => {
       stage: { $in: ACTIVE_LEAD_STAGES },
     }).sort({ lastActivity: -1 });
   }
-  if (linkedLead && !["closed", "lost"].includes(linkedLead.stage)) {
+  if (linkedLead && !["closed", "lost"].includes(linkedLead.stage) && !isFrozenForManualMove(linkedLead)) {
     if (!linkedLead.visit) linkedLead.visit = visit._id;
     visit.convertedLead = linkedLead._id;
     visit.assignedAgent = linkedLead.assignedAgent || null;
@@ -578,18 +582,16 @@ const updateVisit = asyncHandler(async (req, res) => {
     }
   }
 
-  // Sync stage on the linked Lead if status changes
+  // Sync stage on the linked Lead if status changes. Frozen leads
+  // (pending verification / closed / lost) must not be touched by this path
+  // at all — no stage move, no agent backfill, no save.
   if (statusChanged) {
     const linkedLead = visit.convertedLead
       ? await Lead.findById(visit.convertedLead)
       : await Lead.findOne({ visit: visit._id });
-    if (linkedLead) {
+    if (linkedLead && !UNRECOVERABLE_LEAD_STAGES.includes(linkedLead.stage)) {
       const newStage = stageForVisitStatus(status);
-      if (
-        newStage &&
-        newStage !== linkedLead.stage &&
-        !UNRECOVERABLE_LEAD_STAGES.includes(linkedLead.stage)
-      ) {
+      if (newStage && newStage !== linkedLead.stage) {
         linkedLead.stage = newStage;
         linkedLead.recordActivity({
           type: "stage_changed",

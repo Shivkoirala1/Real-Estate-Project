@@ -1,4 +1,6 @@
 const Lead = require('../models/Lead');
+const Sale = require('../models/Sale');
+const Rental = require('../models/Rental');
 const Property = require('../models/Property');
 const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
@@ -1149,11 +1151,39 @@ const getLeadActivities = asyncHandler(async (req, res) => {
  * @access  Private (admin only)
  */
 const deleteLead = asyncHandler(async (req, res) => {
-  const lead = await Lead.findByIdAndDelete(req.params.id);
+  const lead = await Lead.findById(req.params.id);
 
   if (!lead) {
     return res.status(404).json({ success: false, message: 'Lead not found' });
   }
+
+  // Frozen verification/closed leads are read-only — same guard as every
+  // other manual mutation. The linked-deal check follows after this.
+  const frozen = rejectIfFrozen(lead, res);
+  if (frozen) return frozen;
+
+  // Any linked Sale/Rental blocks deletion regardless of status — even a
+  // rejected filing is audit history tied to this lead, and verified deals
+  // carry commission/EMI records that depend on the chain. Deterministic
+  // order: a Sale is reported before a Rental if both somehow exist.
+  const [linkedSale, linkedRental] = await Promise.all([
+    Sale.findOne({ lead: lead._id }).select('_id status').lean(),
+    Rental.findOne({ lead: lead._id }).select('_id status').lean(),
+  ]);
+  const blocking = linkedSale
+    ? { type: 'sale', id: String(linkedSale._id), status: linkedSale.status }
+    : linkedRental
+      ? { type: 'rental', id: String(linkedRental._id), status: linkedRental.status }
+      : null;
+  if (blocking) {
+    return res.status(409).json({
+      success: false,
+      message: `This lead has a linked ${blocking.type} and cannot be deleted — the deal, commission and EMI records depend on it.`,
+      deal: blocking,
+    });
+  }
+
+  await lead.deleteOne();
 
   res.json({
     success: true,

@@ -15,6 +15,7 @@ const { notFound, errorHandler } = require('../middleware/errorHandler');
 const User = require('../models/User');
 const Lead = require('../models/Lead');
 const Property = require('../models/Property');
+const Visit = require('../models/Visit');
 const { PropertyType } = require('../models/Category');
 const CommissionRecord = require('../models/CommissionRecord');
 // Registered for LEAD_POPULATE (visit/contactForm/user) - the mounted
@@ -25,6 +26,7 @@ require('../models/Conversation');
 const leadRoutes = require('../routes/leadRoutes');
 const saleRoutes = require('../routes/saleRoutes');
 const rentalRoutes = require('../routes/rentalRoutes');
+const visitRoutes = require('../routes/visitRoutes');
 
 describe('Lead pipeline state machine', () => {
   let mongod;
@@ -59,6 +61,24 @@ describe('Lead pipeline state machine', () => {
       ...over,
     });
 
+  const mkBuyer = () =>
+    User.create({
+      name: 'Visit Buyer',
+      email: `visit-buyer-${Date.now()}-${Math.random().toString(36).slice(2)}@test.com`,
+      password: 'password1',
+      role: 'user',
+    });
+
+  const mkLinkedVisit = (propertyId, buyerId, leadId) =>
+    Visit.create({
+      visitType: 'property',
+      property: propertyId,
+      requestedBy: buyerId,
+      requestedSlot: new Date(Date.now() + 86400000),
+      status: 'confirmed',
+      convertedLead: leadId,
+    });
+
   before(async () => {
     mongod = await MongoMemoryServer.create();
     await mongoose.connect(mongod.getUri());
@@ -68,6 +88,7 @@ describe('Lead pipeline state machine', () => {
     app.use('/api/leads', leadRoutes);
     app.use('/api/sales', saleRoutes);
     app.use('/api/rentals', rentalRoutes);
+    app.use('/api/visits', visitRoutes);
     app.use(notFound);
     app.use(errorHandler);
     api = app;
@@ -247,5 +268,249 @@ describe('Lead pipeline state machine', () => {
     assert.equal(rentClosed.closedBy, 'rental_verified');
     assert.equal((await Property.findById(rentProp2._id)).status, 'rented');
     assert.equal((await move(agent, rentLead2._id, 'negotiation')).status, 403);
+  });
+
+  describe('lead delete guards', () => {
+    const del = (user, id) => request(api).delete(`/api/leads/${id}`).set(auth(user));
+
+    const fileSale = (leadId) =>
+      request(api).post('/api/sales').set(auth(agent)).send({
+        leadId: String(leadId),
+        buyer: { name: 'Delete Guard Buyer' },
+        agreedPrice: 5000000,
+        paymentType: 'full_payment',
+      });
+
+    it('deletes a plain new lead with the unchanged response shape', async () => {
+      const lead = await mkLead({ stage: 'new' });
+      const res = await del(admin, lead._id);
+      assert.equal(res.status, 200);
+      assert.equal(res.body.success, true);
+      assert.equal(res.body.message, 'Lead deleted successfully');
+      assert.equal(await Lead.findById(lead._id), null);
+    });
+
+    it('blocks deletion of a pending-verification lead with 403 (frozen first)', async () => {
+      const property = await mkProperty('sale', 'delete-guard-pending');
+      const lead = await mkLead({ stage: 'negotiation', property: property._id });
+      const filed = await fileSale(lead._id);
+      assert.equal(filed.status, 201);
+      assert.equal((await Lead.findById(lead._id)).stage, 'pending_verification');
+
+      const res = await del(admin, lead._id);
+      assert.equal(res.status, 403);
+      assert.match(res.body.message || '', /verification|read-only|cannot be moved/i);
+      assert.ok(await Lead.findById(lead._id), 'frozen lead must survive delete attempts');
+    });
+
+    it('blocks deletion of a verified-sale lead with 403 (read-only)', async () => {
+      const property = await mkProperty('sale', 'delete-guard-verified');
+      const lead = await mkLead({ stage: 'negotiation', property: property._id });
+      const filed = await fileSale(lead._id);
+      assert.equal(filed.status, 201);
+      const verified = await request(api).patch(`/api/sales/${filed.body.sale._id}/verify`).set(auth(admin)).send({});
+      assert.equal(verified.status, 200);
+
+      const res = await del(admin, lead._id);
+      assert.equal(res.status, 403);
+      assert.match(res.body.message || '', /read-only/);
+      assert.ok(await Lead.findById(lead._id), 'verified-closed lead must survive delete attempts');
+    });
+
+    it('blocks deletion of a rejected-only filing lead with 409 + deal metadata', async () => {
+      const property = await mkProperty('sale', 'delete-guard-rejected');
+      const lead = await mkLead({ stage: 'contacted', property: property._id });
+      const filed = await fileSale(lead._id);
+      assert.equal(filed.status, 201);
+      const saleId = filed.body.sale._id;
+      const rejected = await request(api).patch(`/api/sales/${saleId}/reject`).set(auth(admin)).send({ reason: 'Agreed price below the acceptable threshold' });
+      assert.equal(rejected.status, 200);
+      const restored = await Lead.findById(lead._id);
+      assert.equal(restored.stage, 'contacted');
+
+      const res = await del(admin, lead._id);
+      assert.equal(res.status, 409);
+      assert.match(res.body.message || '', /linked (sale|rental)/i);
+      assert.ok(res.body.deal, '409 must carry the blocking deal');
+      assert.equal(res.body.deal.type, 'sale');
+      assert.equal(String(res.body.deal.id), String(saleId));
+      assert.equal(res.body.deal.status, 'rejected');
+      assert.ok(await Lead.findById(lead._id), 'lead with a rejected filing must survive delete attempts');
+    });
+
+    it('keeps non-admin delete authorization unchanged', async () => {
+      const lead = await mkLead({ stage: 'new' });
+      const res = await del(agent, lead._id);
+      assert.ok([401, 403].includes(res.status), `got ${res.status}`);
+      assert.ok(await Lead.findById(lead._id), 'unauthorized delete must not remove the lead');
+    });
+
+    it('still deletes an ordinary deal-less lost/manual lead', async () => {
+      const lead = await mkLead({ stage: 'negotiation' });
+      const lost = await move(agent, lead._id, 'lost', 'Buyer found another property within budget');
+      assert.equal(lost.status, 200);
+      const res = await del(admin, lead._id);
+      assert.equal(res.status, 200);
+      assert.equal(await Lead.findById(lead._id), null);
+    });
+  });
+
+  describe('frozen-lead visit sync guards', () => {
+    it('visit completion leaves a verification-closed lead entirely untouched', async () => {
+      const buyer = await mkBuyer();
+      const property = await mkProperty('sale', 'visit-frozen');
+      // Unassigned on purpose: exercises the agent-backfill path too.
+      const lead = await mkLead({ stage: 'negotiation', property: property._id, assignedAgent: null });
+      const filed = await request(api).post('/api/sales').set(auth(admin)).send({
+        leadId: String(lead._id),
+        buyer: { name: 'Verify Buyer' },
+        agreedPrice: 5000000,
+        paymentType: 'full_payment',
+      });
+      assert.equal(filed.status, 201);
+      const verified = await request(api).patch(`/api/sales/${filed.body.sale._id}/verify`).set(auth(admin)).send({});
+      assert.equal(verified.status, 200);
+      const before = await Lead.findById(lead._id).lean();
+      assert.equal(before.stage, 'closed');
+      assert.equal(before.closedBy, 'sale_verified');
+
+      // NOTE: 'cancelled' (not 'completed') is the path that reaches the
+      // sync block with the frozen lead still linked — completed/confirmed
+      // statuses first reroute convertedLead onto a fresh lead via
+      // ensureLeadFromVisit, so only non-converting statuses exercise this.
+      const visit = await mkLinkedVisit(property._id, buyer._id, lead._id);
+      const res = await request(api).patch(`/api/visits/${visit._id}`).set(auth(admin)).send({
+        status: 'cancelled',
+        assignedAgent: String(otherAgent._id),
+      });
+      assert.equal(res.status, 200);
+
+      const after = await Lead.findById(lead._id).lean();
+      assert.equal(after.stage, 'closed');
+      assert.equal(after.closedBy, 'sale_verified');
+      assert.equal(after.assignedAgent, null);
+      assert.equal(after.activities.length, before.activities.length);
+    });
+
+    it('visit completion still syncs a normal lead (stage + agent backfill)', async () => {
+      const buyer = await mkBuyer();
+      const property = await mkProperty('sale', 'visit-normal');
+      const lead = await mkLead({ stage: 'contacted', property: property._id, assignedAgent: null });
+      const visit = await mkLinkedVisit(property._id, buyer._id, lead._id);
+      const res = await request(api).patch(`/api/visits/${visit._id}`).set(auth(admin)).send({
+        status: 'completed',
+        assignedAgent: String(otherAgent._id),
+      });
+      assert.equal(res.status, 200);
+
+      const after = await Lead.findById(lead._id).lean();
+      assert.equal(after.stage, 'negotiation');
+      assert.equal(String(after.assignedAgent), String(otherAgent._id));
+      assert.ok(after.activities.length > 0);
+    });
+
+    it('visit status change leaves a pending-verification lead untouched', async () => {
+      const buyer = await mkBuyer();
+      const property = await mkProperty('sale', 'visit-pending-sync');
+      const lead = await mkLead({ stage: 'negotiation', property: property._id, assignedAgent: null });
+      const filed = await request(api).post('/api/sales').set(auth(admin)).send({
+        leadId: String(lead._id),
+        buyer: { name: 'Verify Buyer' },
+        agreedPrice: 5000000,
+        paymentType: 'full_payment',
+      });
+      assert.equal(filed.status, 201);
+      const before = await Lead.findById(lead._id).lean();
+      assert.equal(before.stage, 'pending_verification');
+
+      const visit = await mkLinkedVisit(property._id, buyer._id, lead._id);
+      const res = await request(api).patch(`/api/visits/${visit._id}`).set(auth(admin)).send({
+        status: 'cancelled',
+        assignedAgent: String(otherAgent._id),
+      });
+      assert.equal(res.status, 200);
+
+      const after = await Lead.findById(lead._id).lean();
+      assert.equal(after.stage, 'pending_verification');
+      assert.equal(after.assignedAgent, null);
+      assert.equal(after.activities.length, before.activities.length);
+    });
+
+    it('visit status change leaves a rental-verified closed lead untouched', async () => {
+      const buyer = await mkBuyer();
+      const property = await mkProperty('rent', 'visit-rental-closed');
+      const lead = await mkLead({ stage: 'negotiation', property: property._id, assignedAgent: null });
+      const filed = await request(api).post('/api/rentals').set(auth(admin)).send({
+        leadId: String(lead._id),
+        tenant: { name: 'Verify Tenant' },
+        monthlyRent: 30000,
+        startDate: new Date().toISOString(),
+      });
+      assert.equal(filed.status, 201);
+      const verified = await request(api).patch(`/api/rentals/${filed.body.rental._id}/verify`).set(auth(admin)).send({ commissionAmount: 30000 });
+      assert.equal(verified.status, 200);
+      const before = await Lead.findById(lead._id).lean();
+      assert.equal(before.stage, 'closed');
+      assert.equal(before.closedBy, 'rental_verified');
+
+      const visit = await mkLinkedVisit(property._id, buyer._id, lead._id);
+      const res = await request(api).patch(`/api/visits/${visit._id}`).set(auth(admin)).send({
+        status: 'cancelled',
+        assignedAgent: String(otherAgent._id),
+      });
+      assert.equal(res.status, 200);
+
+      const after = await Lead.findById(lead._id).lean();
+      assert.equal(after.stage, 'closed');
+      assert.equal(after.closedBy, 'rental_verified');
+      assert.equal(after.assignedAgent, null);
+      assert.equal(after.activities.length, before.activities.length);
+    });
+  });
+
+  describe('frozen-lead visit request guards', () => {
+    const requestVisit = (buyer, propertyId, leadId) =>
+      request(api).post('/api/visits').set(auth(buyer)).send({
+        property: String(propertyId),
+        requestedSlot: new Date(Date.now() + 86400000).toISOString(),
+        leadId: String(leadId),
+      });
+
+    it('visit request on a pending-verification lead creates the visit but leaves the lead untouched', async () => {
+      const buyer = await mkBuyer();
+      const property = await mkProperty('sale', 'visit-req-frozen');
+      const lead = await mkLead({ stage: 'negotiation', property: property._id, user: buyer._id });
+      const filed = await request(api).post('/api/sales').set(auth(agent)).send({
+        leadId: String(lead._id),
+        buyer: { name: 'Verify Buyer' },
+        agreedPrice: 5000000,
+        paymentType: 'full_payment',
+      });
+      assert.equal(filed.status, 201);
+      const before = await Lead.findById(lead._id).lean();
+      assert.equal(before.stage, 'pending_verification');
+
+      const res = await requestVisit(buyer, property._id, lead._id);
+      assert.equal(res.status, 201);
+
+      const after = await Lead.findById(lead._id).lean();
+      assert.equal(after.stage, 'pending_verification');
+      assert.equal(after.visit, null);
+      assert.equal(after.activities.length, before.activities.length);
+    });
+
+    it('visit request on a normal lead still links visit + activity', async () => {
+      const buyer = await mkBuyer();
+      const property = await mkProperty('sale', 'visit-req-normal');
+      const lead = await mkLead({ stage: 'negotiation', property: property._id, user: buyer._id });
+      const beforeCount = (await Lead.findById(lead._id).lean()).activities.length;
+
+      const res = await requestVisit(buyer, property._id, lead._id);
+      assert.equal(res.status, 201);
+
+      const after = await Lead.findById(lead._id).lean();
+      assert.equal(String(after.visit), String(res.body.visit._id));
+      assert.ok(after.activities.length > beforeCount);
+    });
   });
 });
