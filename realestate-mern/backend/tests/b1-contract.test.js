@@ -91,7 +91,27 @@ describe('B1.5 updateVisit sanitizer', () => {
   });
 });
 
-describe('B1.6 property detail contact gate', () => {
+describe('B1.6b property video link admin gate', () => {
+  it('create forces empty video for non-admins, validates admin input', () => {
+    const src = read('controllers/propertyController.js');
+    assert.match(src, /parseVideoLink/);
+    assert.match(src, /Video tour links are admin-only/);
+    assert.match(src, /Video link must be empty or a valid https:\/\/ URL\./);
+  });
+  it('update preserves current video for non-admins', () => {
+    const src = read('controllers/propertyController.js');
+    assert.match(src, /let video = currentMedia\.video/);
+  });
+  it('detail page renders a single video tour button (no standalone section)', () => {
+    const page = read('../frontend/src/pages/public/PropertyDetail.jsx');
+    const occurrences = page.match(/Watch video tour/g) || [];
+    assert.equal(occurrences.length, 1, `expected 1 video button, found ${occurrences.length}`);
+    assert.ok(!/>Video Tour</.test(page), 'standalone Video Tour section remains');
+  });
+  it('add/edit form hides the video field from non-admins', () => {
+    const page = read('../frontend/src/pages/admin/AddEditProperty.jsx');
+    assert.match(page, /\{user\?\.role === 'admin' && \(/);
+  });
   it('poster identity/contact gated to admin, owner or agent with an open lead', () => {
     const src = read('controllers/propertyController.js');
     assert.match(src, /applyPosterVisibility/);

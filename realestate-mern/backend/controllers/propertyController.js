@@ -60,6 +60,15 @@ const parseCommissionPercentage = (raw) => {
   return { ok: true, present: true, value: pct };
 };
 
+// Video tour link: admin-only, empty or a valid https:// URL. Non-admin
+// submissions never reach this (create forces '', update keeps current).
+const parseVideoLink = (raw) => {
+  if (raw === undefined || raw === null || String(raw).trim() === '') return { ok: true, value: '' };
+  const url = String(raw).trim();
+  if (!/^https:\/\/.+\..+/.test(url)) return { ok: false };
+  return { ok: true, value: url };
+};
+
 // Agents/admins get the effective commission figure attached; everyone else
 // gets the raw commission fields stripped entirely (closes a prior exposure
 // where `propertyType.defaultCommissionPercentage` leaked to anonymous
@@ -361,9 +370,21 @@ const coverImage = direct
     return res.status(400).json({ success: false, message: validationErrors[0], errors: validationErrors });
   }
 
+  // Video tour links are admin-only: any user/agent-submitted value is
+  // dropped (existing links are grandfathered, never backfilled).
+  let video = '';
+  if (req.user.role === 'admin') {
+    const parsed = parseVideoLink(body.video);
+    if (!parsed.ok) {
+      return res.status(400).json({ success: false, message: 'Video link must be empty or a valid https:// URL.' });
+    }
+    video = parsed.value;
+  }
+
+
   const property = await Property.create({
     ...body,
-    media: { coverImage, images, video: body.video || '' },
+    media: { coverImage, images, video },
     listedBy: req.user._id,
   });
 
@@ -504,10 +525,21 @@ const updateProperty = asyncHandler(async (req, res) => {
     ? direct.coverUrl || currentMedia.coverImage
     : files.coverImage ? files.coverImage[0].path : currentMedia.coverImage;
 
+  // Video tour links are admin-only: non-admin submissions keep the current
+  // value (they can neither set nor clear it); admin values are validated.
+  let video = currentMedia.video;
+  if (req.user.role === 'admin' && body.video !== undefined) {
+    const parsed = parseVideoLink(body.video);
+    if (!parsed.ok) {
+      return res.status(400).json({ success: false, message: 'Video link must be empty or a valid https:// URL.' });
+    }
+    video = parsed.value;
+  }
+
   body.media = {
     coverImage: newCoverImage || finalImages[0] || '',
     images: finalImages,
-    video: body.video !== undefined ? body.video : currentMedia.video,
+    video,
   };
   delete body.existingImages;
 

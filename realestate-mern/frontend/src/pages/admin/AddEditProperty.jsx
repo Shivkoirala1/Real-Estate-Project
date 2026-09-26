@@ -612,7 +612,7 @@ const AddEditProperty = () => {
             propertyType: form.propertyType,
             location,
             details: form.details,
-            video: form.video,
+            ...(user?.role === 'admin' ? { video: form.video } : {}),
           },
           services: mgmtServices,
           ...(mgmtNote.trim() ? { note: mgmtNote.trim() } : {}),
@@ -652,7 +652,7 @@ const AddEditProperty = () => {
           currency: 'NPR',
           negotiable: form.negotiable,
           commissionPercentage: form.commissionPercentage === '' ? null : form.commissionPercentage,
-          video: form.video,
+          ...(user?.role === 'admin' ? { video: form.video } : {}),
           location,
           details: form.details,
           existingImages,
@@ -682,7 +682,7 @@ const AddEditProperty = () => {
       // 'null' (the literal string) tells the backend to clear any override
       // and inherit the property type's default commission.
       fd.append('commissionPercentage', form.commissionPercentage === '' ? 'null' : form.commissionPercentage);
-      fd.append('video', form.video);
+      if (user?.role === 'admin') fd.append('video', form.video);
 
       // Province + district are required (validated above); everything
       // below is optional detail sent as-is. An unset map pin is omitted.
@@ -1366,11 +1366,15 @@ const AddEditProperty = () => {
             />
           )}
 
-          <div>
-            <label className="label-field">Video Link (optional)</label>
-            <input className="input-field" placeholder="https://youtube.com/... or other video link" value={form.video} onChange={(e) => updateField('video', e.target.value)} />
-            <p className="text-xs text-slate-muted mt-1">Paste a link to a video hosted elsewhere (e.g. YouTube) - video files can't be uploaded directly, only photos.</p>
-          </div>
+          {/* Video tour links are admin-only (enforced server-side too):
+              owners/agents never see this field and their submissions omit it. */}
+          {user?.role === 'admin' && (
+            <div>
+              <label className="label-field">Video Link (optional)</label>
+              <input className="input-field" placeholder="https://youtube.com/... or other video link" value={form.video} onChange={(e) => updateField('video', e.target.value)} />
+              <p className="text-xs text-slate-muted mt-1">Paste a link to a video hosted elsewhere (e.g. YouTube) - video files can't be uploaded directly, only photos.</p>
+            </div>
+          )}
         </section>
 
         {/* Management wizard steps: services + note + review. Create-mode,

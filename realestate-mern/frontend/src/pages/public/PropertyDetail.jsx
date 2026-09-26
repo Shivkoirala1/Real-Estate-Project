@@ -543,22 +543,6 @@ const PropertyDetail = () => {
             ))}
           </div>
 
-          {property.media?.video && (
-            <>
-              <h2 className="text-xl mb-4">Video Tour</h2>
-              <div className="mb-10">
-                <a
-                  href={property.media.video}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-secondary inline-flex text-sm"
-                >
-                  Watch video tour ↗
-                </a>
-              </div>
-            </>
-          )}
-
           <h2 className="text-xl mb-4">Location</h2>
           <div className="mb-10">
             <p className="text-sm text-slate-ink mb-3">
