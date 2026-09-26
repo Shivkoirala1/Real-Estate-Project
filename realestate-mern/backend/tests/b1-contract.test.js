@@ -92,12 +92,13 @@ describe('B1.5 updateVisit sanitizer', () => {
 });
 
 describe('B1.6 property detail contact gate', () => {
-  it('anon gets identity-only listedBy select, authed keeps contact', () => {
+  it('poster identity/contact gated to admin, owner or agent with an open lead', () => {
     const src = read('controllers/propertyController.js');
-    assert.match(src, /const listedBySelect = req\.user/);
-    assert.match(src, /'name selfiePhoto verificationStatus createdAt'/);
-    assert.match(src, /'name email phone selfiePhoto verificationStatus createdAt'/);
-    assert.match(src, /\.populate\('listedBy', listedBySelect\)/);
+    assert.match(src, /applyPosterVisibility/);
+    assert.match(src, /viewer\.role === 'admin'/);
+    assert.match(src, /stage: \{ \$nin: \['closed', 'lost'\] \}/);
+    assert.match(src, /plain\.listedBy = null/);
+    assert.match(src, /\.populate\('listedBy', 'name email phone selfiePhoto verificationStatus createdAt'\)/);
   });
 });
 

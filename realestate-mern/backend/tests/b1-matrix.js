@@ -205,13 +205,18 @@ async function main() {
   const mv = (r.json.visits || [])[0];
   check('my-visits buyer has no internalNotes', r.status === 200 && mv && !('internalNotes' in mv), `status=${r.status} keys=${keys(mv)}`);
 
-  // ---- property detail gate ----
+  // ---- property detail poster gate (admin / owner / open-lead agent only) ----
   r = await req('GET', `/properties/${f.property._id}`, null);
   check('property anon 200', r.status === 200, `status=${r.status}`);
-  check('property anon no phone/email', r.json.property && !('phone' in (r.json.property.listedBy || {})) && !('email' in (r.json.property.listedBy || {})), keys(r.json.property?.listedBy).join(','));
-  check('property anon keeps identity', ['name', 'selfiePhoto', 'verificationStatus', 'createdAt'].every((k) => k in (r.json.property?.listedBy || {})), keys(r.json.property?.listedBy).join(','));
+  check('property anon hides poster', r.json.property && r.json.property.listedBy == null, JSON.stringify(r.json.property?.listedBy)?.slice(0, 100));
   r = await req('GET', `/properties/${f.property._id}`, tBuyer);
-  check('property authed buyer sees contact', r.status === 200 && 'phone' in (r.json.property?.listedBy || {}) && 'email' in (r.json.property?.listedBy || {}), keys(r.json.property?.listedBy).join(','));
+  check('property buyer hides poster', r.status === 200 && r.json.property.listedBy == null, JSON.stringify(r.json.property?.listedBy)?.slice(0, 100));
+  r = await req('GET', `/properties/${f.property._id}`, tAdmin);
+  check('property admin sees poster contact', r.status === 200 && 'phone' in (r.json.property?.listedBy || {}) && 'email' in (r.json.property?.listedBy || {}), keys(r.json.property?.listedBy).join(','));
+  r = await req('GET', `/properties/${f.property._id}`, tFiling);
+  check('property owner sees poster contact', r.status === 200 && 'phone' in (r.json.property?.listedBy || {}), keys(r.json.property?.listedBy).join(','));
+  r = await req('GET', `/properties/${f.property._id}`, tLead);
+  check('property open-lead agent sees poster contact', r.status === 200 && 'phone' in (r.json.property?.listedBy || {}) && 'email' in (r.json.property?.listedBy || {}), keys(r.json.property?.listedBy).join(','));
 
   await runB2({ tAdmin, tFiling, tLead, tBuyer, f });
   await runB3({ tAdmin, tFiling, tLead, tBuyer, f });

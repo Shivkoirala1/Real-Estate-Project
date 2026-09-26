@@ -147,6 +147,8 @@ const leadSchema = new mongoose.Schema(
 
 // ---------- Indexes for the hot queries ----------
 leadSchema.index({ stage: 1, assignedAgent: 1 });
+// Poster-contact gate on property detail: agent's open lead on a property.
+leadSchema.index({ property: 1, assignedAgent: 1, stage: 1 });
 leadSchema.index({ assignedAgent: 1, updatedAt: -1 });
 leadSchema.index({ source: 1, createdAt: -1 });
 leadSchema.index({ createdAt: -1 });

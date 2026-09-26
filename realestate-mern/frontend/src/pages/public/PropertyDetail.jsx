@@ -589,66 +589,83 @@ const PropertyDetail = () => {
           </div>
         </div>
 
-        {/* Sidebar: contact + agent */}
+        {/* Sidebar: contact + agent. When the poster is gated (listedBy
+            redacted server-side), show a neutral privacy notice instead of
+            the identity block - never a fallback name/initial that would
+            imply who listed the property. */}
         <div className="bg-white border border-navy/10 rounded-sm p-6 shadow-card sticky top-24">
           <p className="eyebrow mb-3">Listed by</p>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-14 h-14 rounded-full bg-brass text-navy flex items-center justify-center font-display text-xl overflow-hidden flex-shrink-0">
-              {property.listedBy?.selfiePhoto ? (
-                <img
-                  src={property.listedBy.selfiePhoto}
-                  alt={property.listedBy.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                property.listedBy?.name?.charAt(0).toUpperCase() || "A"
-              )}
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="font-display text-lg text-navy leading-tight">
-                  {property.listedBy?.name || "Youth Real Estate"}
+          {property.listedBy ? (
+            <>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-14 h-14 rounded-full bg-brass text-navy flex items-center justify-center font-display text-xl overflow-hidden flex-shrink-0">
+                  {property.listedBy.selfiePhoto ? (
+                    <img
+                      src={property.listedBy.selfiePhoto}
+                      alt={property.listedBy.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    property.listedBy.name?.charAt(0).toUpperCase() || "A"
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <p className="font-display text-lg text-navy leading-tight">
+                      {property.listedBy.name || "Youth Real Estate"}
+                    </p>
+                    {property.listedBy.verificationStatus === "verified" && (
+                      <span title="Identity verified" className="text-sage text-sm">
+                        ✓
+                      </span>
+                    )}
+                  </div>
+                  {property.listedBy.createdAt && (
+                    <p className="text-xs text-slate-muted">
+                      Member since{" "}
+                      {new Date(property.listedBy.createdAt).toLocaleDateString(
+                        "en-US",
+                        { month: "short", year: "numeric" },
+                      )}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-parchment rounded-sm px-4 py-3 mb-6">
+                <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">
+                  Contact Number
                 </p>
-                {property.listedBy?.verificationStatus === "verified" && (
-                  <span title="Identity verified" className="text-sage text-sm">
-                    ✓
-                  </span>
+                {property.listedBy.phone ? (
+                  <a
+                    href={`tel:${property.listedBy.phone}`}
+                    className="font-semibold text-navy hover:text-brass transition-colors"
+                  >
+                    {property.listedBy.phone}
+                  </a>
+                ) : (
+                  <p className="text-sm text-slate-muted">
+                    Not provided — use the form below
+                  </p>
+                )}
+                {property.listedBy.email && (
+                  <p className="text-sm text-slate-muted mt-1">
+                    {property.listedBy.email}
+                  </p>
                 )}
               </div>
-              {property.listedBy?.createdAt && (
-                <p className="text-xs text-slate-muted">
-                  Member since{" "}
-                  {new Date(property.listedBy.createdAt).toLocaleDateString(
-                    "en-US",
-                    { month: "short", year: "numeric" },
-                  )}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-parchment rounded-sm px-4 py-3 mb-6">
-            <p className="text-xs uppercase tracking-wide text-slate-muted mb-1">
-              Contact Number
-            </p>
-            {property.listedBy?.phone ? (
-              <a
-                href={`tel:${property.listedBy.phone}`}
-                className="font-semibold text-navy hover:text-brass transition-colors"
-              >
-                {property.listedBy.phone}
-              </a>
-            ) : (
+            </>
+          ) : (
+            <div className="bg-parchment rounded-sm px-4 py-4 mb-6">
+              <p className="text-sm font-medium text-navy mb-1">
+                Contact details are private
+              </p>
               <p className="text-sm text-slate-muted">
-                Not provided — use the form below
+                The lister has chosen to keep their identity private. Send an
+                inquiry or request a visit below and they will respond.
               </p>
-            )}
-            {property.listedBy?.email && (
-              <p className="text-sm text-slate-muted mt-1">
-                {property.listedBy.email}
-              </p>
-            )}
-          </div>
+            </div>
+          )}
 
           {isOwnListing ? (
             <div className="bg-parchment/60 border border-dashed border-navy/20 rounded-sm px-4 py-4 text-sm text-slate-muted">

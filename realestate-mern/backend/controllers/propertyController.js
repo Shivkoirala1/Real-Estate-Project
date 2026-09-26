@@ -1,5 +1,6 @@
 const Property = require('../models/Property');
 const Rental = require('../models/Rental');
+const Lead = require('../models/Lead');
 const User = require('../models/User');
 const { PropertyType } = require('../models/Category');
 const asyncHandler = require('../utils/asyncHandler');
@@ -76,6 +77,35 @@ const applyCommissionVisibility = (propertyDoc, viewerRole) => {
     if (plain.propertyType && typeof plain.propertyType === 'object') {
       delete plain.propertyType.defaultCommissionPercentage;
     }
+  }
+  return plain;
+};
+
+// Poster identity/contact gate for property detail. Full `listedBy`
+// (name/email/phone/avatar/status/since) survives only for: admins, the
+// owner, or an agent holding an open lead on this property (assigned to
+// them, stage not closed/lost). Everyone else gets `listedBy: null` and the
+// detail UI falls back to the generic agency label + inquiry/visit forms.
+// Same populate-then-strip pattern as applyCommissionVisibility above, so
+// card/list projections and edit/CTA consumers (which ignore `listedBy`)
+// are unaffected.
+const applyPosterVisibility = async (propertyDoc, viewer) => {
+  const plain = propertyDoc.toObject ? propertyDoc.toObject() : propertyDoc;
+  const listedById = plain.listedBy?._id || plain.listedBy || null;
+
+  const canSeePoster =
+    !!viewer &&
+    (viewer.role === 'admin' ||
+      (listedById && String(listedById) === String(viewer._id)) ||
+      (viewer.role === 'agent' &&
+        (await Lead.exists({
+          property: plain._id,
+          assignedAgent: viewer._id,
+          stage: { $nin: ['closed', 'lost'] },
+        }))));
+
+  if (!canSeePoster) {
+    plain.listedBy = null;
   }
   return plain;
 };
@@ -194,15 +224,12 @@ const getProperty = asyncHandler(async (req, res) => {
   const isObjectId = id.match(/^[0-9a-fA-F]{24}$/);
 
   const query = isObjectId ? { _id: id } : { slug: id };
-  // Contact info (phone/email) is disclosed to authenticated callers only.
-  // Anonymous viewers get identity fields; the detail UI falls back to
-  // "Not provided — use the form below" (B1 approved default).
-  const listedBySelect = req.user
-    ? 'name email phone selfiePhoto verificationStatus createdAt'
-    : 'name selfiePhoto verificationStatus createdAt';
+  // Poster identity/contact is gated per-viewer (admin, owner, or agent
+  // with an open lead on this property). Populate the full contact set,
+  // then strip for ineligible viewers via applyPosterVisibility below.
   const property = await Property.findOne(query)
     .populate('propertyType', 'name category defaultCommissionPercentage')
-    .populate('listedBy', listedBySelect);
+    .populate('listedBy', 'name email phone selfiePhoto verificationStatus createdAt');
 
   if (!property) {
     return res.status(404).json({ success: false, message: 'Property not found' });
@@ -232,9 +259,10 @@ const getProperty = asyncHandler(async (req, res) => {
     .limit(4)
     .select('title price media.coverImage location status slug');
 
+  const gated = await applyPosterVisibility(property, req.user);
   res.json({
     success: true,
-    property: applyCommissionVisibility(property, req.user?.role),
+    property: applyCommissionVisibility(gated, req.user?.role),
     similarProperties,
   });
 });
