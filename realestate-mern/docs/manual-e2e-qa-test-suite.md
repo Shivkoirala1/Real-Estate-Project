@@ -1230,11 +1230,12 @@ Prerequisite for all RT tests: login establishes socket (WS 101 to Render); logo
 **Test Name:** Admin creates EMI plan for verified EMI sale
 **Priority:** P0
 **Preconditions:** Admin; verified sale with `paymentType=emi` and registered buyer; no existing plan for sale.
-**Test Data:** principal, tenure, installment, start date.
+**Test Data:** principal, tenure, installment, start date, service charge.
 **Steps:**
-1. Open EMI Plans → create for eligible sale.
-2. Open plan detail; refresh.
-**Expected Result:** Plan created with flat installment schedule; buyer/agent notified appropriately; persists.
+1. File the EMI sale with a down-payment **percent** (10–60%, e.g. 20% shows "20% — NPR 1,000,000 of NPR 5,000,000"); verify the stored down amount + percent.
+2. Open EMI Plans → create for eligible sale; enter an optional service charge and confirm the live breakdown (agreed − down + charge = principal).
+3. Open plan detail; refresh.
+**Expected Result:** Down percent stored with the derived amount; plan created with flat installment schedule summing to the charge-inclusive principal; service charge shown frozen on detail; buyer/agent notified appropriately; persists.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
@@ -1272,6 +1273,18 @@ Prerequisite for all RT tests: login establishes socket (WS 101 to Render); logo
 1. Reject with note.
 2. Try to set plan `completed` while installments unpaid.
 **Expected Result:** Rejection returns to `pending` + note; premature `completed` blocked.
+
+### EMI-005
+**Test Name:** Down-percent boundaries, charge immutability, agent restricted visibility
+**Priority:** P1
+**Preconditions:** Admin + agent sessions; negotiable lead on a sale property.
+**Steps:**
+1. File EMI sales with 9.99%, 10%, 60%, 60.01% and 100% down (expect 400 except 10%/60%); file with no percent and with a directly supplied NPR amount (both expect 400 — percent 10–60% is the only accepted input).
+2. Init a plan with a service charge; try editing the charge afterwards (expect 400).
+3. As the assigned agent open the plan: statuses visible, no amounts (no principal/installment/paid/outstanding/service-charge, no down breakdown); schedule still tracked.
+4. As admin open the same plan: full breakdown visible (agreed, percent, down amount, charge, principal).
+5. Overdue reminders (cron 08:00, verify via bell/history, not in-session): with a pending installment 1–7 days past due, buyer + assigned agent + every admin each receive one `emi_installment_overdue` notice per day (admin copy carries the amount and links the admin plan page; agent copy carries no amount). On exactly day 7, admins get one extra `FINAL:` escalation requiring action. Past day 7 the job goes silent for that installment. Pre-due (≤3 days) stays buyer + agent only.
+**Expected Result:** Boundaries enforced (10–60 inclusive); charge frozen post-init; agent sees payment-status tracking only; admin sees full financials; buyer schedule unchanged; overdue fan-out reaches all three parties once daily.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
@@ -2080,7 +2093,7 @@ Run on every release. All P0 plus:
 | Realtime connect/unread/status/multi-tab/reconnect/fallback | RT-001…RT-007 | Yes |
 | Uploads property/KYC/blog/EMI-slip/video-URL/edit | UPLOAD-001…UPLOAD-007 | Yes |
 | Sales/rentals file/verify/reject/negatives | DEAL-001…DEAL-005 | Yes |
-| EMI plans/installments/verification | EMI-001…EMI-004 | Yes |
+| EMI plans/installments/verification | EMI-001…EMI-005 | Yes |
 | Commissions/review/contact/management-requests/services | COMM-001…MGMT-003 | Yes |
 | Admin users/agents/categories/blogs/archives/analytics/site-settings | ADMIN-001…ADMIN-008, MISC-001 | Yes |
 | Hero slides manage/publish/schedule/order/carousel/CTA/fallback | HERO-001…HERO-014 | Yes |
@@ -2163,7 +2176,7 @@ Final QA notes:
 - Phone OTP (`send-phone-otp`/`verify-phone`) exists in API but no dedicated UI flow was found; SMS is stubbed. Mark phone-verification UI as NOT TESTED if absent, and note as limitation.
 - Email/SMS delivery depends on Brevo/stub config; code expiry is 15 min per code — expired-code test needs waiting or backend assistance.
 - JWT expiry (`JWT_EXPIRE 7d`) cannot be waited out manually; SESS-002 uses token tampering instead.
-- Cron jobs (EMI reminders 08:00, lead follow-up 09:00, archival Sunday 02:00, retention 03:00) and 30/90/365-day retention/archival rules cannot be verified within a session; verify via job history screens only.
+- Cron jobs (EMI reminders 08:00 — pre-due ≤3 days buyer+agent; overdue days 1–7 buyer+agent+all-admins daily, day-7 FINAL admin escalation, silent after — lead follow-up 09:00, archival Sunday 02:00, retention 03:00) and 30/90/365-day retention/archival rules cannot be verified within a session; verify via job history screens only.
 - Reward XP/levels ledger is background-applied; verify wallet changes opportunistically, not as strict asserts.
 - Exact commission percentages fall back `property → property-type default → 0`; QA should assert visibility gating (agents/admins see, others stripped) rather than exact arithmetic.
 - `ManageBlogs` uses native `window.confirm` while all other deletes use the app Confirm dialog — note inconsistency, not failure.
