@@ -120,8 +120,9 @@ Notes: `isActive=false` blocks login and socket for any role. `isEmailVerified=f
 1. Open `/register`.
 2. Complete step 1 (name, email, phone, password + confirm, optional referral code).
 3. Complete step 2 (capture selfie via camera, upload citizenship front + back).
-4. Submit.
-**Expected Result:** Success message; redirected to `/verify-email`; no auto-login (login blocked until email verified).
+4. Confirm the Account Registration Terms & Conditions box shows all 11 clauses; try submitting unticked (expect block with a terms error).
+5. Tick the confirmation ("मैले ... स्वीकार गर्दछु") and submit.
+**Expected Result:** Unticked submit blocked; ticked submit succeeds with success message; redirected to `/verify-email`; no auto-login (login blocked until email verified).
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
@@ -414,7 +415,7 @@ Notes: `isActive=false` blocks login and socket for any role. `isEmailVerified=f
 2. Fill all required fields, pick map location, upload cover + images.
 3. Submit.
 4. Open property detail and list; refresh and re-check.
-**Expected Result:** Creation succeeds; detail shows all data + gallery + map; listing includes new property; persists after refresh.
+**Expected Result:** Creation succeeds; detail shows all data + gallery + map; listing includes new property; persists after refresh. No video-link field is shown to non-admin creators; a video URL smuggled into the request is dropped (detail shows no video button). The Terms & Policies checkbox is required: submit is blocked until ticked (create only), the link opens `/terms`, and the API rejects unticked creates.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
@@ -508,7 +509,7 @@ Notes: `isActive=false` blocks login and socket for any role. `isEmailVerified=f
 2. Click gallery prev/next; check map; scroll to similar properties.
 3. Reopen as buyer, as an agent with no lead on the property, and as an agent whose only lead is `closed`/`lost`: poster identity/contact must stay hidden (generic agency label, "use the form below").
 4. Reopen as admin, as the owner, and as the agent holding an open (not closed/lost) lead: poster name/avatar/phone/email visible.
-**Expected Result:** Gallery navigates; map renders; up to 4 similar shown; poster identity/contact visible only to admin, owner, or open-lead agent — hidden viewers see a neutral "Contact details are private" notice with no name, avatar initial, phone, or email.
+**Expected Result:** Gallery navigates; map renders; up to 4 similar shown; poster identity/contact visible only to admin, owner, or open-lead agent — hidden viewers see a neutral "Contact details are private" notice with no name, avatar initial, phone, or email. Listings with an admin-set video show exactly one "Watch video tour" button in the header action row; no standalone Video Tour section exists. As admin, setting/clearing the video link (and rejecting a non-https URL) reflects on detail after refresh; as owner, the video field is absent from the edit form.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
@@ -1507,7 +1508,9 @@ Prerequisite for all RT tests: login establishes socket (WS 101 to Render); logo
 2. As logged-out visitor refresh: footer Contact column, "Visit Us" map pin and social icons reflect the new values.
 3. Clear one social URL; save; refresh as visitor.
 4. Try saving an invalid email, out-of-range coords, and a non-https social URL (expect rejection with a clear error; old values kept).
-**Expected Result:** Valid saves persist and propagate to footer/map/social rail (floating + footer) after refresh; emptied social hides its icon everywhere; invalid inputs rejected without changing stored values.
+5. Paste listing Terms & Policies text; save; open `/terms` as visitor and confirm the text renders.
+6. Clear the policies text; save; try creating a listing (expect a "terms not published" block); re-paste and create with the agreement ticked.
+**Expected Result:** Valid saves persist and propagate to footer/map/social rail (floating + footer) after refresh; emptied social hides its icon everywhere; invalid inputs rejected without changing stored values; `/terms` shows published text; creates require published terms plus the creator's agreement tick.
 **Actual Result:** _
 **Status:** PASS / FAIL / BLOCKED / NOT TESTED
 **Evidence:** _
