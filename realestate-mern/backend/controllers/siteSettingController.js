@@ -65,6 +65,14 @@ const updateSiteSettings = asyncHandler(async (req, res) => {
     }
   }
 
+  // Listing terms & policies text (plain text, rendered whitespace-preserved).
+  const { policies } = req.body || {};
+  if (policies !== undefined) {
+    if (typeof policies !== 'string' || policies.length > 50000) {
+      return res.status(400).json({ success: false, message: 'Policies must be text of at most 50000 characters.' });
+    }
+  }
+
   const doc = await getOrSeed();
   for (const key of ['address', 'phone', 'email']) {
     if (office[key] !== undefined) doc.office[key] = String(office[key]).trim();
@@ -77,9 +85,13 @@ const updateSiteSettings = asyncHandler(async (req, res) => {
   for (const key of SOCIAL_KEYS) {
     if (socials[key] !== undefined) doc.socials[key] = String(socials[key]).trim();
   }
+  if (policies !== undefined) {
+    doc.policies = policies;
+    doc.policiesUpdatedAt = new Date();
+  }
   await doc.save();
 
   res.json({ success: true, message: 'Site settings updated', settings: doc });
 });
 
-module.exports = { getSiteSettings, updateSiteSettings, DEFAULT_SETTINGS };
+module.exports = { getSiteSettings, updateSiteSettings, getOrSeedSiteSettings: getOrSeed, DEFAULT_SETTINGS };

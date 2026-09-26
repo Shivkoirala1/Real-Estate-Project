@@ -22,6 +22,7 @@ import VerifyEmail from "./pages/public/VerifyEmail";
 import ForgotPassword from "./pages/public/ForgotPassword";
 import ResetPassword from "./pages/public/ResetPassword";
 import About from "./pages/public/About";
+import Terms from "./pages/public/Terms";
 import LandConverter from "./pages/public/LandConverter";
 import BlogList from "./pages/public/BlogList";
 import BlogDetail from "./pages/public/BlogDetail";
@@ -90,6 +91,7 @@ function App() {
           <Route path="/properties" element={<PropertyListing />} />
           <Route path="/properties/:id" element={<PropertyDetail />} />
           <Route path="/about" element={<About />} />
+          <Route path="/terms" element={<Terms />} />
           <Route path="/blogs" element={<BlogList />} />
           <Route path="/blogs/:slug" element={<BlogDetail />} />
           <Route path="/innovations" element={<Innovations />} />

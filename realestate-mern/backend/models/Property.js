@@ -115,6 +115,9 @@ status: {
     shares: { type: Number, default: 0 },
 
     listedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    // When the creator accepted the published listing terms & policies
+    // (required on every create, all roles). Null = pre-policy listing.
+    termsAcceptedAt: { type: Date, default: null },
     soldTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     soldAt: { type: Date, default: null },
     // Current-occupancy snapshot for the rental flow (set on Rental

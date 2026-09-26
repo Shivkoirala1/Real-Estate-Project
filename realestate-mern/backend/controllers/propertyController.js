@@ -1,5 +1,6 @@
 const Property = require('../models/Property');
 const Rental = require('../models/Rental');
+const { getOrSeedSiteSettings } = require('./siteSettingController');
 const Lead = require('../models/Lead');
 const User = require('../models/User');
 const { PropertyType } = require('../models/Category');
@@ -314,6 +315,14 @@ const createProperty = asyncHandler(async (req, res) => {
   // On create, an untouched field simply means "no override" (null default).
   body.commissionPercentage = commission.value === undefined ? null : commission.value;
 
+  // Listing terms acceptance: required on every create, all roles.
+  // Multipart sends booleans as strings, so accept true/'true'.
+  const accepted = body.termsAccepted === true || body.termsAccepted === 'true';
+  if (!accepted) {
+    return res.status(400).json({ success: false, message: 'You must agree to the listing Terms and Policies to publish a property.' });
+  }
+  delete body.termsAccepted;
+
 const files = req.files || {};
 // Direct flow: media arrives as authorized uploadIds (no bytes through
 // Render). Legacy flow: multer already streamed req.files to Cloudinary.
@@ -381,11 +390,19 @@ const coverImage = direct
     video = parsed.value;
   }
 
+  // The published policy text must exist - agreeing to nothing is not
+  // acceptance. Admins publish it through Site Settings (auto-seeded with
+  // defaults on first read, so only an explicit blanking blocks creates).
+  const siteSettings = await getOrSeedSiteSettings();
+  if (!siteSettings?.policies?.trim()) {
+    return res.status(400).json({ success: false, message: 'Listing Terms and Policies are not published yet - please try again later.' });
+  }
 
   const property = await Property.create({
     ...body,
     media: { coverImage, images, video },
     listedBy: req.user._id,
+    termsAcceptedAt: new Date(),
   });
 
   if (direct && direct.uploads.length > 0) {

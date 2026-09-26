@@ -30,6 +30,7 @@ const emptyForm = () => ({
 const SiteSettings = () => {
   const { showToast } = useToast();
   const [form, setForm] = useState(emptyForm());
+  const [policies, setPolicies] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -51,6 +52,7 @@ const SiteSettings = () => {
           youtube: s.socials?.youtube || '',
           whatsapp: s.socials?.whatsapp || '',
         });
+        setPolicies(s.policies || '');
       })
       .catch((err) => showToast(err.response?.data?.message || 'Failed to load site settings', 'error'))
       .finally(() => {
@@ -83,9 +85,9 @@ const SiteSettings = () => {
           whatsapp: form.whatsapp.trim(),
         },
       };
-      await updateSiteSettings(payload);
+      await updateSiteSettings({ ...payload, policies });
       invalidateSiteSettings();
-      showToast('Site settings updated - footer, map and social links refreshed');
+      showToast('Site settings updated - footer, map, social links and listing terms refreshed');
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to save site settings', 'error');
     } finally {
@@ -150,6 +152,25 @@ const SiteSettings = () => {
             />
           </div>
         ))}
+      </div>
+
+      <div className="bg-white border border-navy/10 rounded-sm p-6 shadow-card max-w-2xl mb-6">
+        <h2 className="font-display text-lg text-navy mb-4">Listing Terms &amp; Policies</h2>
+        <label className="label-field" htmlFor="site-policies">
+          Policy text (every new listing requires the creator's agreement)
+        </label>
+        <textarea
+          id="site-policies"
+          rows={10}
+          className="input-field resize-y whitespace-pre-line"
+          value={policies}
+          onChange={(e) => setPolicies(e.target.value)}
+          placeholder="Paste the platform's listing terms and policies here..."
+          maxLength={50000}
+        />
+        <p className="text-xs text-slate-muted mt-2">
+          {policies.length.toLocaleString()} / 50,000 characters. While empty, new listings are blocked with a "terms not published" notice.
+        </p>
       </div>
 
       <button

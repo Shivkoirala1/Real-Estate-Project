@@ -3,6 +3,7 @@ const PropertyManagementRequest = require('../models/PropertyManagementRequest')
 const ManagementService = require('../models/ManagementService');
 const { seedDefaultsIfEmpty } = require('./managementServiceController');
 const Property = require('../models/Property');
+const { getOrSeedSiteSettings } = require('./siteSettingController');
 const { PropertyType } = require('../models/Category');
 const { validatePropertyInput } = require('../utils/validateProperty');
 const User = require('../models/User');
@@ -797,11 +798,25 @@ const createWithProperty = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: validationErrors[0], errors: validationErrors });
   }
 
+  // Listing terms acceptance (same gate as POST /properties): the wizard
+  // must not bypass it. The flag arrives nested in `property` (and top-level
+  // is accepted too). The published text must exist.
+  const flag = body.termsAccepted ?? propertyInput?.termsAccepted;
+  const accepted = flag === true || flag === 'true';
+  if (!accepted) {
+    return res.status(400).json({ success: false, message: 'You must agree to the listing Terms and Policies to publish a property.' });
+  }
+  delete body.termsAccepted;
+  const siteSettings = await getOrSeedSiteSettings();
+  if (!siteSettings?.policies?.trim()) {
+    return res.status(400).json({ success: false, message: 'Listing Terms and Policies are not published yet - please try again later.' });
+  }
+
   let created;
   try {
     created = await runWithTransaction(async (session) => {
       const [property] = await Property.create(
-        [{ ...body, price: body.price ?? null, currency: 'NPR' }],
+        [{ ...body, price: body.price ?? null, currency: 'NPR', termsAcceptedAt: new Date() }],
         opts(session)
       );
       // One live request per property - enforced here (pre-write) and by the

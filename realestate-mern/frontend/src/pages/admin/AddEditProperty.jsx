@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   getPropertyTypes,
 } from '../../services/categoryService';
@@ -135,6 +135,7 @@ const AddEditProperty = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
+  const [termsAccepted, setTermsAccepted] = useState(false);
   // Status of the loaded property when editing - used for the read-only
   // reserved/sold banner at the top of the page (sale verification owns
   // these statuses, so the banner explains why they can't be edited here).
@@ -585,6 +586,14 @@ const AddEditProperty = () => {
     }
     setFieldErrors({});
 
+    // Listing terms acceptance: required on every create (all sale types),
+    // never on edits. The API enforces the same rule server-side.
+    if (!isEdit && !termsAccepted) {
+      setError('Please agree to the listing Terms and Policies before submitting.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     // Management wizard: one user-facing operation — property + request are
     // created atomically server-side (POST /with-property).
     const isMgmtWizard = !isEdit && form.saleType === 'management';
@@ -613,6 +622,7 @@ const AddEditProperty = () => {
             location,
             details: form.details,
             ...(user?.role === 'admin' ? { video: form.video } : {}),
+            termsAccepted: true,
           },
           services: mgmtServices,
           ...(mgmtNote.trim() ? { note: mgmtNote.trim() } : {}),
@@ -653,6 +663,7 @@ const AddEditProperty = () => {
           negotiable: form.negotiable,
           commissionPercentage: form.commissionPercentage === '' ? null : form.commissionPercentage,
           ...(user?.role === 'admin' ? { video: form.video } : {}),
+          ...(!isEdit ? { termsAccepted: true } : {}),
           location,
           details: form.details,
           existingImages,
@@ -683,6 +694,7 @@ const AddEditProperty = () => {
       // and inherit the property type's default commission.
       fd.append('commissionPercentage', form.commissionPercentage === '' ? 'null' : form.commissionPercentage);
       if (user?.role === 'admin') fd.append('video', form.video);
+      if (!isEdit) fd.append('termsAccepted', 'true');
 
       // Province + district are required (validated above); everything
       // below is optional detail sent as-is. An unset map pin is omitted.
@@ -1435,6 +1447,25 @@ const AddEditProperty = () => {
               </dl>
             </section>
           </>
+        )}
+
+        {/* Listing terms acceptance: every create (all sale types incl. the
+            management wizard above); never on edits. Enforced server-side too. */}
+        {!isEdit && (
+          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              className="accent-brass mt-0.5"
+            />
+            <span className="text-slate-ink">
+              I agree to the listing{' '}
+              <Link to="/terms" target="_blank" rel="noopener noreferrer" className="text-brass hover:underline font-medium">
+                Terms and Policies
+              </Link>
+            </span>
+          </label>
         )}
 
         <button disabled={saving || (directMedia && mediaBusy)} type="submit" className="btn-primary px-8">

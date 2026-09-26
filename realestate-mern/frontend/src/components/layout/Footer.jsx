@@ -18,6 +18,7 @@ const navigateLinks = [
   { to: '/properties', label: 'Properties', icon: FiGrid },
   { to: '/land-converter', label: 'Land Converter', icon: FiRepeat },
   { to: '/about', label: 'About Us', icon: FiInfo },
+  { to: '/terms', label: 'Terms & Policies', icon: FiInfo },
 ];
 
 const Footer = () => {

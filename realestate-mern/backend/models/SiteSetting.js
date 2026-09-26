@@ -21,6 +21,10 @@ const siteSettingSchema = new mongoose.Schema(
       youtube: { type: String, default: '', trim: true },
       whatsapp: { type: String, default: '', trim: true },
     },
+    // Listing terms & policies text (admin-editable). Every new property
+    // listing requires the creator's acceptance of the published text.
+    policies: { type: String, default: '' },
+    policiesUpdatedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
