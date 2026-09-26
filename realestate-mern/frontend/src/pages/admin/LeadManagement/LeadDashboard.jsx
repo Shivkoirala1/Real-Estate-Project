@@ -93,12 +93,13 @@ const LeadDashboard = () => {
             onChange={(e) => setFilters({ stage: e.target.value || null })}
             className="input-field text-sm py-2 w-auto min-w-[140px]"
           >
-            <option value="">All stages</option>
+            <option value="">Open leads</option>
             {STAGES.map((s) => (
               <option key={s} value={s}>
                 {STAGE_META[s].label}
               </option>
             ))}
+            <option value="all">All incl. closed &amp; lost</option>
           </select>
 
           <select

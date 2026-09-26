@@ -141,12 +141,13 @@ const MyLeads = () => {
           onChange={(e) => setStageFilter(e.target.value)}
           className="input-field text-sm py-2 w-auto"
         >
-          <option value="">All stages</option>
+          <option value="">Open leads</option>
           {STAGES.map((s) => (
             <option key={s} value={s}>
               {STAGE_META[s].label}
             </option>
           ))}
+          <option value="all">All incl. closed &amp; lost</option>
         </select>
       </div>
 

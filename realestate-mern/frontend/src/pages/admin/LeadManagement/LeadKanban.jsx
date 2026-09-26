@@ -13,10 +13,15 @@ import { isLeadFrozenForManualMove } from '../../../utils/leadGuards';
 // `pending_verification` stays visible as a column (leads must not disappear)
 // but is never a drop target: the backend rejects every manual move into it
 // (filing flow only). Frozen (verification-closed) cards are not draggable.
+// Terminal stages (`closed`, `lost`) have no column: the default list query
+// excludes them, and they are reachable via the list view's explicit stage
+// filter instead.
+const BOARD_STAGES = STAGES.filter((s) => s !== 'closed' && s !== 'lost');
+
 const LeadKanban = ({ filters = {}, reloadKey = 0 }) => {
   const { showToast } = useToast();
   const [columns, setColumns] = useState(() =>
-    Object.fromEntries(STAGES.map((s) => [s, { leads: [], total: 0 }]))
+    Object.fromEntries(BOARD_STAGES.map((s) => [s, { leads: [], total: 0 }]))
   );
   const [loading, setLoading] = useState(true);
   const [draggingId, setDraggingId] = useState(null);
@@ -50,7 +55,7 @@ const LeadKanban = ({ filters = {}, reloadKey = 0 }) => {
       const counts = result.countsByStage || {};
 
       const next = {};
-      STAGES.forEach((stage) => {
+      BOARD_STAGES.forEach((stage) => {
         next[stage] = {
           leads: leads.filter((l) => l.stage === stage),
           total: counts[stage] ?? leads.filter((l) => l.stage === stage).length,
@@ -148,7 +153,7 @@ const LeadKanban = ({ filters = {}, reloadKey = 0 }) => {
         onSubmit={handleLostSubmit}
       />
       <div className="flex gap-4 min-w-max">
-        {STAGES.map((stage) => {
+        {BOARD_STAGES.map((stage) => {
           const meta = STAGE_META[stage];
           const isDragOver = dragOverStage === stage;
           // System-only stage: visible, never a drop target.

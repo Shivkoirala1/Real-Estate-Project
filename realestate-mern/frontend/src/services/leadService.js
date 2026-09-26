@@ -48,6 +48,9 @@ export const convertVisitToLead = async (visitId, leadData = {}) => {
  * params: { stage, category, assignedAgent, priority, source, search,
  *           nextFollowUp: 'overdue', includeCounts, page, limit, sort }
  * Admins see everything; agents are scoped to their own leads by the API.
+ * stage: a single stage, 'all' for every stage incl. closed & lost, or
+ * omitted for the default open-pipeline view (closed + lost hidden).
+ * countsByStage (with includeCounts) always covers every stage globally.
  */
 export const getLeads = async (params = {}) => {
   const { data } = await api.get('/leads', { params });
@@ -57,6 +60,8 @@ export const getLeads = async (params = {}) => {
 /**
  * List the current agent's leads.
  * GET /api/leads/my-leads
+ * params: { stage, priority, page, limit } - same stage semantics as
+ * getLeads: omitted hides closed + lost, 'all' returns every stage.
  */
 export const getMyLeads = async (params = {}) => {
   const { data } = await api.get('/leads/my-leads', { params });

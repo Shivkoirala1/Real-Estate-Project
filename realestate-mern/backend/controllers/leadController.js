@@ -30,13 +30,23 @@ const scopeQueryForRole = (query, user) => {
   return query;
 };
 
+// Terminal stages hidden from the default list. `stage=all` is the explicit
+// list-view escape hatch (returns every stage); any other explicit stage
+// filters to exactly that stage. Counts aggregations stay global on purpose.
+const TERMINAL_STAGES = ['closed', 'lost'];
+
 const buildLeadQuery = ({ stage, category, assignedAgent, priority, source, search, nextFollowUp }) => {
   const query = {};
 
-  if (stage) {
+  if (stage === 'all') {
+    // Explicit opt-out of the default exclusion - no stage constraint.
+  } else if (stage) {
     const normalized = Lead.normalizeStage(stage);
     if (!normalized) return { invalid: true };
     query.stage = normalized;
+  } else {
+    // Default list view: open pipeline only (closed + lost hidden).
+    query.stage = { $nin: TERMINAL_STAGES };
   }
   if (category) query.category = category;
   if (priority) query.priority = priority;
@@ -50,8 +60,11 @@ const buildLeadQuery = ({ stage, category, assignedAgent, priority, source, sear
   }
   if (nextFollowUp === 'overdue') {
     query.nextFollowUp = { $ne: null, $lt: new Date() };
-    // Frozen verification-stage leads are never workable follow-ups.
-    query.stage = query.stage || { $nin: ['closed', 'lost', 'pending_verification'] };
+    // Frozen verification-stage leads are never workable follow-ups - keep
+    // excluding them whenever the caller did not pin an explicit stage.
+    if (!stage || stage === 'all') {
+      query.stage = { $nin: [...TERMINAL_STAGES, 'pending_verification'] };
+    }
   }
   if (search) {
     query.$or = [
@@ -306,12 +319,17 @@ const getMyLeads = asyncHandler(async (req, res) => {
   const { stage, priority, page = 1, limit = 10 } = req.query;
 
   const query = { assignedAgent: req.user._id };
-  if (stage) {
+  if (stage === 'all') {
+    // Explicit opt-out of the default exclusion - no stage constraint.
+  } else if (stage) {
     const normalized = Lead.normalizeStage(stage);
     if (!normalized) {
       return res.status(400).json({ success: false, message: 'Invalid stage' });
     }
     query.stage = normalized;
+  } else {
+    // Default list view: open pipeline only (closed + lost hidden).
+    query.stage = { $nin: TERMINAL_STAGES };
   }
   if (priority) query.priority = priority;
 
