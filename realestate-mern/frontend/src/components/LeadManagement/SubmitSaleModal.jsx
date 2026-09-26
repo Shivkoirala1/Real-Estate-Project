@@ -29,6 +29,7 @@ const EMPTY_FORM = {
   agreedPrice: '',
   paymentType: 'full_payment',
   downPaymentAmount: '',
+  downPaymentPercent: '',
   remarks: '',
 };
 
@@ -59,6 +60,7 @@ const SubmitSaleModal = ({ lead, property, open, onClose, onSuccess }) => {
             : '',
         paymentType: 'full_payment',
         downPaymentAmount: '',
+        downPaymentPercent: '',
         remarks: '',
       });
       setErrors({});
@@ -79,13 +81,12 @@ const SubmitSaleModal = ({ lead, property, open, onClose, onSuccess }) => {
     if (Number.isFinite(price) && price > 0) {
       const round2 = (n) => Math.round(Number(n) * 100) / 100;
       if (form.paymentType === 'emi') {
-        const down = Number(form.downPaymentAmount);
-        if (form.downPaymentAmount === '' || !Number.isFinite(down)) {
-          next.downPayment = 'Down payment is required for EMI sales (minimum 10% of agreed price)';
-        } else if (down < round2(price * 0.1)) {
-          next.downPayment = `Down payment must be at least 10% of agreed price (minimum NPR ${round2(price * 0.1).toLocaleString()})`;
-        } else if (down >= price) {
-          next.downPayment = 'Down payment must be less than the agreed price';
+        // Percent-based entry (10-60%); the NPR amount derives server-side.
+        const pct = Number(form.downPaymentPercent);
+        if (form.downPaymentPercent === '' || !Number.isFinite(pct)) {
+          next.downPayment = 'Down payment percent is required for EMI sales (10-60%)';
+        } else if (pct < 10 || pct > 60) {
+          next.downPayment = 'Down payment percent must be between 10% and 60%';
         }
       } else if (form.downPaymentAmount !== '') {
         const down = Number(form.downPaymentAmount);
@@ -115,7 +116,12 @@ const SubmitSaleModal = ({ lead, property, open, onClose, onSuccess }) => {
         agreedPrice: Number(form.agreedPrice),
         paymentType: form.paymentType,
       };
-      if (form.paymentType !== 'full_payment' && form.downPaymentAmount !== '') {
+      if (form.paymentType === 'emi' && form.downPaymentPercent !== '') {
+        const pct = Number(form.downPaymentPercent);
+        if (Number.isFinite(pct)) {
+          payload.downPaymentPercent = pct;
+        }
+      } else if (form.paymentType !== 'full_payment' && form.downPaymentAmount !== '') {
         const downPayment = Number(form.downPaymentAmount);
         if (Number.isFinite(downPayment) && downPayment >= 0) {
           payload.downPaymentAmount = downPayment;
@@ -249,22 +255,52 @@ const SubmitSaleModal = ({ lead, property, open, onClose, onSuccess }) => {
             </p>
           )}
 
-          {form.paymentType !== 'full_payment' && (
+          {form.paymentType === 'emi' ? (
             <div>
-              <label className="label-field">Down payment amount (NPR, optional)</label>
+              <label className="label-field">Down payment (%) *</label>
               <input
                 type="number"
-                min="0"
+                min="10"
+                max="60"
                 step="any"
                 className="input-field text-sm"
-                value={form.downPaymentAmount}
-                onChange={(e) => setField('downPaymentAmount', e.target.value)}
-                placeholder="e.g. 2500000"
+                value={form.downPaymentPercent}
+                onChange={(e) => setField('downPaymentPercent', e.target.value)}
+                placeholder="e.g. 20"
               />
+              {(() => {
+                const price = Number(form.agreedPrice);
+                const pct = Number(form.downPaymentPercent);
+                if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(pct)) return null;
+                const amount = Math.round(price * pct) / 100;
+                return (
+                  <p className="mt-1 text-xs text-slate-muted">
+                    {pct}% — NPR {amount.toLocaleString()} of NPR {price.toLocaleString()}
+                  </p>
+                );
+              })()}
               {errors.downPayment && (
                 <p className="mt-1 text-xs text-brick">{errors.downPayment}</p>
               )}
             </div>
+          ) : (
+            form.paymentType !== 'full_payment' && (
+              <div>
+                <label className="label-field">Down payment amount (NPR, optional)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="input-field text-sm"
+                  value={form.downPaymentAmount}
+                  onChange={(e) => setField('downPaymentAmount', e.target.value)}
+                  placeholder="e.g. 2500000"
+                />
+                {errors.downPayment && (
+                  <p className="mt-1 text-xs text-brick">{errors.downPayment}</p>
+                )}
+              </div>
+            )
           )}
 
           <div>

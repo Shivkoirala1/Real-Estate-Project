@@ -16,7 +16,9 @@ import api from '../utils/axios';
  *   buyer: { name, phone, email, user? },
  *   agreedPrice,
  *   paymentType: 'full_payment' | 'emi' | 'bank_loan',
- *   downPaymentAmount?,   // reference only (emi / bank_loan)
+ *   downPaymentAmount?,   // reference only (emi-legacy / bank_loan)
+ *   downPaymentPercent?,  // EMI percent entry 10-60 (authoritative when sent;
+ *                         // amount derived server-side and stored alongside)
  *   remarks?
  * }
  * buyer.email is auto-linked to a registered account server-side;

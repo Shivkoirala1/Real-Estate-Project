@@ -755,6 +755,9 @@ const EmiPlanDetail = () => {
         <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
           <p className="text-xs uppercase tracking-wide text-slate-muted mb-2">Principal</p>
           <p className="text-xl font-display text-navy break-words">{npr(plan.principalAmount)}</p>
+          {Number(plan.serviceChargeAmount) > 0 && (
+            <p className="text-xs text-slate-muted mt-1">incl. {npr(plan.serviceChargeAmount)} service charge (frozen)</p>
+          )}
         </div>
         <div className="bg-white border border-navy/10 rounded-sm p-5 shadow-card">
           <p className="text-xs uppercase tracking-wide text-slate-muted mb-2">Tenure</p>

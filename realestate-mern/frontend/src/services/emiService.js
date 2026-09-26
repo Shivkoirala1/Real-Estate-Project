@@ -11,10 +11,12 @@ import api, { multipartConfig } from '../utils/axios';
  * POST /api/emi-plans
  * payload: {
  *   saleId,
- *   principalAmount,
+ *   principalAmount,   // must equal agreed − down + service charge
  *   tenureMonths,
- *   installmentAmount,
- *   startDate
+ *   installmentAmount, // tenure × installment must equal principal
+ *   startDate,
+ *   serviceChargeAmount?, // optional flat NPR, default 0, frozen at init
+ *   remarks?
  * }
  * response: 201 { success, plan }
  */

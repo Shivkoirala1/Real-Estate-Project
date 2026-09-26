@@ -195,6 +195,7 @@ const InitEmiModal = ({
   const [principal, setPrincipal] = useState("");
   const [tenure, setTenure] = useState("");
   const [installment, setInstallment] = useState("");
+  const [serviceCharge, setServiceCharge] = useState("");
   const [startDate, setStartDate] = useState(toDateInput());
   const [touched, setTouched] = useState(false); // agent manually edited the installment field
   const [error, setError] = useState("");
@@ -233,6 +234,7 @@ const InitEmiModal = ({
     const p = Number(principal);
     const t = Number(tenure);
     const inst = Number(installment);
+    const charge = serviceCharge === "" ? 0 : Number(serviceCharge);
     const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
     if (!sale) return setError("Sale context is still loading.");
@@ -240,13 +242,16 @@ const InitEmiModal = ({
       return setError("Principal amount must be greater than 0.");
     if (sale.agreedPrice == null || sale.downPaymentAmount == null)
       return setError("Sale context is still loading.");
+    if (!Number.isFinite(charge) || charge < 0)
+      return setError("Service charge must be a non-negative number (or blank for none).");
     {
+      // Principal = agreed − down + service charge (frozen at init).
       const expected = round2(
-        Number(sale.agreedPrice) - Number(sale.downPaymentAmount),
+        Number(sale.agreedPrice) - Number(sale.downPaymentAmount) + charge,
       );
       if (round2(p) !== expected)
         return setError(
-          `Principal must equal agreed price minus down payment (expected NPR ${expected.toLocaleString()}).`,
+          `Principal must equal agreed price minus down payment plus service charge (expected NPR ${expected.toLocaleString()}).`,
         );
     }
     if (!Number.isInteger(t) || t < 1 || t > 360)
@@ -267,6 +272,7 @@ const InitEmiModal = ({
       tenureMonths: t,
       installmentAmount: inst,
       startDate,
+      serviceChargeAmount: charge,
     });
   };
 
@@ -338,7 +344,11 @@ const InitEmiModal = ({
                 <span>
                   Down payment:{" "}
                   <span className="font-medium text-navy">
-                    {sale.downPaymentAmount ? npr(sale.downPaymentAmount) : "—"}
+                    {sale.downPaymentPercent != null
+                      ? `${sale.downPaymentPercent}% (${npr(sale.downPaymentAmount)})`
+                      : sale.downPaymentAmount
+                        ? npr(sale.downPaymentAmount)
+                        : "—"}
                   </span>
                 </span>
               </div>
@@ -376,6 +386,39 @@ const InitEmiModal = ({
                   placeholder="Amount to be repaid in installments"
                   required
                 />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="label-field" htmlFor="emi-charge">
+                  Service charge (NPR, optional)
+                </label>
+                <input
+                  id="emi-charge"
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="input-field"
+                  value={serviceCharge}
+                  onChange={(e) => setServiceCharge(e.target.value)}
+                  placeholder="e.g. 25000 (blank = none)"
+                />
+                <p className="text-[11px] text-slate-muted mt-1.5 leading-relaxed">
+                  Merged into the principal (agreed − down + charge). Frozen
+                  once the plan is initialized — it cannot be changed later.
+                </p>
+                {(() => {
+                  const agreed = Number(sale?.agreedPrice);
+                  const down = Number(sale?.downPaymentAmount);
+                  const charge = serviceCharge === "" ? 0 : Number(serviceCharge);
+                  if (!Number.isFinite(agreed) || !Number.isFinite(down) || !Number.isFinite(charge)) return null;
+                  const expected = Math.round((agreed - down + charge) * 100) / 100;
+                  return (
+                    <p className="text-[11px] text-navy mt-1.5 leading-relaxed">
+                      {npr(agreed)} − {npr(down)} + {npr(charge)} ={" "}
+                      <span className="font-medium">{npr(expected)}</span> principal
+                    </p>
+                  );
+                })()}
               </div>
 
               <div>
