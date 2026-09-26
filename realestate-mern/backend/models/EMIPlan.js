@@ -37,7 +37,10 @@ const emiPlanSchema = new mongoose.Schema(
     // Manages this plan; only the assigned agent + admin can edit it
     agent: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
 
-    // Remaining amount to be paid via EMI (agreedPrice - downPaymentAmount)
+    // Total financed via EMI: agreedPrice - downPaymentAmount + serviceCharge.
+    // Service charge is frozen at initialization (see controller guard).
+    serviceChargeAmount: { type: Number, default: 0, min: 0 },
+    // Remaining amount to be paid via EMI (agreedPrice - downPaymentAmount + serviceChargeAmount)
     principalAmount: { type: Number, required: true, min: 0 },
     tenureMonths: { type: Number, required: true, min: 1 },
     // Manually entered by the agent (Nepali arrangements are often negotiated

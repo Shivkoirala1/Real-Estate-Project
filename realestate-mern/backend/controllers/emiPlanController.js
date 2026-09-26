@@ -82,7 +82,7 @@ const idOf = (ref) => (ref && ref._id ? ref._id : ref);
 // Strips those fields from a plan (or array of plans) before it reaches an
 // agent's response. Works on populated Mongoose docs (via .toObject/.toJSON)
 // or plain objects.
-const AGENT_HIDDEN_PLAN_FIELDS = ['principalAmount', 'installmentAmount', 'totalPaid', 'outstandingBalance'];
+const AGENT_HIDDEN_PLAN_FIELDS = ['principalAmount', 'installmentAmount', 'totalPaid', 'outstandingBalance', 'serviceChargeAmount'];
 const AGENT_HIDDEN_INSTALLMENT_FIELDS = ['amount', 'paidAmount'];
 
 const sanitizeForAgent = (planLike) => {
@@ -93,7 +93,12 @@ const sanitizeForAgent = (planLike) => {
   });
 
   if (plan.sale && typeof plan.sale === 'object') {
+    // Money figures must never reach agents through the populated sale -
+    // down-payment amount/percent join agreedPrice here even though current
+    // populates don't select them (defense in depth against future selects).
     delete plan.sale.agreedPrice;
+    delete plan.sale.downPaymentAmount;
+    delete plan.sale.downPaymentPercent;
   }
 
   plan.installments = (plan.installments || []).map((installment) => {
@@ -122,7 +127,7 @@ const sanitizeManyForAgent = (plans) => (plans || []).map(sanitizeForAgent);
  * @access  Private (admin)
  */
 const createEmiPlan = asyncHandler(async (req, res) => {
-  const { saleId, principalAmount, tenureMonths, installmentAmount, startDate, remarks } = req.body;
+  const { saleId, principalAmount, tenureMonths, installmentAmount, startDate, remarks, serviceChargeAmount } = req.body;
 
   // ---- body validation ----
   if (!saleId) {
@@ -191,12 +196,19 @@ const createEmiPlan = asyncHandler(async (req, res) => {
   }
 
   // ---- down payment + principal consistency guards ----
-  const { validateDownPayment, validatePrincipal, round2 } = require('../utils/validateMoney');
+  // Service charge (flat NPR, default 0) merges into the principal:
+  //   principal = round2(agreed - down + charge). Legacy chargeless plans
+  // reproduce the old agreed-down equality exactly.
+  const { validateDownPayment, validatePrincipal, validateServiceCharge, round2 } = require('../utils/validateMoney');
   const downCheck = validateDownPayment(sale.downPaymentAmount, sale.agreedPrice);
   if (!downCheck.ok) {
     return res.status(400).json({ success: false, message: downCheck.message });
   }
-  const principalCheck = validatePrincipal(principal, sale.agreedPrice, downCheck.down);
+  const chargeCheck = validateServiceCharge(serviceChargeAmount);
+  if (!chargeCheck.ok) {
+    return res.status(400).json({ success: false, message: chargeCheck.message });
+  }
+  const principalCheck = validatePrincipal(principal, sale.agreedPrice, downCheck.down, chargeCheck.charge);
   if (!principalCheck.ok) {
     return res.status(400).json({ success: false, message: principalCheck.message });
   }
@@ -226,7 +238,7 @@ const createEmiPlan = asyncHandler(async (req, res) => {
   const activities = [
     {
       type: 'initialized',
-      message: `EMI plan initialized: ${tenure} installments of ${npr(perInstallment)} starting ${formatDate(start)}`,
+      message: `EMI plan initialized: ${tenure} installments of ${npr(perInstallment)} starting ${formatDate(start)} (agreed ${npr(sale.agreedPrice)} - down ${npr(downCheck.down)} + service charge ${npr(chargeCheck.charge)} = principal ${npr(principal)})`,
       by: req.user._id,
       byName: req.user.name,
     },
@@ -245,6 +257,7 @@ const createEmiPlan = asyncHandler(async (req, res) => {
     property: sale.property,
     buyer: sale.buyer.user,
     agent: sale.agent,
+    serviceChargeAmount: chargeCheck.charge,
     principalAmount: principal,
     tenureMonths: tenure,
     installmentAmount: perInstallment,
@@ -924,6 +937,12 @@ const updateEmiPlan = asyncHandler(async (req, res) => {
   const plan = await EMIPlan.findById(req.params.id);
   if (!plan) {
     return res.status(404).json({ success: false, message: 'EMI plan not found' });
+  }
+
+  // Service charge is frozen at initialization - it can never be modified
+  // afterwards (it would corrupt settled-installment history).
+  if (req.body.serviceChargeAmount !== undefined) {
+    return res.status(400).json({ success: false, message: 'Service charge cannot be changed after the plan is initialized.' });
   }
 
   // Buyers are read-only even if the route guard ever changes

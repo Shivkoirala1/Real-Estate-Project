@@ -65,6 +65,22 @@ const saleSchema = new mongoose.Schema(
     },
     // Reference only (emi / bank_loan) - recorded for visibility, not processed
     downPaymentAmount: { type: Number, default: null, min: 0 },
+    // EMI down-payment percentage: required for EMI sales, 10-60 inclusive.
+    // Audit/display companion to downPaymentAmount, which remains the
+    // canonical monetary value (always derived from the percent for EMI).
+    // Null only for non-EMI sales and pre-policy sample rows.
+    downPaymentPercent: {
+      type: Number,
+      default: null,
+      min: [10, 'Down payment percent must be at least 10'],
+      max: [60, 'Down payment percent must be at most 60'],
+      required: [
+        function () {
+          return this.paymentType === 'emi';
+        },
+        'Down payment percent (10-60%) is required for EMI sales',
+      ],
+    },
 
     // === REVIEW STATE (the single approval gate) ===
     status: {

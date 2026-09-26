@@ -37,7 +37,7 @@ const saleSortMap = {
  * @access  Private (admin or assigned agent)
  */
 const createSale = asyncHandler(async (req, res) => {
-  const { leadId, paymentType, downPaymentAmount, remarks } = req.body;
+  const { leadId, paymentType, downPaymentAmount, downPaymentPercent, remarks } = req.body;
   let { agreedPrice } = req.body;
   const buyer = req.body.buyer || {};
 
@@ -111,16 +111,30 @@ const createSale = asyncHandler(async (req, res) => {
   if (finalAgreedPrice > 1e11) {
     return res.status(400).json({ success: false, message: 'Agreed price exceeds the maximum allowed (NPR 100,000,000,000)' });
   }
-  // Down payment guards: required >=10% for EMI, optional-but-ranged otherwise
+  // Down payment guards: EMI filings are percent-driven and authoritative -
+  // downPaymentPercent (10-60%) is required and the amount is always derived
+  // via shared round2. A directly supplied downPaymentAmount on an EMI sale
+  // is rejected so callers cannot choose the monetary figure independently.
+  // Non-EMI types keep the optional-but-ranged amount rule (percent ignored).
+  let resolvedDownPercent = null;
+  let resolvedDownAmount = downPaymentAmount;
   {
-    const { toFiniteNumber } = require('../utils/validateMoney');
+    const { toFiniteNumber, validateDownPaymentPercent, downPaymentAmountFromPercent } = require('../utils/validateMoney');
+    const hasPct = downPaymentPercent !== undefined && downPaymentPercent !== null && downPaymentPercent !== '';
     const hasDown = downPaymentAmount !== undefined && downPaymentAmount !== null && downPaymentAmount !== '';
     if (paymentType === 'emi') {
-      const { validateDownPayment } = require('../utils/validateMoney');
-      const check = validateDownPayment(downPaymentAmount, finalAgreedPrice);
-      if (!check.ok) {
-        return res.status(400).json({ success: false, message: check.message });
+      if (hasDown) {
+        return res.status(400).json({
+          success: false,
+          message: 'Down payment amount cannot be supplied directly for EMI sales - send downPaymentPercent (10-60%) instead.',
+        });
       }
+      const pctCheck = validateDownPaymentPercent(downPaymentPercent);
+      if (!pctCheck.ok) {
+        return res.status(400).json({ success: false, message: pctCheck.message });
+      }
+      resolvedDownPercent = pctCheck.percent;
+      resolvedDownAmount = downPaymentAmountFromPercent(finalAgreedPrice, resolvedDownPercent);
     } else if (hasDown) {
       const down = toFiniteNumber(downPaymentAmount);
       if (down === null || down < 0 || down >= finalAgreedPrice) {
@@ -193,11 +207,14 @@ const createSale = asyncHandler(async (req, res) => {
     agreedPrice,
     paymentType,
     downPaymentAmount: (() => {
-      const { toFiniteNumber } = require('../utils/validateMoney');
-      if (downPaymentAmount === undefined || downPaymentAmount === null || downPaymentAmount === '') return null;
-      const n = toFiniteNumber(downPaymentAmount);
-      return n === null ? null : n;
+      const { toFiniteNumber, round2 } = require('../utils/validateMoney');
+      if (resolvedDownAmount === undefined || resolvedDownAmount === null || resolvedDownAmount === '') return null;
+      const n = toFiniteNumber(resolvedDownAmount);
+      return n === null ? null : round2(n);
     })(),
+    // Percent only for percent-driven EMI filings (10-60 schema range);
+    // legacy amount-only rows keep null so old records never invalidate.
+    downPaymentPercent: resolvedDownPercent,
     remarks: remarks || '',
     status: 'pending_review',
     submittedBy: req.user._id,
